@@ -16,7 +16,7 @@ In our [last Chaos day](../2024-10-24-Camunda-Exporter-MVP/index.md) we experime
 
 ![](it2-migration.png)
 
-Additionally, [some fixes and improvements](https://github.com/zeebe-io/benchmark-helm/pull/202) have been done to the realistic benchmarks that should allow us to better compare the general performance with a realistic good performing benchmark.
+Additionally, [some fixes and improvements](https://github.com/camunda/zeebe-benchmark-helm/pull/202) have been done to the realistic benchmarks that should allow us to better compare the general performance with a realistic good performing benchmark.
 
 Actually, this is what we want to explore and experiment with today.
 
@@ -31,9 +31,9 @@ Actually, this is what we want to explore and experiment with today.
 ## Benchmarks
 
 As in the [last Chaos day](../2024-10-24-Camunda-Exporter-MVP/index.md) we use the new realistic benchmarks, that contain a much more complex process model and workload.
-We recently found some smaller issues in our benchmarks, related to [CPU throttling](https://github.com/zeebe-io/benchmark-helm/pull/204) and [undersized workers](https://github.com/zeebe-io/benchmark-helm/pull/202), these issues have been fixed. This allowed us to reach a much better workload/throughput on our weekly benchmarks, which we take here as a base for our comparison.
+We recently found some smaller issues in our benchmarks, related to [CPU throttling](https://github.com/camunda/zeebe-benchmark-helm/pull/204) and [undersized workers](https://github.com/camunda/zeebe-benchmark-helm/pull/202), these issues have been fixed. This allowed us to reach a much better workload/throughput on our weekly benchmarks, which we take here as a base for our comparison.
 
-The newest benchmark helm charts have been updated to the first [Camunda Platform alpha1](https://github.com/zeebe-io/benchmark-helm/releases/tag/zeebe-benchmark-0.3.8), which includes the Camunda Exporter.
+The newest benchmark helm charts have been updated to the first [Camunda Platform alpha1](https://github.com/camunda/zeebe-benchmark-helm/releases/tag/zeebe-benchmark-0.3.8), which includes the Camunda Exporter.
 
 Today we run the following benchmarks
 

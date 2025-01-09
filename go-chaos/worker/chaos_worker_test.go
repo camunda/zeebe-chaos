@@ -25,7 +25,7 @@ import (
 	"github.com/camunda/zeebe/clients/go/v8/pkg/pb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	chaos_experiments "github.com/zeebe-io/zeebe-chaos/go-chaos/internal/chaos-experiments"
+	chaos_experiments "github.com/camunda/zeebe-chaos/go-chaos/internal/chaos-experiments"
 )
 
 func Test_ShouldFailToHandleJobWithoutPayload(t *testing.T) {

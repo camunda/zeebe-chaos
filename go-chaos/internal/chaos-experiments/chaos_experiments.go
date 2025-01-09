@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"golang.org/x/exp/slices"
 	"golang.org/x/mod/semver"
 	"k8s.io/apimachinery/pkg/util/yaml"

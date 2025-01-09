@@ -26,4 +26,4 @@ make test
 
 The release is fully automated with the corresponding `./release.sh` script.
 
-You can run it locally or you use the corresponding github action https://github.com/zeebe-io/zeebe-chaos/actions/workflows/release.yaml.
+You can run it locally or you use the corresponding github action https://github.com/camunda/zeebe-chaos/actions/workflows/release.yaml.

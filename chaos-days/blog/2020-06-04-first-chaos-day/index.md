@@ -14,7 +14,7 @@ authors: zell
 
  * Documented failure cases for exporter (already some exist, it seemed) gave me a new idea for ZEP
  * Introduced Peter to our Chaos Repository, discussed a bit about the hypothesis backlog, reopened the Chaos Trello board where we will organize ourselves
- * Run a chaos experiment, where we put high CPU load on the Leader [#6](https://github.com/zeebe-io/zeebe-chaos/issues/6)
+ * Run a chaos experiment, where we put high CPU load on the Leader [#6](https://github.com/camunda/zeebe-chaos/issues/6)
 
 <!--truncate-->
 

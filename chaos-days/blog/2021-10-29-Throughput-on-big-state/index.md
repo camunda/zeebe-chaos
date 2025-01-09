@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-In this chaos day we wanted to prove the hypothesis that the throughput should not significantly change even if we have bigger state, see [zeebe-chaos#64](https://github.com/zeebe-io/zeebe-chaos/issues/64)
+In this chaos day we wanted to prove the hypothesis that the throughput should not significantly change even if we have bigger state, see [zeebe-chaos#64](https://github.com/camunda/zeebe-chaos/issues/64)
 
 This came up due observations from the [last chaos day](/2021-10-05-recovery-time/index.md). We already had a bigger investigation here [zeebe#7955](https://github.com/camunda-cloud/zeebe/issues/7955). 
 

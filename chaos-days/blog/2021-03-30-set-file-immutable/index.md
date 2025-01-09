@@ -17,7 +17,7 @@ Unfortunately I found out that our test chaos cluster was in a way broken, that 
 Because of these circumstances I thought about different things to experiment with, and I remembered that in the [last chaos day](/2021-03-23-camunda-cloud-network-partition/index.md) we worked with patching running deployments, in order to add more capabilities.
 This allowed us to create ip routes and experiment with the zeebe deployment distribution. During this I have read the [capabilities list of linux](https://man7.org/linux/man-pages/man7/capabilities.7.html), and found out that we can mark files as immutable, which might be interesting for a chaos experiment.
 
-In this chaos day I planned to find out how marking a file immutable affects our brokers and I made the hypothesis that: *If a leader has a write error, which is not recoverable, it will step down and another leader should take over.* I put this in our hypothesis backlog ([zeebe-chaos#52](https://github.com/zeebe-io/zeebe-chaos/issues/52)). 
+In this chaos day I planned to find out how marking a file immutable affects our brokers and I made the hypothesis that: *If a leader has a write error, which is not recoverable, it will step down and another leader should take over.* I put this in our hypothesis backlog ([zeebe-chaos#52](https://github.com/camunda/zeebe-chaos/issues/52)). 
 
 In order to really run this kind of experiment I need to find out whether marking a file immutable will cause any problems and if not how I can cause write errors such that affects the broker.
 Unfortunately it turned out that immutable files will not cause issues on already opened file channels, but I found some other bugs/issues, which you can read below.

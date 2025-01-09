@@ -12,7 +12,7 @@ authors: zell
 
 # Chaos Day Summary
 
-Today we wanted to experiment with the snapshot interval and verify that a high snapshot frequency will not impact our availability ([#21](https://github.com/zeebe-io/zeebe-chaos/issues/21)).
+Today we wanted to experiment with the snapshot interval and verify that a high snapshot frequency will not impact our availability ([#21](https://github.com/camunda/zeebe-chaos/issues/21)).
 
 
 **TL;DR;** The chaos experiment succeeded :muscle: We were able to prove our hypothesis.

@@ -204,7 +204,7 @@ One of the downsides of switching to a push approach, unfortunately, is that the
 
 Thankfully, HTTP/2 and gRPC both have mechanisms to ensure flow control for server streaming RPCs.
 
-[You can find our tests results in a separate blog post](https://zeebe-io.github.io/zeebe-chaos/2023/11/30/Job-push-overloading).
+[You can find our tests results in a separate blog post](https://camunda.github.io/zeebe-chaos/2023/11/30/Job-push-overloading).
 
 ## Further reading
 
@@ -217,6 +217,6 @@ You can read more about job push here:
 
 Additionally, we've already written two other blog posts:
 
-- [Client backpressure resilience](https://zeebe-io.github.io/zeebe-chaos/2023/11/30/Job-push-overloading)
-- [Job stream fault tolerance](https://zeebe-io.github.io/zeebe-chaos/2023/12/06/Job-Push-resiliency)
+- [Client backpressure resilience](https://camunda.github.io/zeebe-chaos/2023/11/30/Job-push-overloading)
+- [Job stream fault tolerance](https://camunda.github.io/zeebe-chaos/2023/12/06/Job-Push-resiliency)
 

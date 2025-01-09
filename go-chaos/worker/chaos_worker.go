@@ -23,8 +23,8 @@ import (
 
 	"github.com/camunda/zeebe/clients/go/v8/pkg/entities"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/worker"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
-	chaos_experiments "github.com/zeebe-io/zeebe-chaos/go-chaos/internal/chaos-experiments"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	chaos_experiments "github.com/camunda/zeebe-chaos/go-chaos/internal/chaos-experiments"
 )
 
 type CommandRunner func([]string, context.Context) error

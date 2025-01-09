@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 )
 
 func AddBackupCommand(rootCmd *cobra.Command, flags *Flags) {

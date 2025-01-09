@@ -12,7 +12,7 @@ authors: zell
 
 # Chaos Day Summary
 
-New day new chaos. :skull: In today's chaos day I want to pick up a topic, which had bothered people for long time. I created a [chaos day three years ago](https://zeebe-io.github.io/zeebe-chaos/2020/07/16/big-multi-instance/) around this topic as well. 
+New day new chaos. :skull: In today's chaos day I want to pick up a topic, which had bothered people for long time. I created a [chaos day three years ago](https://camunda.github.io/zeebe-chaos/2020/07/16/big-multi-instance/) around this topic as well. 
 
 Today, we experiment with large multi-instances again. In the recent patch release [8.2.5](https://github.com/camunda/camunda/releases/tag/8.2.5) we fixed an issue with spawning larger multi instances. Previously if you have created a process instance with a large multi-instance it was likely that this caused to blacklist the process instance, since the multi-instance spawning ran into `maxMessageSize` limitations. 
 

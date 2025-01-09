@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-Today I wanted to finally implement an experiment which I postponed for long time, see [#24](https://github.com/zeebe-io/zeebe-chaos/issues/24).
+Today I wanted to finally implement an experiment which I postponed for long time, see [#24](https://github.com/camunda/zeebe-chaos/issues/24).
 The problem was that previous we were not able to determine on which partition the message was published, so we were not able to assert that it was published on the correct partition. With this [#4794](https://github.com/zeebe-io/zeebe/issues/4794) it is now possible, which was btw an community contribution. :tada:
 
 <!--truncate-->
@@ -72,8 +72,8 @@ $ chaos run production-m/msg-correlation/experiment.json
 ```
 
 Experiment added to all cluster plans:
- * https://github.com/zeebe-io/zeebe-chaos/commit/adeab53915e12b4a76fd4d49bb359684619b117f
- * https://github.com/zeebe-io/zeebe-chaos/commit/93daf11864fdd851267dae67fdfc31e0ea78b407
+ * https://github.com/camunda/zeebe-chaos/commit/adeab53915e12b4a76fd4d49bb359684619b117f
+ * https://github.com/camunda/zeebe-chaos/commit/93daf11864fdd851267dae67fdfc31e0ea78b407
 
 
 ## New Issues

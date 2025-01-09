@@ -15,7 +15,7 @@ authors: zell
 We recently introduced the Zeebe Standalone Gateway in CCSaaS. Today I wanted to do a first simple 
 chaos experiment with the gateway, where we just restart one gateway. 
 
-Ideally in the future we could enable some gateway chaos experiments again, which we currently only support for [helm](https://github.com/zeebe-io/zeebe-chaos/tree/master/chaos-workers/chaos-experiments/helm).
+Ideally in the future we could enable some gateway chaos experiments again, which we currently only support for [helm](https://github.com/camunda/zeebe-chaos/tree/master/chaos-workers/chaos-experiments/helm).
 
 **TL;DR;** Our Camunda Cloud clusters can handle gateway restarts without issues. 
 

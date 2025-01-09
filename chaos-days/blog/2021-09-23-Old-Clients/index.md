@@ -14,7 +14,7 @@ authors: zell
 
 It has been awhile since the last post, I'm happy to be back.
 
-In today's chaos day we want to verify the hypothesis from [zeebe-chaos#34](https://github.com/zeebe-io/zeebe-chaos/issues/34) that old 
+In today's chaos day we want to verify the hypothesis from [zeebe-chaos#34](https://github.com/camunda/zeebe-chaos/issues/34) that old 
 clients can't disrupt a running cluster.
 
 It might happen that after upgrading your Zeebe to the newest shiny version, you might forget to 
@@ -86,7 +86,7 @@ Furthermore, taking a look at the resource consumption, especially at the gatewa
 
 ### Result
 
-We were able to confirm the hypothesis written in [zeebe-chaos#34](https://github.com/zeebe-io/zeebe-chaos/issues/34), that an old client can't disrupt a running cluster. 
+We were able to confirm the hypothesis written in [zeebe-chaos#34](https://github.com/camunda/zeebe-chaos/issues/34), that an old client can't disrupt a running cluster. 
 
 ## Found Bugs
 

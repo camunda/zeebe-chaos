@@ -44,7 +44,7 @@ jobs:
     name: Auto-merge dependabot PRs
     runs-on: ubuntu-latest
     needs: [ go-ci ]
-    if: github.repository == 'zeebe-io/zeebe-chaos' && (github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]')
+    if: github.repository == 'camunda/zeebe-chaos' && (github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]')
     permissions:
       checks: read
       pull-requests: write

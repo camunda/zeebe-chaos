@@ -42,7 +42,7 @@ During building that dashboard I realized that we missed some detail metrics. Fo
 is currently not measured. Furthermore, we have operating limited metrics, thus allowing us only to see the average
 latency, not p99 nor p90. This needs to be enhanced in the future.
 
-We will run three benchmarks (base, high load, and low load), and use again our [benchmark helm chart](https://github.com/zeebe-io/benchmark-helm) for such.
+We will run three benchmarks (base, high load, and low load), and use again our [benchmark helm chart](https://github.com/camunda/zeebe-benchmark-helm) for such.
 All defaults from the helm charts are used, if not other specified. The most important ones, which are static over all benchmarks are listed below.
 
 | Config | Value |

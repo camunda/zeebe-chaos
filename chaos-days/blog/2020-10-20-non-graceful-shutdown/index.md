@@ -20,14 +20,14 @@ I did that on Wednesday (21-10-2020).
 ## PR Merge
 
 I tried again the new chaos experiment with a Production M cluster, before merging. It worked quite smooth.
-PR is merged [#41](https://github.com/zeebe-io/zeebe-chaos/pull/41) :tada:
+PR is merged [#41](https://github.com/camunda/zeebe-chaos/pull/41) :tada:
 
 ## Non-graceful shutdown
 
 Currently in our experiments we do a normal `kubectl delete pod`, which does an graceful shutdown. The application has time to stop it's services etc. It would be interesting how Zeebe handles non-graceful shutdowns. In order to achieve that we can use the option `--grace-period=0`. For more information you can read for example [this](https://kubernetes.io/docs/tasks/run-application/force-delete-stateful-set-pod/#force-deletion)
 
 I added additional experiments to our normal follower and leader restarts experiments, such that we have both graceful and non-graceful restarts.
-Both seem to work without any issues. I was also able to fix some bash script error with the help of [shellcheck](https://github.com/koalaman/shellcheck). Related issue https://github.com/zeebe-io/zeebe-chaos/issues/42.
+Both seem to work without any issues. I was also able to fix some bash script error with the help of [shellcheck](https://github.com/koalaman/shellcheck). Related issue https://github.com/camunda/zeebe-chaos/issues/42.
 
 
 Example output:
@@ -56,8 +56,8 @@ Example output:
 
 Related commits:
 
- * [Restart leader non-gracefully](https://github.com/zeebe-io/zeebe-chaos/commit/e6260cb8612a983c8ed74fd2a37a249987ad3d3d)
- * [Restart follower non-gracefully](https://github.com/zeebe-io/zeebe-chaos/commit/63c481c0c7dd7026f03be4e51d61a918613b0140)
+ * [Restart leader non-gracefully](https://github.com/camunda/zeebe-chaos/commit/e6260cb8612a983c8ed74fd2a37a249987ad3d3d)
+ * [Restart follower non-gracefully](https://github.com/camunda/zeebe-chaos/commit/63c481c0c7dd7026f03be4e51d61a918613b0140)
 
 ## Participants
 

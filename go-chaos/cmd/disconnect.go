@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/backend"
+	"github.com/camunda/zeebe-chaos/go-chaos/backend"
 )
 
 func ensureNoError(err error) {

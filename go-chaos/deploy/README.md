@@ -2,16 +2,16 @@
 
 The zbchaos worker is deployed via the [deployment.yaml](/go-chaos/deploy/deployment.yaml) file to the Zeebe Team GKE (zeebe-io). It will connect to the Testbench production environment (Zeebe cluster in SaaS) and poll for work.
 
-If there is a new chaos experiment executed (and a target cluster created in a separate chaos GKE) zbchaos will connect to such cluster and run certain actions, like verifications or chaos injections. In order to connect to such chaos cluster zbchaos uses a separate kubeconfig, which is [injected via a secret](https://github.com/zeebe-io/zeebe-chaos/blob/main/go-chaos/deploy/deployment.yaml#L60). 
+If there is a new chaos experiment executed (and a target cluster created in a separate chaos GKE) zbchaos will connect to such cluster and run certain actions, like verifications or chaos injections. In order to connect to such chaos cluster zbchaos uses a separate kubeconfig, which is [injected via a secret](https://github.com/camunda/zeebe-chaos/blob/main/go-chaos/deploy/deployment.yaml#L60). 
 
-The secret is currently deployed **manually** but contains the content of the [kubernetes config file stored in this repository](https://github.com/zeebe-io/zeebe-chaos/blob/main/go-chaos/deploy/kubeconfig.yaml).
+The secret is currently deployed **manually** but contains the content of the [kubernetes config file stored in this repository](https://github.com/camunda/zeebe-chaos/blob/main/go-chaos/deploy/kubeconfig.yaml).
 
 ## Kubernetes configuration file
 
 The Kubernetes configuration file is encrypted using [sops](https://github.com/mozilla/sops).
 
 
-You need the right permissions to decrypt or encrypt the file. We have created in our [google cloud project a key ring set up](https://github.com/zeebe-io/zeebe-chaos/blob/main/go-chaos/deploy/kubeconfig.yaml). The Zeebe and SRE team should have access to they key-ring (and keys). 
+You need the right permissions to decrypt or encrypt the file. We have created in our [google cloud project a key ring set up](https://github.com/camunda/zeebe-chaos/blob/main/go-chaos/deploy/kubeconfig.yaml). The Zeebe and SRE team should have access to they key-ring (and keys). 
 
 
 If there are any updates necessary on the config, SREs can easily update the config in this repository. We should make sure to reflect the changes in our testbench namespace.

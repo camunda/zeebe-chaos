@@ -44,7 +44,7 @@ The experiment we want to do on this chaos day will look like the following:
 
  * Verify steady state:
    * verify the readiness of the cluster 
-   * deploy a process model (which contains a [simple model](https://github.com/zeebe-io/zeebe-chaos/blob/main/go-chaos/internal/bpmn/one_task.bpmn))
+   * deploy a process model (which contains a [simple model](https://github.com/camunda/zeebe-chaos/blob/main/go-chaos/internal/bpmn/one_task.bpmn))
  * Chaos Action: 
    * start a process instance (PI), with a service task
    * enable the SST partitioning
@@ -73,7 +73,7 @@ When operating a cluster, I can enable the SST partitioning without an impact on
 As linked above I used again our [benchmark/setup](https://github.com/camunda/camunda/tree/main/benchmarks/setup) scripts to set up a cluster.
 
 #### First Part: Verify Steady state
-To verify the readiness and run all actions I used the [zbchaos](https://github.com/zeebe-io/zeebe-chaos/tree/zbchaos-v1.0.0) tool.
+To verify the readiness and run all actions I used the [zbchaos](https://github.com/camunda/zeebe-chaos/tree/zbchaos-v1.0.0) tool.
 
 Verifying readiness is fairly easy with zbchaos.
 
