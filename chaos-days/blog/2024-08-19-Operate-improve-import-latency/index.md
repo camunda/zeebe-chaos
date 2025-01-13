@@ -129,7 +129,7 @@ exporters:
         delay: 1
 ```
 
-This can be set in our [benchmark-helm](https://github.com/zeebe-io/benchmark-helm) directly via: `--set zeebe.config.zeebe.broker.exporters.elasticsearch.args.bulk.delay=1`
+This can be set in our [benchmark-helm](https://github.com/camunda/zeebe-benchmark-helm) directly via: `--set zeebe.config.zeebe.broker.exporters.elasticsearch.args.bulk.delay=1`
 
 <details>
 <summary>Lower flush delay: Helm install command</summary>

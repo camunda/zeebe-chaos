@@ -24,10 +24,10 @@ We were able to enhance the deployment distribution experiment and run it in the
 
 ## Chaos Experiment
 
-We already had a [prepared chaos experiment](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/helm/deployment-distribution/experiment.json), but we needed to enhance that. Deepthi was so kind to create [PR](https://github.com/zeebe-io/zeebe-chaos/pull/50) for that.
+We already had a [prepared chaos experiment](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/helm/deployment-distribution/experiment.json), but we needed to enhance that. Deepthi was so kind to create [PR](https://github.com/camunda/zeebe-chaos/pull/50) for that.
 
 ### Enhancement
-The changes contain a new step before creating the network partition on the deployment distribution experiment, see [here](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/camunda-cloud/production-l/deployment-distribution/experiment.json#L25-L35).
+The changes contain a new step before creating the network partition on the deployment distribution experiment, see [here](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/camunda-cloud/production-l/deployment-distribution/experiment.json#L25-L35).
 
 ```json
         {
@@ -185,7 +185,7 @@ Thanks for participating [Deepthi](https://github.com/deepthidevaki).
 
 ##### Re-connecting might fail
 
-We realized during testing the experiment that the re-connecting might fail, because the pod can be rescheduled and then a ip route can't be delete since it no longer exist. [This is now fixed](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/scripts/connect-leaders.sh#L45-L48). We check for existence of the command `ip`, if this doesn't exist we know the pod was restarted and we ignore it.
+We realized during testing the experiment that the re-connecting might fail, because the pod can be rescheduled and then a ip route can't be delete since it no longer exist. [This is now fixed](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/scripts/connect-leaders.sh#L45-L48). We check for existence of the command `ip`, if this doesn't exist we know the pod was restarted and we ignore it.
 
 
 *Before:*

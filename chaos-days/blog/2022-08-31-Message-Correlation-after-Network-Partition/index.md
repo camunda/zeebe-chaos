@@ -76,7 +76,7 @@ To make the experiment easier to reproduce and allow us to experiment in differe
 
 ##### Message Publish
 
-I added a new feature ([PR #166](https://github.com/zeebe-io/zeebe-chaos/pull/166)) that allows us to publish a message to a specific partition:
+I added a new feature ([PR #166](https://github.com/camunda/zeebe-chaos/pull/166)) that allows us to publish a message to a specific partition:
 
 ```sh
 $ ./zbchaos publish message -v --partitionId 3
@@ -90,7 +90,7 @@ Message was sent and returned key 6755399441055796, which corresponds to partiti
 
 For the steady-state verification, multiple enhancements have been added.
 
-1. Previously the `zbchaos` didn't allow us to create instances of specific models, which is now added as new feature ([PR #167](https://github.com/zeebe-io/zeebe-chaos/pull/167)).
+1. Previously the `zbchaos` didn't allow us to create instances of specific models, which is now added as new feature ([PR #167](https://github.com/camunda/zeebe-chaos/pull/167)).
 2. In order to await the process instance completion a new flag was added `--awaitResult`, which allows us to await the PI completeness.
 3. To make sure that our message can be correlated we have to set the right correlationKey/value. This means we need to create instances with certain variables, which is now possible as well (`--variables`).
 
@@ -182,18 +182,18 @@ Encountered an error during process instance creation. Error: rpc error: code = 
 panic: Expected to create process instance on partition 1, but timed out after 30s.
 
 goroutine 1 [running]:
-github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.glob..func10(0x247f740?, {0x1758c60?, 0x7?, 0x7?})
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/cmd/verify.go:97 +0x1c5
+github.com/camunda/zeebe-chaos/go-chaos/cmd.glob..func10(0x247f740?, {0x1758c60?, 0x7?, 0x7?})
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/cmd/verify.go:97 +0x1c5
 github.com/spf13/cobra.(*Command).execute(0x247f740, {0xc000426540, 0x7, 0x7})
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:876 +0x67b
 github.com/spf13/cobra.(*Command).ExecuteC(0x24808c0)
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:990 +0x3bd
 github.com/spf13/cobra.(*Command).Execute(...)
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:918
-github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.Execute()
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/cmd/root.go:61 +0x25
+github.com/camunda/zeebe-chaos/go-chaos/cmd.Execute()
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/cmd/root.go:61 +0x25
 main.main()
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/main.go:8 +0x17
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/main.go:8 +0x17
 ```
 I retried it:
 ```shell
@@ -211,18 +211,18 @@ Encountered an error during process instance creation. Error: rpc error: code = 
 panic: Expected to create process instance on partition 1, but timed out after 30s.
 
 goroutine 1 [running]:
-github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.glob..func10(0x247f740?, {0x1758c60?, 0x8?, 0x8?})
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/cmd/verify.go:97 +0x1c5
+github.com/camunda/zeebe-chaos/go-chaos/cmd.glob..func10(0x247f740?, {0x1758c60?, 0x8?, 0x8?})
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/cmd/verify.go:97 +0x1c5
 github.com/spf13/cobra.(*Command).execute(0x247f740, {0xc00007e500, 0x8, 0x8})
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:876 +0x67b
 github.com/spf13/cobra.(*Command).ExecuteC(0x24808c0)
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:990 +0x3bd
 github.com/spf13/cobra.(*Command).Execute(...)
 	/home/zell/goPath/pkg/mod/github.com/spf13/cobra@v1.5.0/command.go:918
-github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.Execute()
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/cmd/root.go:61 +0x25
+github.com/camunda/zeebe-chaos/go-chaos/cmd.Execute()
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/cmd/root.go:61 +0x25
 main.main()
-	/home/zell/goPath/src/github.com/zeebe-io/zeebe-chaos/go-chaos/main.go:8 +0x17
+	/home/zell/goPath/src/github.com/camunda/zeebe-chaos/go-chaos/main.go:8 +0x17
 ```
 
 And got a similar exception. Taking a look at Operate we can see that process instances are created. It is likely that the await timed out since the message hasn't been correlated but the returned error is a bit unclear. Interesting is that on partition two the message is also not correlated.

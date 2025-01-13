@@ -17,8 +17,8 @@ package cmd
 import (
 	"time"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
 )
 
 func AddDatalossSimulationCmd(rootCmd *cobra.Command, flags *Flags) {

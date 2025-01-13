@@ -15,7 +15,7 @@ authors: zell
 
 Happy new year everyone :tada:
 
-This time I wanted to verify the following hypothesis `Disconnecting Leader and one Follower should not make cluster disruptive` ([#45](https://github.com/zeebe-io/zeebe-chaos/issues/45)).
+This time I wanted to verify the following hypothesis `Disconnecting Leader and one Follower should not make cluster disruptive` ([#45](https://github.com/camunda/zeebe-chaos/issues/45)).
 But in order to do that we need to extract the Leader and Follower node for a partition from the Topology. Luckily in December we got an [external contribution](https://github.com/zeebe-io/zeebe/pull/5943) which allows us to print `zbctl status` as json.
 This gives us now more possibilities, since we can extract values much better out of it.
 
@@ -224,7 +224,7 @@ function getIndexOfPodForPartitionInState()
 
 The previous function worked only with homogeneous clusters, which means where the partitions are equally distributed. This caused issues on experiments on Production L clusters, where partitions are heterogeneous distributed, see related issue [zeebe-io/zeebe-cluster-testbench#154](https://github.com/zeebe-io/zeebe-cluster-testbench/issues/154). With this new utility we can create some new experiments also for Production - L clusters.
 
-I wrote a new script based on the [older disconnect/connect gateway scripts](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/scripts/disconnect-standalone-gateway.sh), where we disconnect the gateway with the brokers. The new one disconnects an leader for an partition with the follower and vice-versa.
+I wrote a new script based on the [older disconnect/connect gateway scripts](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/scripts/disconnect-standalone-gateway.sh), where we disconnect the gateway with the brokers. The new one disconnects an leader for an partition with the follower and vice-versa.
 
 Disconnect Leader-Follower:
 

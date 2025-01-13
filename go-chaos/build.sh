@@ -19,7 +19,7 @@ rm -rf ${DIST_DIR}/*
 
 for i in "${!OS[@]}"; do
 	if [ $# -eq 0 ] || [ ${OS[$i]} = $1 ]; then
-	    CGO_ENABLED=0 GOOS="${OS[$i]}" GOARCH=amd64 go build -a -tags netgo -ldflags "-w -X github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.Version=${VERSION} -X github.com/zeebe-io/zeebe-chaos/go-chaos/cmd.Commit=${COMMIT}" -o "${DIST_DIR}/${BINARY[$i]}" "${SRC_DIR}/main.go" # &
+	    CGO_ENABLED=0 GOOS="${OS[$i]}" GOARCH=amd64 go build -a -tags netgo -ldflags "-w -X github.com/camunda/zeebe-chaos/go-chaos/cmd.Version=${VERSION} -X github.com/camunda/zeebe-chaos/go-chaos/cmd.Commit=${COMMIT}" -o "${DIST_DIR}/${BINARY[$i]}" "${SRC_DIR}/main.go" # &
 	fi
 done
 

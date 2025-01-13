@@ -34,7 +34,7 @@ We expect that if the workers are slowing down, the load is distributed to other
 We deployed a normal benchmark, with [default configurations](https://github.com/camunda/camunda/blob/main/benchmarks/setup/default/values.yaml).
 
 
-We slowed the workers down, in the sense that we changed [the completionDelay to 1250 ms](https://github.com/zeebe-io/benchmark-helm/blob/main/charts/zeebe-benchmark/templates/worker.yaml#L30)
+We slowed the workers down, in the sense that we changed [the completionDelay to 1250 ms](https://github.com/camunda/zeebe-benchmark-helm/blob/main/charts/zeebe-benchmark/templates/worker.yaml#L30)
 
 ![](exp1-general.png)
 

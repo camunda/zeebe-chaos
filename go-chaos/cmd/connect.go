@@ -15,8 +15,8 @@
 package cmd
 
 import (
+	"github.com/camunda/zeebe-chaos/go-chaos/backend"
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/backend"
 )
 
 func AddConnectCmd(rootCmd *cobra.Command, flags *Flags) {

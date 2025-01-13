@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-On this chaos day we wanted to experiment with OOD recovery and ELS connection issues. This is related to the following issues from our hypothesis backlog: [zeebe-chaos#32](https://github.com/zeebe-io/zeebe-chaos/issues/32) and [zeebe-chaos#14](https://github.com/zeebe-io/zeebe-chaos/issues/14). This time [@Nico](https://github.com/korthout) joined me.
+On this chaos day we wanted to experiment with OOD recovery and ELS connection issues. This is related to the following issues from our hypothesis backlog: [zeebe-chaos#32](https://github.com/camunda/zeebe-chaos/issues/32) and [zeebe-chaos#14](https://github.com/camunda/zeebe-chaos/issues/14). This time [@Nico](https://github.com/korthout) joined me.
 
 **TL;DR** The experiment was successful :muscle: and we found several things in the dashboard which we can improve :)
 
@@ -38,7 +38,7 @@ We expect the following properties:
 
 #### Network disconnect to ELS
 
-In order to disconnect the Brokers with ELS, we wanted to reuse one of our network disconnect scripts, e.g. [disconnect-leaders.sh](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/scripts/disconnect-leaders.sh). This resolves the IP's of the brokers and creates an unreachable route via the `ip` tool at the given brokers.
+In order to disconnect the Brokers with ELS, we wanted to reuse one of our network disconnect scripts, e.g. [disconnect-leaders.sh](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/scripts/disconnect-leaders.sh). This resolves the IP's of the brokers and creates an unreachable route via the `ip` tool at the given brokers.
 
 We copied that and adjusted it to our needs:
 
@@ -210,7 +210,7 @@ If we take a look at the processing section we can see that the exporters lag wa
 
 ##### Connecting
 
-Luckily we were able to reuse on of our already written reconnect scripts for this experiment, see [connect-leaders.sh](https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-experiments/scripts/connect-leaders.sh).
+Luckily we were able to reuse on of our already written reconnect scripts for this experiment, see [connect-leaders.sh](https://github.com/camunda/zeebe-chaos/blob/master/chaos-experiments/scripts/connect-leaders.sh).
 
 After removing the ip route (connecting the Brokers with ELS again) we can see that it immediately starts to export again.
 

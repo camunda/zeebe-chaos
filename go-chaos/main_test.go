@@ -5,9 +5,9 @@ import (
 	"io"
 	"testing"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/cmd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/cmd"
 )
 
 func Test_ExecuteRootCmd(t *testing.T) {

@@ -35,7 +35,7 @@ We expect that our limit handling steps in during the execution and we can execu
 
 Before we can start with our experiment we need to start our benchmark Zeebe cluster. This has become easier now since I have written the last post. Previously we had to use the scripts and Makefile in the [zeebe/benchmark sub-directory](https://github.com/camunda/camunda/tree/main/benchmarks/setup).
 
-We have now provided new [Benchmark Helm charts](https://github.com/zeebe-io/benchmark-helm), based on our Camunda Platform Helm charts. They allow us to deploy a new zeebe benchmark setup via:
+We have now provided new [Benchmark Helm charts](https://github.com/camunda/zeebe-benchmark-helm), based on our Camunda Platform Helm charts. They allow us to deploy a new zeebe benchmark setup via:
 
 ```shell
 kubectl create namespace zell-chaos # create a new namespace
@@ -48,7 +48,7 @@ helm install zell-chaos \
 ```
 
 
-To deploy the model we can use [zbchaos v1.0.0](https://github.com/zeebe-io/zeebe-chaos/releases/tag/zbchaos-v1.0.0).
+To deploy the model we can use [zbchaos v1.0.0](https://github.com/camunda/zeebe-chaos/releases/tag/zbchaos-v1.0.0).
 
 
 ```shell
@@ -102,6 +102,6 @@ With this, I mark this chaos experiment as failed. We need to investigate this f
 
 ## Found Bugs
 
-* [zbchaos logs debug message on normal usage](https://github.com/zeebe-io/zeebe-chaos/issues/323)
+* [zbchaos logs debug message on normal usage](https://github.com/camunda/zeebe-chaos/issues/323)
 * [Every 2.5 seconds we send a topology request, which is shown in the metrics](https://github.com/camunda/camunda/issues/11799)
 * [Batch processing doesn't respect the limit](https://github.com/camunda/camunda/issues/11798)

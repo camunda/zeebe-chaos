@@ -88,7 +88,7 @@ The `chaosToolkit` has more features and extensions, but these are not used by u
 
 ### List of Chaos Experiments
 
-The experiment above is just one experiment of our continuous growing collection of chaos experiments, which we have already defined. There exist chaos experiments for the helm charts, but also for camunda cloud, for each cluster plan separately. You can find them [here](https://github.com/zeebe-io/zeebe-chaos/tree/master/chaos-experiments).
+The experiment above is just one experiment of our continuous growing collection of chaos experiments, which we have already defined. There exist chaos experiments for the helm charts, but also for camunda cloud, for each cluster plan separately. You can find them [here](https://github.com/camunda/zeebe-chaos/tree/master/chaos-experiments).
 
 ### Automated Chaos Experiments
 
@@ -98,7 +98,7 @@ Chaos experiments need to be executed continously, not only once. For that we ha
 
 It is executed via a [zbctl chaos worker](https://github.com/zeebe-io/zeebe-cluster-testbench/tree/develop/core/chaos-workers), which is part of the `testbench`. The `chaos worker` polls for new jobs at the `testbench`. On new jobs it executes, based on the cluster plan, against the given/created Zeebe cluster the chaos experiments, via the `chaostoolkit`.
 
-In general this was a good first solution, which is quite extensible since we just needed to add new experiments in the [zeebe-chaos](https://github.com/zeebe-io/zeebe-chaos) repository and on the next run the experiments are executed, without any further adjustments. 
+In general this was a good first solution, which is quite extensible since we just needed to add new experiments in the [zeebe-chaos](https://github.com/camunda/zeebe-chaos) repository and on the next run the experiments are executed, without any further adjustments. 
 
 ### Challenges
 
@@ -144,7 +144,7 @@ sequential multi instances, since we can have multiple probes/actions for the st
 
 As payload of the process instances we have the defined chaos experiment in JSON, which we have seen earlier. In this JSON we have all information we need to orchestrate this experiment.
 
-We have implemented two Kotlin workers, one to read all experiment JSON files and one to execute the bash scripts, which are referenced in the chaos experiment descriptions. You can find the code [here](https://github.com/zeebe-io/zeebe-chaos/tree/master/chaos-model/chaos-worker), it is just 100 lines long.
+We have implemented two Kotlin workers, one to read all experiment JSON files and one to execute the bash scripts, which are referenced in the chaos experiment descriptions. You can find the code [here](https://github.com/camunda/zeebe-chaos/tree/master/chaos-model/chaos-worker), it is just 100 lines long.
 
 ### Results
 

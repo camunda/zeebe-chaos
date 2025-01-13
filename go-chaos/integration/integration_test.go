@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/cmd"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/stretchr/testify/require"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/cmd"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"

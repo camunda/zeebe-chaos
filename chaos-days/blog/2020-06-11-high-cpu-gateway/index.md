@@ -13,7 +13,7 @@ authors: zell
  * Updated failure cases documentation for exporter based on review
  * Documented failure cases for ZeebeDB
  * Wrote an chaostoolkit experiment based on the last manual Chaos experiment
- * Run a chaos experiment with @Deepthi, where we put high CPU load on the standalone gateway https://github.com/zeebe-io/zeebe-chaos/issues/28
+ * Run a chaos experiment with @Deepthi, where we put high CPU load on the standalone gateway https://github.com/camunda/zeebe-chaos/issues/28
 
 <!--truncate-->
 

@@ -40,7 +40,7 @@ To run all experiments in a loop I used in the `chaos-experiments/kubernetes` fo
  while [ $? -eq 0 ]; do for ex in */experiment.json; do chaos run $ex; done; done
 
 ```
-During running the experiments I found a bug in our chaos experiments, where it seems that some experiments are not executed correctly, see [#43](https://github.com/zeebe-io/zeebe-chaos/issues/43).
+During running the experiments I found a bug in our chaos experiments, where it seems that some experiments are not executed correctly, see [#43](https://github.com/camunda/zeebe-chaos/issues/43).
 
 
 It took a while, but at some point the experiments start to fail. Interesting is that if you look at the pods all seem to be ready, but in the metrics we can see that one partition is unhealthy (Partition one this time).
@@ -88,7 +88,7 @@ tar -xvf broker-2-data.tar.gz
 
 ## New Issues
 
- * Gateway experiments are not executed [#43](https://github.com/zeebe-io/zeebe-chaos/issues/43)
+ * Gateway experiments are not executed [#43](https://github.com/camunda/zeebe-chaos/issues/43)
  * Deployment Reprocessing inconsistencies [#5753](https://github.com/zeebe-io/zeebe/issues/5753)
  
 ## Participants

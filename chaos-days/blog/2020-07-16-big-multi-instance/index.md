@@ -10,7 +10,7 @@ authors: zell
 
 # Chaos Day Summary
 
- * investigate and fix automated chaos experiments - works again with [88c404f](https://github.com/zeebe-io/zeebe-chaos/commit/88c404f97514d4a7a511ce9751085acdd1720cd9) and [cd8d685](https://github.com/zeebe-io/zeebe-chaos/commit/cd8d685b83eaa1ac9050ad3d16868389e1c0c36d)
+ * investigate and fix automated chaos experiments - works again with [88c404f](https://github.com/camunda/zeebe-chaos/commit/88c404f97514d4a7a511ce9751085acdd1720cd9) and [cd8d685](https://github.com/camunda/zeebe-chaos/commit/cd8d685b83eaa1ac9050ad3d16868389e1c0c36d)
  * Closed some issues in the backlog
  * Run a chaos experiment with bigger multi instance to reach `maxMessageSize`
 
@@ -18,7 +18,7 @@ authors: zell
 
 ## Chaos Experiment
 
- We wanted to run a chaos experiment, which covers [#33](https://github.com/zeebe-io/zeebe-chaos/issues/33).
+ We wanted to run a chaos experiment, which covers [#33](https://github.com/camunda/zeebe-chaos/issues/33).
 
 ### Expected
 

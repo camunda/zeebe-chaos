@@ -12,7 +12,7 @@ authors: zell
 
 Today I wanted to add new chaostoolkit experiment, which we can automate.
 We already have experiments like restarting followers and leaders for a partition, but in the past what also caused issues was multiple restarts/leader changes
-in a short period of time. This is the reason why I created [#39](https://github.com/zeebe-io/zeebe-chaos/issues/39). 
+in a short period of time. This is the reason why I created [#39](https://github.com/camunda/zeebe-chaos/issues/39). 
 
 <!--truncate-->
 
@@ -35,7 +35,7 @@ We requesting the Topology, determine the leader for partition one restart that 
 
 ### Result
 
-The corresponding experiment was added via this [commit](https://github.com/zeebe-io/zeebe-chaos/commit/11c3a96fc87991f649fb1559363ba335b2bf42a1).
+The corresponding experiment was added via this [commit](https://github.com/camunda/zeebe-chaos/commit/11c3a96fc87991f649fb1559363ba335b2bf42a1).
 We were able to prove that our hypothesis is true. we are able to handle multiple leader changes even in a short period of time.
 
 #### Metrics
@@ -101,7 +101,7 @@ Put high load on the cluster for several minutes, via creating workflow instance
 
 ### Result
 
-@pihme create a new PR to add the experiment [#41](https://github.com/zeebe-io/zeebe-chaos/pull/41) 
+@pihme create a new PR to add the experiment [#41](https://github.com/camunda/zeebe-chaos/pull/41) 
 
 
 #### Metrics

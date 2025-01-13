@@ -16,7 +16,7 @@ authors: zell
 
 ## Chaos Experiment
 
- We wanted to run a chaos experiment, which covers [#20](https://github.com/zeebe-io/zeebe-chaos/issues/20).
+ We wanted to run a chaos experiment, which covers [#20](https://github.com/camunda/zeebe-chaos/issues/20).
  Furthermore, it was recently asked in the forum whether it makes a difference performance wise to run a broker without exporters, see [here](https://forum.zeebe.io/t/zeebe-low-performance/1356/17) 
 
 ### Expected
@@ -32,7 +32,7 @@ authors: zell
  * only with metrics exporter
  * without any exporter
 
- These benchmarks run overnight without bigger issues. This means all of three where able to take snapshots and compact the log. This satisfy our hypothesis of https://github.com/zeebe-io/zeebe-chaos/issues/20 .
+ These benchmarks run overnight without bigger issues. This means all of three where able to take snapshots and compact the log. This satisfy our hypothesis of https://github.com/camunda/zeebe-chaos/issues/20 .
 
 | Default | Without exporters |
 |---|---|

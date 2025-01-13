@@ -31,7 +31,7 @@ Furthermore, we have discovered a potential performance issue on lower load, whi
 
 ## Chaos Experiment
 
-We will use our [Zeebe benchmark helm charts](https://github.com/zeebe-io/benchmark-helm) to set up the test cluster, and
+We will use our [Zeebe benchmark helm charts](https://github.com/camunda/zeebe-benchmark-helm) to set up the test cluster, and
 our helper scripts [here](https://github.com/camunda/camunda/tree/main/benchmarks/setup).
 
 ### Setup:
@@ -82,7 +82,7 @@ The performance drop is expected to be not significant, or at least should recov
 
 ### Actual
 
-We will run the experiment in two ways, first via terminating the gateway (using [zbchaos](https://github.com/zeebe-io/zeebe-chaos/releases/tag/zbchaos-v1.0.0))
+We will run the experiment in two ways, first via terminating the gateway (using [zbchaos](https://github.com/camunda/zeebe-chaos/releases/tag/zbchaos-v1.0.0))
 and later via scaling down the gateway deployment to one replica. 
 
 We want to verify whether this makes any difference, since terminating will cause Kubernetes to recreate immediately the pod.
@@ -273,7 +273,7 @@ The experiment itself succeeded :muscle: :white_check_marks:
 
 ### Zbchaos print verbose logs
 
-I realized that we still have [the issue with zbchaos](https://github.com/zeebe-io/zeebe-chaos/issues/323) which is printing verbose logs:
+I realized that we still have [the issue with zbchaos](https://github.com/camunda/zeebe-chaos/issues/323) which is printing verbose logs:
 
 ```shell
 $ zbchaos terminate gateway 

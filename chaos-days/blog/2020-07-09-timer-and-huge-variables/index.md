@@ -21,12 +21,12 @@ authors: zell
 
 ### A Lot of Timers 
 
-Based on the Hypothesis written here:  [#31](https://github.com/zeebe-io/zeebe-chaos/issues/31) we run an experiment with a stable load of 10 simple workflow instances per second (only start and end event) and 10 workflow instances with 
+Based on the Hypothesis written here:  [#31](https://github.com/camunda/zeebe-chaos/issues/31) we run an experiment with a stable load of 10 simple workflow instances per second (only start and end event) and 10 workflow instances with 
 multiple timers. We wanted to explore what happens when we have a lot of timers running and especially what happens when the are triggered at once. We created the following workflow model, where timers are exponentially created.
 
 ![timerProcess](timerProcess.png)
 
-The experiments is based on the hypotheses we wrote here [#31](https://github.com/zeebe-io/zeebe-chaos/issues/31).
+The experiments is based on the hypotheses we wrote here [#31](https://github.com/camunda/zeebe-chaos/issues/31).
 
 #### Expectations 
 

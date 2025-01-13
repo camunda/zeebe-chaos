@@ -87,12 +87,12 @@ I can deploy the newest helm charts (alpha stage), by disabling Importer manuall
 
 ### Actual
 
-As always we use our [benchmark-helm charts](https://github.com/zeebe-io/benchmark-helm) (that building on top of our [Camunda Platform Helm](https://github.com/camunda/camunda-platform-helm) charts).
+As always we use our [benchmark-helm charts](https://github.com/camunda/zeebe-benchmark-helm) (that building on top of our [Camunda Platform Helm](https://github.com/camunda/camunda-platform-helm) charts).
 
 
 ### Installation
 
-I had to adjust our benchmarks to [use the alpha snapshots ](https://github.com/zeebe-io/benchmark-helm/commit/db682a89788d6c511083ec743c6cf7d358155e3c) 
+I had to adjust our benchmarks to [use the alpha snapshots ](https://github.com/camunda/zeebe-benchmark-helm/commit/db682a89788d6c511083ec743c6cf7d358155e3c) 
 
 ```yaml
 dependencies:
@@ -103,7 +103,7 @@ dependencies:
 ```
 
 
-and [disable the Importer via ENV](https://github.com/zeebe-io/benchmark-helm/commit/aafac6e9ec78e9cfd2e59a5b6f30bf887a4fcbd0)
+and [disable the Importer via ENV](https://github.com/camunda/zeebe-benchmark-helm/commit/aafac6e9ec78e9cfd2e59a5b6f30bf887a4fcbd0)
 
 ```yaml
 env:

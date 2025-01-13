@@ -19,12 +19,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	worker "github.com/camunda/zeebe-chaos/go-chaos/worker"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/entities"
 	zbworker "github.com/camunda/zeebe/clients/go/v8/pkg/worker"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
-	worker "github.com/zeebe-io/zeebe-chaos/go-chaos/worker"
 	"google.golang.org/grpc"
 )
 

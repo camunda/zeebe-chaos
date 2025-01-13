@@ -30,8 +30,8 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
 )
 
 func AddBackupCommand(rootCmd *cobra.Command, flags *Flags) {

@@ -33,7 +33,7 @@ The verification of the steady state will consist, of checking the readiness and
 In our first experiment, we will enable the SST partitioning.
 
 **First chaos action**
-  * Deploy a process model (which contains a [simple model](https://github.com/zeebe-io/zeebe-chaos/blob/main/go-chaos/internal/bpmn/one_task.bpmn))
+  * Deploy a process model (which contains a [simple model](https://github.com/camunda/zeebe-chaos/blob/main/go-chaos/internal/bpmn/one_task.bpmn))
   * Start 1000 process instances (PIs), with a service task
   * Enable the SST partitioning
   * Restart the cluster, and await readiness
@@ -80,7 +80,7 @@ $ diff ../default/values.yaml values.yaml
 
 
 #### First Experiment: Verify Steady state
-To verify the readiness and run all actions I used the [zbchaos](https://github.com/zeebe-io/zeebe-chaos/tree/zbchaos-v1.0.0) tool.
+To verify the readiness and run all actions I used the [zbchaos](https://github.com/camunda/zeebe-chaos/tree/zbchaos-v1.0.0) tool.
 
 ```shell
 $ zbchaos verify readiness
@@ -128,7 +128,7 @@ This is then as well visible in operate.
 ![operate-process](operate-process.png)
 
 As the next step, we will create 1000 process instances of our simple process model, with one service task.
-For that, we can [use a new functionality](https://github.com/zeebe-io/zeebe-chaos/tree/zell-chaos-create-count-of-instances) of `zbchaos` I built for this chaos day.
+For that, we can [use a new functionality](https://github.com/camunda/zeebe-chaos/tree/zell-chaos-create-count-of-instances) of `zbchaos` I built for this chaos day.
 
 On the first try, I had smaller issues, with timeouts etc.
 ```shell
@@ -178,7 +178,7 @@ $ zbchaos verify readiness
 All Zeebe nodes are running.
 ```
 
-Now starting to complete the previously created jobs, we can use again a new feature in `zbchaos` ([which has been added during the chaos day](https://github.com/zeebe-io/zeebe-chaos/tree/zell-chaos-create-count-of-instances))
+Now starting to complete the previously created jobs, we can use again a new feature in `zbchaos` ([which has been added during the chaos day](https://github.com/camunda/zeebe-chaos/tree/zell-chaos-create-count-of-instances))
 Unfortunately, I missed using the verbose flag.
 ```shell
 $ ./dist/zbchaos verify job-completion --jobCount 1001 --timeoutInSec 1200

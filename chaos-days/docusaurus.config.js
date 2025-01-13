@@ -6,12 +6,12 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 (module.exports = {
   title: 'Zeebe Chaos',
   tagline: 'Chaos Day Summaries',
-  url: 'https://zeebe-io.github.io',
+  url: 'https://camunda.github.io',
   baseUrl: '/zeebe-chaos/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/zeebe-logo.png',
-  organizationName: 'zeebe-io', // Usually your GitHub org/user name.
+  organizationName: 'camunda', // Usually your GitHub org/user name.
   projectName: 'zeebe-chaos', // Usually your repo name.
 
   plugins: [
@@ -28,7 +28,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
           showReadingTime: true,
           // Please change this to your repo.
           editUrl:
-            'https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-days/',
+            'https://github.com/camunda/zeebe-chaos/blob/master/chaos-days/',
           routeBasePath: '/',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
@@ -53,7 +53,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 
           {to: '/', label: 'Chaos Summaries', position: 'left'},
           {
-            href: 'https://github.com/zeebe-io/zeebe-chaos',
+            href: 'https://github.com/camunda/zeebe-chaos',
             label: 'GitHub',
             position: 'right',
           },
@@ -84,7 +84,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/zeebe-io/zeebe-chaos/',
+                href: 'https://github.com/camunda/zeebe-chaos/',
               },
             ],
           },

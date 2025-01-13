@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-A while ago we have written an experiment, which should verify that followers are not able to become leader, if they have a corrupted snapshot. You can find that specific experiment [here](https://github.com/zeebe-io/zeebe-chaos/tree/master/chaos-experiments/helm/snapshot-corruption). This experiment was executed regularly against Production-M and Production-S Camunda Cloud cluster plans. With the latest changes, in the upcoming 1.0 release, we changed some behavior in regard to detect snapshot corruption on followers. 
+A while ago we have written an experiment, which should verify that followers are not able to become leader, if they have a corrupted snapshot. You can find that specific experiment [here](https://github.com/camunda/zeebe-chaos/tree/master/chaos-experiments/helm/snapshot-corruption). This experiment was executed regularly against Production-M and Production-S Camunda Cloud cluster plans. With the latest changes, in the upcoming 1.0 release, we changed some behavior in regard to detect snapshot corruption on followers. 
 
 **NEW** If a follower is restarted and has a corrupted snapshot it will detect it on bootstrap and will refuse to
 start related services and crash. This means the pod will end in a crash loop, until this is manually fixed.

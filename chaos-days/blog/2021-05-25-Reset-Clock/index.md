@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-[Recently we run a Game day](https://confluence.camunda.com/display/ZEEBE/Game+Day+18.05.2021) where a lot of messages with high TTL have been stored in the state. This was based on an earlier incident, which we had seen in production. One suggested approach to resolve that incident was to increase the time, such that all messages are removed from the state. This and the fact that summer and winter time shifts can cause in other systems evil bugs, we wanted to find out how our system can handle time shifts. [Phil](https://github.com/saig0) joined me as participant and observer. There was a related issue which covers this topic as well, [zeebe-chaos#3](https://github.com/zeebe-io/zeebe-chaos/issues/3).
+[Recently we run a Game day](https://confluence.camunda.com/display/ZEEBE/Game+Day+18.05.2021) where a lot of messages with high TTL have been stored in the state. This was based on an earlier incident, which we had seen in production. One suggested approach to resolve that incident was to increase the time, such that all messages are removed from the state. This and the fact that summer and winter time shifts can cause in other systems evil bugs, we wanted to find out how our system can handle time shifts. [Phil](https://github.com/saig0) joined me as participant and observer. There was a related issue which covers this topic as well, [zeebe-chaos#3](https://github.com/camunda/zeebe-chaos/issues/3).
 
 **TL;DR;** Zeebe is able to handle time shifts back and forth, without observable issues. Operate seems to dislike it.
 

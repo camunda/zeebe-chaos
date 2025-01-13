@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/cmd"
+	"github.com/camunda/zeebe-chaos/go-chaos/cmd"
 )
 
 func main() {

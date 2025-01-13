@@ -22,9 +22,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/pb"
 	"github.com/spf13/cobra"
-	"github.com/zeebe-io/zeebe-chaos/go-chaos/internal"
 )
 
 func AddTopologyCmd(rootCmd *cobra.Command, flags *Flags) {

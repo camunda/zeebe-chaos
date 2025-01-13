@@ -34,6 +34,6 @@ makes it easy to create chaos experiments and also automate them later on.
 All our current experiments are located under `chaos-days/blog/`, for more 
 details please have a look at the [README](chaos-days/blog/README.md).
 
-Alternatively all our chaos-days experiments can be found [here](https://zeebe-io.github.io/zeebe-chaos/) in blog 
+Alternatively all our chaos-days experiments can be found [here](https://camunda.github.io/zeebe-chaos/) in blog 
 format.
 

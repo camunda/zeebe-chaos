@@ -17,11 +17,11 @@ authors: zell
 We encountered recently a severe bug [zeebe#9877](https://github.com/camunda/camunda/issues/9877) and I was wondering why we haven't spotted it earlier, since we have chaos experiments for it. I realized two things:
 
  1. The experiments only check for parts of it (BPMN resource only). The production code has changed, and a new feature has been added (DMN) but the experiments/tests haven't been adjusted.
- 2. More importantly we disabled the automated execution of the deployment distribution experiment because it was flaky due to a missing standalone gateway in Camunda Cloud SaaS [zeebe-io/zeebe-chaos#61](https://github.com/zeebe-io/zeebe-chaos/issues/61). This is no longer the case, see [Standalone Gateway in CCSaaS](../2022-02-15-Standalone-Gateway-in-CCSaaS/index.md)
+ 2. More importantly we disabled the automated execution of the deployment distribution experiment because it was flaky due to a missing standalone gateway in Camunda Cloud SaaS [camunda/zeebe-chaos#61](https://github.com/camunda/zeebe-chaos/issues/61). This is no longer the case, see [Standalone Gateway in CCSaaS](../2022-02-15-Standalone-Gateway-in-CCSaaS/index.md)
 
 On this chaos day I want to bring the automation of this chaos experiment back to life. If I have still time I want to enhance the experiment. 
 
-**TL;DR;** The experiment still worked, and our deployment distribution is still resilient against network partitions. It also works with DMN resources. I can enable the experiment again, and we can close [zeebe-io/zeebe-chaos#61](https://github.com/zeebe-io/zeebe-chaos/issues/61). Unfortunately, we were not able to reproduce [zeebe#9877](https://github.com/camunda/camunda/issues/9877) but we did some good preparation work for it.
+**TL;DR;** The experiment still worked, and our deployment distribution is still resilient against network partitions. It also works with DMN resources. I can enable the experiment again, and we can close [camunda/zeebe-chaos#61](https://github.com/camunda/zeebe-chaos/issues/61). Unfortunately, we were not able to reproduce [zeebe#9877](https://github.com/camunda/camunda/issues/9877) but we did some good preparation work for it.
 
 <!--truncate-->
 
@@ -61,9 +61,9 @@ chaos --version
 
 #### Executing chaos toolkit
 
-As mentioned, the deployment distribution was not enabled for Production-S clusters, which is currently the only configuration we test via [Zeebe Testbench](https://github.com/zeebe-io/zeebe-cluster-testbench). We have to use the experiment that is defined under [production-l/deployment-distribution](https://github.com/zeebe-io/zeebe-chaos/tree/master/chaos-workers/chaos-experiments/camunda-cloud/production-l/deployment-distribution), which is the same*.
+As mentioned, the deployment distribution was not enabled for Production-S clusters, which is currently the only configuration we test via [Zeebe Testbench](https://github.com/zeebe-io/zeebe-cluster-testbench). We have to use the experiment that is defined under [production-l/deployment-distribution](https://github.com/camunda/zeebe-chaos/tree/master/chaos-workers/chaos-experiments/camunda-cloud/production-l/deployment-distribution), which is the same*.
 
-<sub>* That is not 100% true. During running the Production-l experiment I realized that it made some assumptions regarding the <a href="https://github.com/zeebe-io/zeebe-chaos/blob/master/chaos-workers/chaos-experiments/scripts/disconnect-leaders-one-way.sh#L19">partition count</a> which needs to be adjusted for the Production-S setup.</sub>
+<sub>* That is not 100% true. During running the Production-l experiment I realized that it made some assumptions regarding the <a href="https://github.com/camunda/zeebe-chaos/blob/master/chaos-workers/chaos-experiments/scripts/disconnect-leaders-one-way.sh#L19">partition count</a> which needs to be adjusted for the Production-S setup.</sub>
 
 ```sh
  chaos run production-l/deployment-distribution/experiment.json 
@@ -208,7 +208,7 @@ Should do the trick, but I was not yet able to reproduce the issue with 8.0.4. I
 
 ## Further Work
 
-Based on today's outcome we can enable again the Deployment Distribution experiment for Production-S, such that is executed by Zeebe Testbench (our automation tooling). We can close [zeebe-io/zeebe-chaos#61](https://github.com/zeebe-io/zeebe-chaos/issues/61)
+Based on today's outcome we can enable again the Deployment Distribution experiment for Production-S, such that is executed by Zeebe Testbench (our automation tooling). We can close [camunda/zeebe-chaos#61](https://github.com/camunda/zeebe-chaos/issues/61)
 
 We should adjust our Chaos Worker implementation such that we also deploy DMN resources as we did in today's Chaos Day, since the scripts we changed aren't used in the automation.
 
