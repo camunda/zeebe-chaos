@@ -18,8 +18,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddPublishCmd(rootCmd *cobra.Command, flags *Flags) {

@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/spf13/cobra"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddExportingCmds(rootCmd *cobra.Command, flags *Flags) {

@@ -18,9 +18,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 	"github.com/spf13/cobra"
-	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	v1 "k8s.io/api/core/v1"
 )
 

@@ -15,9 +15,9 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/camunda/zeebe-chaos/go-chaos/backend"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddDeployCmd(rootCmd *cobra.Command, flags *Flags) {

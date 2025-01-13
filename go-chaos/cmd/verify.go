@@ -17,8 +17,8 @@ package cmd
 import (
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddVerifyCommands(rootCmd *cobra.Command, flags *Flags) {

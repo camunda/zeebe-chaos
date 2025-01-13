@@ -18,8 +18,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddTerminateCommand(rootCmd *cobra.Command, flags *Flags) {

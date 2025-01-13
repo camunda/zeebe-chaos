@@ -15,8 +15,8 @@
 package backend
 
 import (
-	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 )
 
 func ConnectToZeebeCluster(k8Client internal.K8Client) (zbc.Client, func(), error) {
