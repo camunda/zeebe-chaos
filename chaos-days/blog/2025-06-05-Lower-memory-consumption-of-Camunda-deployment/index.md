@@ -151,6 +151,49 @@ In our RocksDB related metrics, we are able to observe the actual size of our Ro
 
 ![exp2-rocks](exp2-rocks.png)
 
+## 3. Experiment: Half it
+
+As we were still running fine, and wanted to reach a point where it doesn't run well anymore. I simply thought about reducing our resource by half again.
+
+Changing our deployment resources to two gigabytes:
+```yaml
+    Limits:
+      cpu:     2
+      memory:  2Gi
+    Requests:
+      cpu:      2
+      memory:   2Gi
+
+```
+
+Configuring RocksDB memory limit with 64MB
+```
+zeebe.broker.experimental.rocksdb.memoryLimit: 64MB
+```
+
+### Expected
+
+Similar to above I was still expecting that it works, as we saw that the JVM usage was rather low and still performing good.
+
+### Actual
+
+The performance of the test looks still acceptable. We see some restarts, but they seem to be not related to memory pressure.
+
+![exp3-general](exp3-general.png)
+
+Again we were able to reduce the memory, but not with such big steps as before. For this load test we have on average a ~1.2 G memory usage per pod.
+
+![exp3-mem](exp3-mem.png)
+
+When we look at the JVM metrics, we can see that we are getting closer with our maximum, commited and used heap values. Still, the used heap was reduced and is now around ~128 MB in many cases.
+
+![exp3-jvm](exp3-jvm.png)
+
+
+The RocksDB instance uses now 64MB as expected.
+
+![exp3-rocks](exp3-rocks.png)
+
 
 
 ## Found Bugs
