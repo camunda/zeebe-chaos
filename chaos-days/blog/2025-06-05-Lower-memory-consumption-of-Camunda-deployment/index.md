@@ -118,6 +118,41 @@ The JVM memory usage even shows us that we are able to use less memory, previous
 
 **This gives us room for further improvement. Let's continue with Experiment 2**
 
+## 2. Experiment: Reduce memory limits and RocksDB memory
+
+With the results from Experiment 1, I was confident that we can run with less memory. I was wondering what if we would reduce the memory limit of RocksDB.
+
+As mentioned earlier can be done via property or environment variable. For our next experiment I was setting our limit
+ to 128 MB. This is a 75% reduction of previous used memory for RocksDB per partition.
+
+```shell
+zeebe.broker.experimental.rocksdb.memoryLimit: 128MB
+```
+
+We are running similar configurations in our SaaS environment, so I knew this is working, but I don't know how this behaves on a more complex use case and benchmark.
+
+### Expected
+
+My expectation would be that the general memory consumption is reduced, not affecting the JVM. Our load test should run stable still.
+
+### Actual
+
+Indeed, the general performance looks similar, some smaller outliers but still performing good.
+
+![exp2-general](exp1-general.png)
+
+
+We reduced the memory consumption for the process by half! It is now around 1.5 gigabytes, while it was in the previous experiment around three gigabytes, and at the start close to four.
+
+![exp2-mem](exp2-mem.png)
+
+
+In our RocksDB related metrics, we are able to observe the actual size of our RocksDB instance as well, which is indeed 128 MB.
+
+![exp2-rocks](exp2-rocks.png)
+
+
+
 ## Found Bugs
 
 
