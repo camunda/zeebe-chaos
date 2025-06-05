@@ -189,13 +189,99 @@ When we look at the JVM metrics, we can see that we are getting closer with our 
 
 ![exp3-jvm](exp3-jvm.png)
 
-
 The RocksDB instance uses now 64MB as expected.
 
 ![exp3-rocks](exp3-rocks.png)
 
+## 4. Experiment: Half it (again)
 
+As I want to bring it to its limits, I reduced the memory resources once more by half.
+```yaml
+    Limits:
+      cpu:     2
+      memory:  1Gi
+    Requests:
+      cpu:      2
+      memory:   1Gi
+
+```
+
+But to not change too many things at once (sorry for doing it earlier :D), I kept the previous RocksDB configuration:
+
+```
+zeebe.broker.experimental.rocksdb.memoryLimit: 64MB
+```
+
+### Expected
+
+I felt that this might be quite low on its limits, but expected still it to work, looking at the JVM heap usage metrics.
+
+### Actual
+
+As we can see this was a tremendous fail. The pods were in an OOM loop, and never became stable.  
+
+![exp4-general](exp4-general.png)
+
+![exp-mem](exp4-mem.png)
+
+With this we were able to find our limits.
+
+## 5. Experiment: Half RocksDb once more
+
+Not accepting the previous failure, I simply wanted to try out, what happens when I reduce once more the RocksDB memory limit.
+
+This means setting the limit to 32 MB.
+```
+zeebe.broker.experimental.rocksdb.memoryLimit: 32MB
+```
+
+### Expected
+
+At this point this was really exploration, I had the feeling, that it might help if we reduce a little the RocksDB memory.
+
+### Actual
+
+Reducing the RocksDB memory limit, allowed the Camunda application to perform as before! Without any performance impact :rocket: At the end we experienced a restart of all applications.
+
+![exp5-general](exp5-general.png)
+
+Looking at the process memory metrics, we can see that it is slowly increasing until it was OOM killed. This smells like a memory leak here.
+
+![exp5-mem](exp5-mem.png)
+
+```shell
+   Last State:     Terminated
+      Reason:       OOMKilled
+      Exit Code:    137
+      Started:      Wed, 04 Jun 2025 20:55:59 +0200
+      Finished:     Thu, 05 Jun 2025 12:07:51 +0200
+```
+
+The JVM seem to perform correctly, and here we can observe any increasing usage. That indicates that there might be an issue with off heap (native) memory usage.
+
+![exp5-jvm](exp5-jvm.png)
+
+Our current native memory metrics, doesn't highlight any specific either. While we can see that the metaspace uses a lot of space already, which also indicates that we likely can't reduce our memory usage more (except tuning this as well).
+
+![exp5-native](exp5-native.png)
+
+The RocksDB memory usage looks stable as well.
+
+![exp5-rocks](exp5-rocks.png)
+
+
+## Conclusion
+
+With today's experiments and investigations we were able to show that we are able to reduce our memory consumption.
+
+From previous used 12 Gi limit and 6 Gi request, we were able to show that it is running with 1 Gi limit and request, when we reduce the RocksDB memory limit as well. **This is an over 80-90% reduction for the assigned memory.** Looking at our usage we showed that the actual process memory usage has been reduced from ~4 Gi to 1 Gi, that is a **75% reduction**!
+
+To reduce the chance of getting OOM more frequently (until we investigated the potential resource leak), I propose to use 2 Gi as limits and requests and 64 MB RocksDb memory limit, which was running stable as well (see [Experiment 3](index.md#3-experiment--half-it)). This showed a memory usage of around ~1.2 Gi, which is still a **70% reduction** to previously, and ~70-80% reduction of assigned resources.
+
+We can say this Chaos day was a success and I'm looking forward to the next one :rocket: 
 
 ## Found Bugs
 
+ * Several panels were broken related to memory, and their tooltip and legend. I fixed this during the investigation.
+ * Potential native memory leak
 
