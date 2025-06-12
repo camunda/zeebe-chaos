@@ -12,7 +12,7 @@ authors: zell
 
 # Chaos Day Summary
 
-This week we ([Lena](https://github.com/lenaschoenburg), [Nicolas](https://github.com/npepinpe), [Roman](https://github.com/romansmirnov) and [I](https://github.com/ChrisKujawa)) hold a workshop where we looked into how Zeebe behaves with network file storage (NFS).
+This week, we ([Lena](https://github.com/lenaschoenburg), [Nicolas](https://github.com/npepinpe), [Roman](https://github.com/romansmirnov), and [I](https://github.com/ChrisKujawa)) held a workshop where we looked into how Zeebe behaves with network file storage (NFS).
 
 We ran several experiments with NFS and Zeebe, and messing around with connectivity.
 
@@ -27,7 +27,7 @@ We ran several experiments with NFS and Zeebe, and messing around with connectiv
 > You can skip this section if you're not interested in how we set up the NFS server
 
 
-For our experiments we want to have a quick feedback loop, and small blast radius, meaning avoiding using K8, or any other cloud services. The idea was to set up a NFS server via docker, and mess with the network, to cause NFS errors.
+For our experiments, we want to have a quick feedback loop and small blast radius, meaning avoiding using K8, or any other cloud services. The idea was to set up a NFS server via docker, and mess with the network, to cause NFS errors.
 
 ### Run NFS Docker Container
 
@@ -52,7 +52,7 @@ sudo podman run \
 
 ### Mount the NFS to local file storage
 
-To use the NFS server and make it available to our Zeebe container we first have to mount it via the NFS client.
+To use the NFS server and make it available to our Zeebe container, we first have to mount it via the NFS client.
 
 This can be done via:
 
@@ -70,7 +70,7 @@ sudo mount -v -t nfs4 \
 
 ### Run the Zeebe Container
 
-After we mounted the NFS to our local filesystem we can start our Zeebe container. 
+After we mounted the NFS to our local filesystem, we can start our Zeebe container. 
 
 ```shell
  podman run -d \
@@ -80,11 +80,11 @@ After we mounted the NFS to our local filesystem we can start our Zeebe containe
    gcr.io/zeebe-io/zeebe:8.7.5-root
 ```
 
-This is mounting our NFS mounted directory into the container as data directory for the Zeebe container.
+This is mounting our NFS mounted directory into the container as the data directory for the Zeebe container.
 
 ### Running load
 
-For simplicity we used `zbctl` to start some load. As a first step we had to deploy some process model.
+For simplicity, we used `zbctl` to start some load. As a first step, we had to deploy a process model.
 
 ```shell
  zbctl --insecure deploy one_task.bpmn 
@@ -111,7 +111,7 @@ Running worker:
    --handler "echo {\"result\":\"Pong\"}"
 ```
 
-## Chaos Experiment - Use ipTables with containerized NFS Server
+## Chaos Experiment - Use iptables with containerized NFS Server
 
 We wanted to disrupt the NFS connections with `iptables` and cause some errors. 
 
@@ -172,7 +172,7 @@ We even suspended the NFS server, via `docker pause`. We were able to observe th
 This was some indication for us, that the kernel might do some magic behind the scenes, and the NFS server didn't worked as we expected it to.
 
 
-## Chaos Experiment - Use ipTables with external NFS Server
+## Chaos Experiment - Use iptables with an external NFS Server
 
 As we were not able to disrupt the network, we thought it might make sense to externalize the NFS server (to a different host).
 
@@ -182,7 +182,7 @@ We followed [this guide](https://idroot.us/install-nfs-server-fedora-41), to set
 
 ### Mount external NFS
 
-The mounting was quite similar as before (except) using a different host
+The mounting was quite similar to before, now using a different host
 
 ```shell
 sudo  mount -v -t nfs4 -o proto=tcp,port=2049,soft,timeo=10 192.168.24.110:/ ~/nfs-workshop/nfs-client-mount/
@@ -236,7 +236,7 @@ Error: rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 
 
-After sometime running with the disconnected NFS server Zeebe actually failed to flush
+After some time running with the disconnected NFS server, Zeebe actually failed to flush
 
 ```shell
 [2025-06-12 09:02:00.819] [raft-server-0-1] [{actor-name=raft-server-1, actor-scheduler=Broker-0, partitionId=1, raft-role=LEADER}] ERROR
@@ -297,7 +297,7 @@ We expected that here the system might also fail, potentially, with some excepti
 
 ### Actual
 
-Running the following command, sets up an `iptables` rule that drops random with `80%` probability packages for destination port `2049`
+Running the following command sets up an `iptables` rule that drops random packets with `80%` probability for destination port `2049`
 
 ```shell
 sudo iptables -A OUTPUT -p tcp --dport 2049 -d 192.168.24.110 -m statistic --mode random --probability 0.80 -j DROP
@@ -317,7 +317,7 @@ For this we planned to create a lot of data on our Zeebe system and restarting i
 
 ### Expected 
 
-We expected that during read we cause a SIGBUS, causing the system to crash
+We expected that during read, we would cause a SIGBUS, causing the system to crash
 
 ### Actual
 
@@ -392,21 +392,27 @@ After a certain period of time, we ran into a SIGBUS Error
 #   https://github.com/adoptium/adoptium-support/issues
 ```
 
-This caused to crash the JVM and stop the docker container, as expected.
+This caused the JVM to crash and stop the Docker container, as expected.
 
 ## Results
 
-With the workshop of experimenting with NFS we got several learnings how Zeebe and NFS behaves on connectivity issues, summarized as follows:
+With the workshop on experimenting with NFS, we got several learnings on how Zeebe and NFS behave on connectivity issues, summarized as follows:
 
   * We could confirm that network errors lead to unrecoverable SIGBUS errors, which cause the broker to crash.
      * This is due primarily to our usage of mmap both in RocksDB and Zeebe.
      * There is an easy workaround with RocksDB where you can simply turn off mmap, but no such workaround exists in Zeebe at the moment.
      * This only impacts availability as the application crashes, but since Zeebe is designed to be crash resilient, so no inconsistencies or data corruption.
-     * We don’t have a clear idea of the frequency of these errors - it’s essentially environment based (i.e. how bad the network connectivity is).
- * With only partial connectivity (simulated by dropping packets, e.g. 70% of packets) we mostly observed performance issues, as things got slower - however messages were retried, so no errors occurred.
+     * We don’t have a clear idea of the frequency of these errors - it’s essentially environment-based (i.e., how bad the network connectivity is).
+ * With only partial connectivity (simulated by dropping packets, e.g. 70% of packets), we mostly observed performance issues, as things got slower; however, messages were retried, so no errors occurred.
  * Network errors when using normal file I/O resulted in IOException as expected. 
      * This caused the Raft partition to go inactive, for example, when the leader fails to flush on commit (a known issue which is already planned to be fixed for graceful error handling).
- * When the NFS server was unavailable, the disk space monitor detected there was no more disk available, and writes stopped.
+ * When the NFS server was unavailable, the disk space monitor detected that there was no more disk space available, and writes stopped.
  * Did not test that it recovers when the server is back, but we expect it would.
  * **Minor**, but we should open an issue for it:
-     * when the leader goes inactive, we report an internal error that there is no message handler for command-api-1, but really we should be returning an UNAVAILABLE as a proper error, and not logging this as error level (we have other means to detect this).
+     * When the leader goes inactive, we report an internal error that there is no message handler for command-api-1, but really we should be returning an UNAVAILABLE as a proper error, and not logging this as error level (we have other means to detect this).
+
+What does this mean?
+
+* We can say Zeebe can work with NFS, but it is not yet supported.
+* We need to improve certain error handling, like flushing errors, to better support it.
+* When operating Zeebe on bare-metal and having an unreliable environment SIGBUS might be more likely and crashin JVM be more problematic then using an K8 deployment, where pods automatically getting rescheduled
