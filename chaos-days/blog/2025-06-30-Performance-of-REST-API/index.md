@@ -14,9 +14,9 @@ authors: zell
 
 In today's Chaos day we wanted to experiment with the new REST API (v2) as a replacement for our previous used gRPC API.
 
-Per default our load tests make use of the gRPC, but as we want to make REST API the default and release this fully with 8.8, we want to make sure to test this accordingly in regard to reliability.
+Per default, our load tests make use of the gRPC, but as we want to make REST API the default and release this fully with 8.8, we want to make sure to test this accordingly in regard to reliability.
 
-**TL;DR;** We observed severe performance regression when using the REST API, even when job streaming is in use by the job workers (over gRPC). Our client seem to have a higher memory consumptions, which caused some instabilities in our tests as well. With the new API we lack certain observability, which makes it harder to dive into certain details. We should investigate this further, and find potential bottlenecks and improvements. 
+**TL;DR;** We observed severe performance regression when using the REST API, even when job streaming is in use by the job workers (over gRPC). Our client seems to have a higher memory consumption, which caused some instabilities in our tests as well. With the new API, we lack certain observability, which makes it harder to dive into certain details. We should investigate this further and find potential bottlenecks and improvements. 
 
 ![general](general-overview.png)
 
@@ -24,24 +24,24 @@ Per default our load tests make use of the gRPC, but as we want to make REST API
 
 ## Chaos Experiment (Pt. 1)
 
-To experiment with the REST API, we have to adjust our client applications to make use of the REST API. This is done by the following PR [#34527](https://github.com/camunda/camunda/pull/34527). We can take our normal benchmark/load tests where we run 150 PI/s, and enable the REST API usage. To make this possible the charts have been adjusted by this PR [#269](https://github.com/camunda/zeebe-benchmark-helm/pull/269).
+To experiment with the REST API, we have to adjust our client applications to make use of the REST API. This is done by the following PR [#34527](https://github.com/camunda/camunda/pull/34527). We can take our normal benchmark/load tests where we run 150 PI/s, and enable the REST API usage. To make this possible, the charts have been adjusted by this PR [#269](https://github.com/camunda/zeebe-benchmark-helm/pull/269).
 
-As a base to compare we can use our weekly benchmarks. We use here gRPC as default in the clients applications (starter + worker).
-In our weekly benchmarks we can see that we are able to create and complete 150 process instances per second.
+As a base to compare we can use our weekly benchmarks. We use gRPC here as the default in the client applications (starter + worker).
+In our weekly benchmarks, we can see that we are able to create and complete 150 process instances per second.
 
 ![base-general](base-general.png)
 
-The performance is stable and we have low backpressure. As the process instances are quite simple (with one service task) the execution time is rather low with 0.2 seconds on average.
+The performance is stable, and we have low backpressure. As the process instances are quite simple (with one service task), the execution time is rather low with 0.2 seconds on average.
 
 ![base-latency](base-latency.png)
 
 ### Expected
 
-When using the REST API we expect some more overhead (maybe ~10%), like serializing and sending data over the wire (as gRPC is optimized for it). In general, we expect a stable performing system.
+When using the REST API, we expect some more overhead (maybe ~10%), like serializing and sending data over the wire (as gRPC is optimized for it). In general, we expect a stable performing system.
 
 ### Actual
 
-Observing the first experiment, we saw a degradation of performance **by more than 70%**. Additionally, we seem to have no metrics for the REST API requests. Backpressure seem to be zero, while we're not performing as expected.
+Observing the first experiment, we saw a degradation of performance **by more than 70%**. Additionally, we seem to have no metrics for the REST API requests. Backpressure seems to be zero, while we're not performing as expected.
 
 ![exp1-general](exp1-general.png)
 
@@ -157,15 +157,15 @@ java.lang.IllegalStateException: Queue full
 	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?]
 ```
 
-I think it is not fully clear what the user should do with this. AFAIK based on the implementation it is also not how we expected it to behave, as we wanted to block in this case.
+I think it is not fully clear what the user should do with this. AFAIK, based on the implementation, it is also not how we expected it to behave, as we wanted to block in this case.
 
 ![exp2-snapshot](exp2-snapshots.png)
 
-We can see that even when we recover the workers, with more memory, we are not able to come back to a performing system. This is likely because we aggregated already quite some data, and running in some weird timeout and completion/fail loops. This needs further investigations (follow-up).
+We can see that even when we recover the workers, with more memory, we are not able to come back to a performing system. This is likely because we aggregated already quite some data, and are running in some weird timeout and completion/fail loops. This needs further investigation (follow-up).
 
 ## Chaos Experiment (Pt. 3)
 
-With our third experiment we want to validate how our load tests perform with some clean state, and workers set up correctly.
+With our third experiment, we want to validate how our load tests perform with some clean state, and workers set up correctly.
 
 ### Expected
 
@@ -177,11 +177,11 @@ With no previous data and stable workers, we seem to be able to reach higher thr
 
 ![exp3-general](exp3-general.png)
 
-The latency looks fairly similar to our base (weekly) benchmarks. Here again 99% of PIs needs less than 0.25 seconds to complete.
+The latency looks fairly similar to our base (weekly) benchmarks. Here again, 99% of PIs need less than 0.25 seconds to complete.
 
 ![exp3-latency](exp3-latency.png)
 
-After a while the load tests seem to behave similar to the previous ones, reporting several timeouts and completion rejections.
+After a while, the load tests seem to behave similarly to the previous ones, reporting several timeouts and completion rejections.
 
 ![exp3-jobs](exp3-jobs-rejections.png)
 
@@ -212,6 +212,8 @@ java.lang.IllegalStateException: Queue full
 :x: Right now it seems that the usage of the REST API can impact the general performance of the system (even with the usage of the Job streaming in the workers). As of now it is not clear why, which we have to further investigate and clarify.
 
 ## Found Bugs
+
+Following issues and follow ups have been noted down
 
   * REST API usage affects highly general performance of the system
   * REST API observability is missing
