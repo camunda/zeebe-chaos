@@ -20,11 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"k8s.io/utils/ptr"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
+
+	"k8s.io/utils/ptr"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,14 +84,39 @@ func (c K8Client) GetGatewayPods() (*v1.PodList, error) {
 	return list, err
 }
 
+func (c K8Client) GetCorePods() (*v1.PodList, error) {
+	listOptions := metav1.ListOptions{
+		LabelSelector: c.GetCoreLabels(),
+		// we check for running gateways, since terminated gateways can be lying around
+		FieldSelector: "status.phase=Running",
+	}
+
+	list, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, err
+}
+
 func (c K8Client) GetGatewayPodNames() ([]string, error) {
 	list, err := c.GetGatewayPods()
 	if err != nil {
 		return nil, err
 	}
 
-	if list == nil || len(list.Items) == 0 {
-		return c.GetBrokerPodNames()
+	if list != nil && len(list.Items) <= 0 {
+		list, err = c.GetBrokerPods()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if list != nil && len(list.Items) <= 0 {
+		list, err = c.GetCorePods()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return c.extractPodNames(list)
