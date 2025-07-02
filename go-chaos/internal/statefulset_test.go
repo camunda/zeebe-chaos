@@ -72,10 +72,13 @@ func Test_ShouldReturnErrorForNonExistingStatefulSetInSaaS(t *testing.T) {
 	k8Client.createSaaSCRD(t)
 
 	// when
-	statefulset, err := k8Client.GetZeebeStatefulSet()
+	_, err := k8Client.GetZeebeStatefulSet()
 
 	// then
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "statefulsets.apps \"zeebe\" not found")
-	assert.Nil(t, statefulset)
+
+	// API No longer returns nil pointer but empty initialized struct
+	//assert.Nil(t, statefulset)
+
 }
