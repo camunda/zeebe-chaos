@@ -144,21 +144,21 @@ When opening the JFR recording with JMC, we get some hints, related to context s
 ![jfr-cpu-throttling-detection.png](jfr-cpu-throttling-detection.png)
 ![gc-ineffeciency-high-io.png](gc-ineffeciency-high-io.png)
 
-We have seen already in our metrics for example that we fight with high CPU throttling
+We have already seen in our metrics, for example, that we fight with high CPU throttling
 
 ![rest-base-cpu](rest-base-cpu.png)
 
-To better analyze (and circumvent that we have no tracing) I added some more metrics to understand where time is spent. Furthermore, I created a temporary dashboard to break down where time is spent.
+To better analyze (and circumvent that we have no tracing), I added some more metrics to understand where time is spent. Furthermore, I created a temporary dashboard to break down where time is spent.
 
-When we look at the base with gRPC (taking our weekly benchmarks) we can see all latencies are low, and mostly under 5 ms.
+When we look at the base with gRPC (taking our weekly benchmarks), we can see all latencies are low, and mostly under 5 ms.
 
 ![grpc-break-down.png](grpc-break-down.png)
 
-As soon as we enable the REST API we can see the latencies go up. The most increase we see in the job activations.
+As soon as we enable the REST API, we can see the latencies go up. The most significant increase we see is in the job activations.
 
 ![rest-break-down](rest-break-down.png)
 
-Fascinating is that the write to process latency, the time from accepting by the CommandAPI until the processor processes this command, also increases.
+Fascinating is that the write to process latency, the time from acceptance by the CommandAPI until the processor processes this command, also increases.
 
 ## Virtual threads
 
@@ -170,7 +170,7 @@ I set the following system property on the statefulset.
 -Dspring.threads.virtual.enabled=true
 ```
 
-Taking a new profile we can see that all the http threads are gone, but still the filtering is prominent.
+Taking a new profile, we can see that all the http threads are gone, but still the filtering is prominent.
 
 ![jfr-virtual-threads.png](jfr-virtual-threads.png)
 
@@ -180,18 +180,18 @@ Checking our metrics break-down again we see there is no benefit here.
 
 ## Direct handling
 
-Investigating the code basis, we saw several times `#handleAsync` without using an extra executor, causing to use the ForkJoinPool (as mentioned the other day). One idea was to [directly handle the future completions](https://github.com/camunda/camunda/commit/265d7164f5384be8c443c30b20e432582df09c24), meaning the response handling, etc.
+Investigating the code basis, we saw several times `#handleAsync` without using an extra executor, causing to use of the ForkJoinPool (as mentioned the other day). One idea was to [directly handle the future completions](https://github.com/camunda/camunda/commit/265d7164f5384be8c443c30b20e432582df09c24), meaning the response handling, etc.
 
 We didn't observe any benefits with this.
 
 ![direct-handling-breakdown.png](direct-handling-breakdown.png)
 
-In the JFR recording we can see that less Threads are used, but the Spring filter chain is also super prominent.
+In the JFR recording, we can see that less Threads are used, but the Spring filter chain is also super prominent.
 ![direct-handling-v2-profile-too-much-filtering.png](direct-handling-v2-profile-too-much-filtering.png)
 
 ## Spring PathPattern parser for MVC
 
-At the end of the day I finally came to try the `PathPattern` parser. As mentioned the other day it is recommended to use it over the legacy `AntPathMatcher`. 
+At the end of the day I finally came to try the `PathPattern` parser. As mentioned the other day, it is recommended to use it over the legacy `AntPathMatcher`. 
 
 The migration was [rather simple](https://github.com/camunda/camunda/commit/357522d8355a624a1c07e1fb889561254b0305ba), we can replace the `spring.mvc.pathmatch.matching-strategy=ant_path_matcher` with
 `spring.mvc.pathmatch.matching-strategy=path_pattern_parser`, we only had to fix some occurrences of regex combinations with `**`, as it is only allowed to have `**` at the end (no regex after).
@@ -200,17 +200,17 @@ See related branch [ck-pattern-path-parse](https://github.com/camunda/camunda/co
 
 ![path-pattern-breakdown](path-pattern-breakdown.png)
 
-We were able to reduce the latencies by half, this also allowed us to bring back our throughput.
+We were able to reduce the latencies by half, which also allowed us to bring back our throughput.
 
 ![path-pattern-general.png](path-pattern-general.png)
 
-I did a cross-check, with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will ran this for a while to see the results.
+I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will run this for a while to see the results.
 
 ## Combination of direct handle and PathPattern
 
 On top of the above, I [combined the direct handling and PathPattern usage](https://github.com/camunda/camunda/commits/ck-direct-handle/), and this gave us the best results.
 
-The latencies are only factor two higher than gRPC vs before 5 times (and more).
+The latencies are only two times higher than gRPC vs before 5 times (and more).
 
 ![combination-of-all-breakdown.png](combination-of-all-breakdown.png)
 
