@@ -204,7 +204,10 @@ We were able to reduce the latencies by half, which also allowed us to bring bac
 
 ![path-pattern-general.png](path-pattern-general.png)
 
-I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will run this for a while to see the results.
+I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will run this for a while to see the results, as it might fail after certain period of time. As this might be also related to where the pods are scheduled (noisy neighbours etc.)
+
+![rest-base-v2-breakdown.png](rest-base-v2-breakdown.png)
+![rest-base-v2-general.png](rest-base-v2-general.png)
 
 ## Combination of direct handle and PathPattern
 
