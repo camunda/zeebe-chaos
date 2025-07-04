@@ -13,8 +13,28 @@
             <link>https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance</link>
             <guid>https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance</guid>
             <pubDate>Wed, 02 Jul 2025 00:00:00 GMT</pubDate>
-            <description><![CDATA[This blog post aims to summarize the investigation of the REST API performance, and give some hints and collections of what to improve.]]></description>
-            <content:encoded><![CDATA[<p>This blog post aims to summarize the investigation of the REST API performance, and give some hints and collections of what to improve.</p>
+            <description><![CDATA[At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.]]></description>
+            <content:encoded><![CDATA[<p>At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.</p>
+<p>What we have done and validated so far:</p>
+<ul>
+<li>Investigated existing REST api metrics + breakdown metrics to have a better overview of where time is spent</li>
+<li>Investigated worker failing with OOM - due to performance issue and using a queue to store the response futures</li>
+<li>Take JFR recordings and profile the system</li>
+<li>Increase CPU resources to understand whether it is resource contention - it is.</li>
+<li>Improve Spring request filtering and execution<!-- -->
+<ul>
+<li>Use virtual threads for Spring</li>
+<li>Use PathPattern instead of legacy AntPathPattern</li>
+<li>Use direct response handling instead of asynchronous</li>
+<li>Combine some of them</li>
+</ul>
+</li>
+<li>Observe, profile, and investigate performance further - with different commits from main</li>
+</ul>
+<p>From what we can observe is that some load tests can run stable for quite a while, until they break down. It seems to be often related to restarts/rescheduling. They reach a point where the CPU throttling increases, and at this point the performance breaks down.</p>
+<p><img decoding="async" loading="lazy" alt="all-namespaces-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/all-namespaces-throughput-1e62889524faaeec5cd7fb3052db4f04.png" width="2561" height="860" class="img_ev3q"></p>
+<h1>Day 1: Investigation REST API Performance</h1>
+<p>This blog post aims to summarize the investigation of the REST API performance, and give some hints and collections of what to improve.</p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="rest-api-metrics">REST API Metrics<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#rest-api-metrics" class="hash-link" aria-label="Direct link to REST API Metrics" title="Direct link to REST API Metrics">​</a></h2>
 <p>One remark from the last experiments was that we do not have good insights for the REST API. Actually, we have the necessary metrics already exposed, but not yet available in our Dashboard.</p>
 <p>This is currently prepared with <a href="https://github.com/camunda/camunda/pull/33907" target="_blank" rel="noopener noreferrer">#33907</a>. Based on this, I was able to further investigate the REST API performance.</p>
@@ -116,7 +136,23 @@
 <p>The throttling of the CPU was reduced by half as well.</p>
 <p><img decoding="async" loading="lazy" alt="combination-of-all-cpu.png" src="https://camunda.github.io/zeebe-chaos/assets/images/combination-of-all-cpu-76b39f387018b794f171bb676b8b3832.png" width="2538" height="324" class="img_ev3q"></p>
 <p>This gives a great stable throughput again.</p>
-<p><img decoding="async" loading="lazy" alt="combination-of-all-general.png" src="https://camunda.github.io/zeebe-chaos/assets/images/combination-of-all-general-285aa7b2d45b50d79f995ebffbbd697f.png" width="2531" height="684" class="img_ev3q"></p>]]></content:encoded>
+<p><img decoding="async" loading="lazy" alt="combination-of-all-general.png" src="https://camunda.github.io/zeebe-chaos/assets/images/combination-of-all-general-285aa7b2d45b50d79f995ebffbbd697f.png" width="2531" height="684" class="img_ev3q"></p>
+<h1>Day 3: Observing load tests and further experimenting</h1>
+<p>Yesterday, I have started several load tests for things I have tried out in code (like PathPattern or direct response handling), but also from different commits of the main branch (the current SNASPHOT, some commits that touch the rest gateway, and from begin of the week).</p>
+<p>ALL of them were running at the beginning fine, but failed at some point. Some sooner, some later.</p>
+<p><img decoding="async" loading="lazy" alt="all-namespaces-throughput.png" src="https://camunda.github.io/zeebe-chaos/assets/images/all-namespaces-throughput-1e62889524faaeec5cd7fb3052db4f04.png" width="2561" height="860" class="img_ev3q"></p>
+<p>Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the proile.</p>
+<p><img decoding="async" loading="lazy" alt="rest-base-v3-jfr.png" src="https://camunda.github.io/zeebe-chaos/assets/images/rest-base-v3-jfr-03b09d7ca4ff602d0f55716b5e13c64f.png" width="1861" height="710" class="img_ev3q">
+<img decoding="async" loading="lazy" alt="path-pattern-jfr.png" src="https://camunda.github.io/zeebe-chaos/assets/images/path-pattern-jfr-b3978d0f445b946a903d52f8651efbca.png" width="1886" height="724" class="img_ev3q">
+<img decoding="async" loading="lazy" alt="combination-of-all-jfr.png" src="https://camunda.github.io/zeebe-chaos/assets/images/combination-of-all-jfr-96fe5ae899bbbab0a0739b88385e562e.png" width="1863" height="702" class="img_ev3q"></p>
+<p>Based on the profile, we do not see much of a difference.</p>
+<p>Today, I will validate the following:</p>
+<ul>
+<li>Is anti-affinity still enabled with our platform charts</li>
+<li>Combination of virtual threads (to reduce the thread count and blocking behavior), with PathPattern (as this was the most stable test)</li>
+<li>Maybe increasing the CPU limits again, to remove the K8 CPU throttling to better understand the system performance (until which the CPU consumption grows) and profile again</li>
+<li>Investigate further - likely try a different profiler like asyncProfiler</li>
+</ul>]]></content:encoded>
             <category>availability</category>
         </item>
         <item>
