@@ -16,6 +16,7 @@ package internal
 
 import (
 	"context"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -76,6 +77,30 @@ func (c K8Client) getGatewayLabels() string {
 		return getSaasGatewayLabels()
 	} else {
 		return getSelfManagedGatewayLabels()
+	}
+}
+
+func getSelfManagedCoreLabels() string {
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{"app.kubernetes.io/component": "core"},
+	}
+	return labels.Set(labelSelector.MatchLabels).String()
+}
+
+func getSaasCoreLabels() string {
+	// For backwards compatability the brokers kept the core labels, for a statefulset the labels are not modifiable
+	// To still be able to distinguish the standalone core with the broker, the gateway got a new label.
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{"app.kubernetes.io/app": "zeebe-gateway", "app.kubernetes.io/component": "standalone-gateway"},
+	}
+	return labels.Set(labelSelector.MatchLabels).String()
+}
+
+func (c K8Client) GetCoreLabels() string {
+	if c.SaaSEnv {
+		return getSaasCoreLabels()
+	} else {
+		return getSelfManagedCoreLabels()
 	}
 }
 
