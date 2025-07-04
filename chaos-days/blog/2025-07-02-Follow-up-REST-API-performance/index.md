@@ -10,7 +10,7 @@ tags:
 authors: zell
 ---
 
-# Investigating REST API performance
+## Investigating REST API performance
 
 At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
@@ -33,11 +33,11 @@ From what we can observe is that some load tests can run stable for quite a whil
 
 <!--truncate-->
 
-# Day 1: Investigation REST API Performance
+## Day 1: Investigation REST API Performance
 
 This blog post aims to summarize the investigation of the REST API performance, and give some hints and collections of what to improve.
 
-## REST API Metrics
+### REST API Metrics
 
 One remark from the last experiments was that we do not have good insights for the REST API. Actually, we have the necessary metrics already exposed, but not yet available in our Dashboard.
 
@@ -55,7 +55,7 @@ Looking at a different Benchmark using gRPC, we can see that requests take 5-10m
 Due to the slower workers (on completion), we can see error reports of the workers not being able to accept further job pushes. This has been mentioned in the previous blog post as well.  This, in consequence, means the worker sends FAIL commands for such jobs, to give them back. It has a cascading effect, as jobs are sent back and forth and impacting the general process instance execution latency (which grows up to 60s compared to 0.2 s).
 
 
-## Investigating Worker errors
+### Investigating Worker errors
 
 In our previous experiments, we have seen the following exceptions
 
@@ -80,7 +80,7 @@ As the performance is lower of handling requests, we collect more futures in the
 
 This allows explains why our workers have a higher memory consumption - we had to increase the worker memory to have a stable worker.
 
-## Profiling the System
+### Profiling the System
 
 With the previous results, we were encouraged to do some profiling. For the start we used [JFR](https://docs.oracle.com/javacomponents/jmc-5-4/jfr-runtime-guide/about.htm#JFRUH170) for some basic profiling.
 
@@ -96,7 +96,7 @@ If the flight recording is done, you can copy the recording (via `kubectl cp`) a
 
 We see that the Spring filter chaining is dominating the profile, which is not unexpected as every request has gone through this chain. As this is a CPU based sampling profile, it is likely to be part of the profile. Still, it was something interesting to note and investigate.
 
-### Path pattern matching
+#### Path pattern matching
 
 Some research showed that it might be interesting to look into other path pattern matchers, as we use the (legacy) [ant path matcher](https://github.com/camunda/camunda/blob/main/dist/src/main/resources/application.properties#L17) with [regex](https://github.com/camunda/camunda/blob/main/authentication/src/main/java/io/camunda/authentication/config/WebSecurityConfig.java#L86).  
 
@@ -105,7 +105,7 @@ Some research showed that it might be interesting to look into other path patter
  * PathPattern - https://spring.io/blog/2020/06/30/url-matching-with-pathpattern-in-spring-mvc#pathpattern
  * [Results of using PathPattern and related discussion on GH](https://github.com/spring-projects/spring-framework/issues/31098#issuecomment-1891737375)
 
-### Gateway - Broker request latency
+#### Gateway - Broker request latency
 
 As we have such a high request-response latency, we have to find out where the time is spent. Ideally, we would have some sort of tracing (which we didn't have yet), or we would look at metrics that cover sub-parts of the system and the request-response cycle.
 
@@ -121,7 +121,7 @@ Using the same cluster and enabling the REST API later, we can see the immediate
 
 ![rest-enabled](rest-enabled.png)
 
-#### Request handling execution logic
+##### Request handling execution logic
 
 A difference we have spotted with REST API and gRPC is the usage of the BrokerClient.
 
@@ -155,7 +155,7 @@ Compared to the previous run with 2 CPUs per Camunda application, where it had t
 
 We have to further investigate this based on this knowledge.
 
-# Day 2: Profiling and Experimenting
+## Day 2: Profiling and Experimenting
 
 Yesterday I was taking profiles with 100s, to reduce the noise. Still, we can see that the filter chain is taking ~40% of the complete profile.
 
@@ -183,7 +183,7 @@ As soon as we enable the REST API, we can see the latencies go up. The most sign
 
 Fascinating is that the write to process latency, the time from acceptance by the CommandAPI until the processor processes this command, also increases.
 
-## Virtual threads
+### Virtual threads
 
 To remove some thoughts about potential IO and CPU contention, I experimented with virtual threads, which we can [easily enable for Spring](https://www.baeldung.com/spring-6-virtual-threads).
 
@@ -201,7 +201,7 @@ Checking our metrics break-down again we see there is no benefit here.
 
 ![virtual-threads-break-down.png](virtual-threads-break-down.png)
 
-## Direct handling
+### Direct handling
 
 Investigating the code basis, we saw several times `#handleAsync` without using an extra executor, causing to use of the ForkJoinPool (as mentioned the other day). One idea was to [directly handle the future completions](https://github.com/camunda/camunda/commit/265d7164f5384be8c443c30b20e432582df09c24), meaning the response handling, etc.
 
@@ -212,7 +212,7 @@ We didn't observe any benefits with this.
 In the JFR recording, we can see that less Threads are used, but the Spring filter chain is also super prominent.
 ![direct-handling-v2-profile-too-much-filtering.png](direct-handling-v2-profile-too-much-filtering.png)
 
-## Spring PathPattern parser for MVC
+### Spring PathPattern parser for MVC
 
 At the end of the day I finally came to try the `PathPattern` parser. As mentioned the other day, it is recommended to use it over the legacy `AntPathMatcher`. 
 
@@ -232,7 +232,7 @@ I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now beha
 ![rest-base-v2-breakdown.png](rest-base-v2-breakdown.png)
 ![rest-base-v2-general.png](rest-base-v2-general.png)
 
-## Combination of direct handle and PathPattern
+### Combination of direct handle and PathPattern
 
 On top of the above, I [combined the direct handling and PathPattern usage](https://github.com/camunda/camunda/commits/ck-direct-handle/), and this gave us the best results.
 
@@ -248,7 +248,7 @@ This gives a great stable throughput again.
 
 ![combination-of-all-general.png](combination-of-all-general.png)
 
-# Day 3: Observing load tests and further experimenting
+## Day 3: Observing load tests and further experimenting
 
 Yesterday, I have started several load tests for things I have tried out in code (like PathPattern or direct response handling), but also from different commits of the main branch (the current SNASPHOT, some commits that touch the rest gateway, and from begin of the week).
 
