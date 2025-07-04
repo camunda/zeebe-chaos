@@ -12,11 +12,11 @@ authors: zell
 
 # Investigating REST API performance
 
-At this point in time, we don't have one root cause identified. As it is often with such performance issues it is the combination of several things.
+At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
 What we have done and validated so far:
 
- * Investigated existing REST api metrics + breakdown metrics to have a better overview where time is spent
+ * Investigated existing REST api metrics + breakdown metrics to have a better overview of where time is spent
  * Investigated worker failing with OOM - due to performance issue and using a queue to store the response futures
  * Take JFR recordings and profile the system
  * Increase CPU resources to understand whether it is resource contention - it is.
@@ -25,7 +25,7 @@ What we have done and validated so far:
    * Use PathPattern instead of legacy AntPathPattern
    * Use direct response handling instead of asynchronous
    * Combine some of them
- * Observe, profile and investigate performance further - with different commits from main
+ * Observe, profile, and investigate performance further - with different commits from main
  
 From what we can observe is that some load tests can run stable for quite a while, until they break down. It seems to be often related to restarts/rescheduling. They reach a point where the CPU throttling increases, and at this point the performance breaks down.
 
@@ -250,23 +250,23 @@ This gives a great stable throughput again.
 
 # Day 3: Observing load tests and further experimenting
 
-Yesterday, I have started several load tests for things I have tried out in code (like PathPattern or direct response handling), but also from different commits of the main branch (the current SNASPHOT, some commits, that touch the rest gateway, and from begin of the week).
+Yesterday, I have started several load tests for things I have tried out in code (like PathPattern or direct response handling), but also from different commits of the main branch (the current SNASPHOT, some commits that touch the rest gateway, and from begin of the week).
 
-ALL of them were running at the beginning fine, but failed at some point. Some sooner some later.
+ALL of them were running at the beginning fine, but failed at some point. Some sooner, some later.
 
 ![all-namespaces-throughput.png](all-namespaces-throughput.png)
 
-Interesting was that on all JFR recordings (with and without PathPattern) I saw still the Spring filter chain take a big chunk of the proile.
+Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the proile.
 
 ![rest-base-v3-jfr.png](rest-base-v3-jfr.png)
 ![path-pattern-jfr.png](path-pattern-jfr.png)
 ![combination-of-all-jfr.png](combination-of-all-jfr.png)
 
-Based on the profile we do not see much of a difference.
+Based on the profile, we do not see much of a difference.
 
-Today I will validate the following:
+Today, I will validate the following:
 
  * Is anti-affinity still enabled with our platform charts
  * Combination of virtual threads (to reduce the thread count and blocking behavior), with PathPattern (as this was the most stable test)
- * Maybe increasing the CPU limits again, to remove the K8 CPU throttling to better understand the system performance (until which the CPU consumptions grows) and profile again
+ * Maybe increasing the CPU limits again, to remove the K8 CPU throttling to better understand the system performance (until which the CPU consumption grows) and profile again
  * Investigate further - likely try a different profiler like asyncProfiler
