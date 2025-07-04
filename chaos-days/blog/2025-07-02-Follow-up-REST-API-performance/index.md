@@ -268,4 +268,5 @@ Today I will validate the following:
 
  * Is anti-affinity still enabled with our platform charts
  * Combination of virtual threads (to reduce the thread count and blocking behavior), with PathPattern (as this was the most stable test)
+ * Maybe increasing the CPU limits again, to remove the K8 CPU throttling to better understand the system performance (until which the CPU consumptions grows) and profile again
  * Investigate further - likely try a different profiler like asyncProfiler
