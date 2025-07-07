@@ -14,20 +14,36 @@ authors: zell
 
 At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
-What we have done and validated so far:
+**TL;DR;** We are actively investigating and try to improve our implementation regarding this topic.
+
+_Potential topics we want to look at and improve next:_
+
+ * Improve the web filter chaining from Spring
+   * Make use of PathPattern instead of legacy AntPath parser
+   * Investigate whether we can reduce filters
+ * Refactor REST API response handling
+   * Make use of separate thread pool (instead ForkJoinPool) - make use of VT?
+   * Investigate different send methods from BrokerClient
+ * Client applications
+   * Investigate Job worker implementation - job push vs job activation
+   * Investigate how endpoint resolution works with headless service - returning multiple endpoints
+   * Fix starter and worker applications of benchmark project - remove blocking queues, etc.
+ 
+_What we have done and validated so far:_
 
  * Investigated existing REST api metrics + breakdown metrics to have a better overview of where time is spent
  * Investigated worker failing with OOM - due to performance issue and using a queue to store the response futures
- * Take JFR recordings and profile the system
  * Increase CPU resources to understand whether it is resource contention - it is.
  * Improve Spring request filtering and execution
    * Use virtual threads for Spring
    * Use PathPattern instead of legacy AntPathPattern
    * Use direct response handling instead of asynchronous
    * Combine some of them
- * Observe, profile, and investigate performance further - with different commits from main
- 
-From what we can observe is that some load tests can run stable for quite a while, until they break down. It seems to be often related to restarts/rescheduling. They reach a point where the CPU throttling increases, and at this point the performance breaks down.
+ * Observe, profile, and investigate performance further
+   * Take JFR recordings and profile the system
+   * Make use of async profiler  
+
+From what we observed is that some load tests can run stable for quite a while, until they break down. It is often related to restarts/rescheduling or already in general suboptimal resource distribution. At some point the CPU throttling increases, and then the performance breaks down.
 
 ![all-namespaces-throughput](all-namespaces-throughput.png)
 
@@ -256,7 +272,7 @@ ALL of them were running at the beginning fine, but failed at some point. Some s
 
 ![all-namespaces-throughput.png](all-namespaces-throughput.png)
 
-Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the proile.
+Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the profile. This is because the filter chain itself doesn't change with using a different pattern parse.
 
 ![rest-base-v3-jfr.png](rest-base-v3-jfr.png)
 ![path-pattern-jfr.png](path-pattern-jfr.png)
@@ -270,3 +286,186 @@ Today, I will validate the following:
  * Combination of virtual threads (to reduce the thread count and blocking behavior), with PathPattern (as this was the most stable test)
  * Maybe increasing the CPU limits again, to remove the K8 CPU throttling to better understand the system performance (until which the CPU consumption grows) and profile again
  * Investigate further - likely try a different profiler like asyncProfiler
+
+### Anti-affinity
+
+Simply as sanity check I wanted to validate whether we still use our [anti-affinity configuration](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) in our charts. This is to make sure that brokers are not scheduled on the same node. Unfortunately, this only works on namespace level.  
+
+
+Indeed, we still have the configuration set:
+
+```yaml
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - core
+            topologyKey: kubernetes.io/hostname
+```
+
+While this helps in the same namespace, this doesn't prevent to have brokers from different namespaces scheduled on the same node (AFAIK). Potential for noisy neighbor. But this is also the reason why we use smaller nodes, and try to assign most of the resources to the corresponding broker pods (which makes them effectively alone on the node).
+
+### REST Base more CPU
+
+To validate once more how the base (simply with REST API enabled) performs with more CPU, we have set up a test with 6 CPUs (request + limit). This is an increase of factor three (from 2 CPU to 6 CPU).
+
+In general the test was performing stable.
+
+![rest-base-more-cpu-general.png](rest-base-more-cpu-general.png)
+![rest-base-more-cpu-latency.png](rest-base-more-cpu-latency.png)
+
+As soon as we increased the CPU the throttling went down.
+![rest-base-more-cpu-throttle.png](rest-base-more-cpu-throttle.png)
+
+The consumption went up to 3 CPU, comparing to our gRPC benchmarks this is an increase of factor two!
+
+![rest-base-more-cpu-usage.png](rest-base-more-cpu-usage.png)
+
+
+While observing the test we noticed some weird behavior of the workers. There are multiple regular job activation requests send (while we still have Job Push enabled and in use). 
+
+![rest-base-more-cpu-throughput.png](rest-base-more-cpu-throughput.png)
+
+This also causing to have much higher job COMPLETE command rate, where most of them are actually rejected. We see ~500 job completion rejections per second!
+
+![rest-base-more-cpu-logstream.png](rest-base-more-cpu-logstream.png)
+
+Why we have this behavior is not yet fully clear. The load test is stabilizing at a later point and running straight for several days.
+
+![rest-base-more-cpu-longer-general.png](rest-base-more-cpu-longer-general.png)
+
+At some-point it went into struggle again, as it run out of disk space. The exporter had a too big backlog, and was not able to catch up.
+
+![rest-base-more-cpu-exporting.png](rest-base-more-cpu-exporting.png)
+
+This might be related to huge amount of commands and rejections that need to be skipped.
+
+### Combination of VT and PathPattern
+
+As another experiment we run a load test with enabling virtual threads and PathPattern parser on Spring.
+
+To summarize, it doesn't help to reduce the CPU consumption to a level that the system can run stable.
+At the beginning, the worker was able to at least complete ~30 jobs per second, later it fully stopped. 
+
+![vt-pathpattern-cpu-general.png](vt-pathpattern-cpu-general.png)
+
+![vt-pathpattern-cpu-usage.png](vt-pathpattern-latency.png)
+![vt-pathpattern-cpu-usage.png](vt-pathpattern-throughput.png)
+
+
+In our JFR recording we see a similar pattern, that the Spring filtering is still taking most of the samples.
+
+![vt-pathpattern-cpu-jfr.png](vt-pathpattern-cpu-jfr.png)
+
+Enabling the virtual threads on spring, at least seem to remove the HTTP threads we normally had in our profiles.
+
+The CPU throttling is rather high, causing the performance problems we see here.
+
+![vt-pathpattern-cpu-throttle.png](vt-pathpattern-cpu-throttle.png)
+
+Zeebe-2 is often between 50-80% CPU throttling, as it is consuming 1.8 CPU (limit is 2).
+
+![vt-pathpattern-cpu-usage.png](vt-pathpattern-cpu-usage.png)
+
+The workers stopped working at some point completely. Investigating this we can see that it fails with some OOM as well.
+
+```shell
+Jul 05, 2025 07:16:48.330 [pool-4-thread-8] WARN  io.camunda.client.job.worker - Worker benchmark failed to handle job with key 2251799882041322 of type benchmark-task, sending fail command to broker
+java.lang.IllegalStateException: Queue full
+Exception in thread "prometheus-http-1-6" java.lang.OutOfMemoryError: Java heap space
+
+
+Jul 05, 2025 7:18:48 AM io.prometheus.metrics.exporter.httpserver.HttpExchangeAdapter sendErrorResponseWithStackTrace
+SEVERE: The Prometheus metrics HTTPServer caught an Exception while trying to send the metrics response.
+java.io.IOException: Broken pipe
+	at java.base/sun.nio.ch.SocketDispatcher.write0(Native Method)
+	at java.base/sun.nio.ch.SocketDispatcher.write(SocketDispatcher.java:62)
+	at java.base/sun.nio.ch.IOUtil.writeFromNativeBuffer(IOUtil.java:137)
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:102)
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:58)
+	at java.base/sun.nio.ch.SocketChannelImpl.write(SocketChannelImpl.java:542)
+	at jdk.httpserver/sun.net.httpserver.Request$WriteStream.write(Request.java:421)
+	at jdk.httpserver/sun.net.httpserver.ChunkedOutputStream.writeChunk(ChunkedOutputStream.java:131)
+	at jdk.httpserver/sun.net.httpserver.ChunkedOutputStream.flush(ChunkedOutputStream.java:165)
+	at jdk.httpserver/sun.net.httpserver.ChunkedOutputStream.close(ChunkedOutputStream.java:140)
+	at jdk.httpserver/sun.net.httpserver.PlaceholderOutputStream.close(ExchangeImpl.java:477)
+	at java.base/java.util.zip.DeflaterOutputStream.close(DeflaterOutputStream.java:272)
+	at io.prometheus.metrics.exporter.common.PrometheusScrapeHandler.handleRequest(PrometheusScrapeHandler.java:74)
+	at io.prometheus.metrics.exporter.httpserver.MetricsHandler.handle(MetricsHandler.java:33)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+	at jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:82)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:101)
+	at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(ServerImpl.java:871)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+	at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(ServerImpl.java:847)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+```
+
+### Async profiler
+
+To enrich our insights and inputs (have more data to investigate), we tried to set up [async profiler](https://github.com/async-profiler/async-profiler) with our load tests.
+
+We had some [out dated documentation](https://github.com/camunda/camunda/tree/main/zeebe/benchmarks/docs/debug#async-profiler) in our mono repository. Due to several refactorings, restructurings, etc. this guide was no longer working.
+
+I was able to create a script to set up it for now:
+
+```shell
+#!/bin/bash -xeu
+# Usage:
+#   ./executeProfiling.sh <POD-NAME>
+set -oxe pipefail
+
+node=$1
+
+# Download and extract latest async profiler
+curl -L https://github.com/jvm-profiling-tools/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-x64.tar.gz -o profiler.tar.gz
+cat profiler.tar.gz | tar xzv 
+
+# Copy async profiler to pod
+kubectl cp async-profiler-4.0-linux-x64/bin/asprof "$node":/usr/local/camunda/data/asprof
+kubectl exec "$node" -- mkdir -p /usr/local/camunda/data/lib
+kubectl cp async-profiler-4.0-linux-x64/lib/libasyncProfiler.so "$node":/usr/local/camunda/data/libasyncProfiler.so
+kubectl exec "$node" -- chmod +x /usr/local/camunda/data/asprof
+
+# Run profiling
+filename=flamegraph-$(date +%Y-%m-%d_%H-%M-%S).html
+PID=$(kubectl exec "$node" -- jps | grep Standalone | cut -d " " -f 1)
+kubectl exec "$node" -- ./data/asprof -e itimer -d 100 -t -f "/usr/local/camunda/data/$filename" --libpath /usr/local/camunda/data/libasyncProfiler.so "$PID"
+
+# Copy result
+kubectl cp "$node:/usr/local/camunda/data/$filename" "$node-$filename"
+```
+
+The results need to be investigated next.
+
+### Follow-up questions
+
+1. Why are benchmark applications target the same gateway, how does the IP resolution work with the headless service (which returns an array of IPs). It looks like it is picking always the same gateway.
+2. Why are the workers sending so often job activations, while job push is active?
+3. Why we had 500+ job completions per second? Overloading the cluster?
+
+
+## Day 4: Investigate profiles and experiments
+
+We will continue with investigating certain areas of our REST API, checking profiles, and experimenting with ideas.
+
+### Combination with more CPU
+
+The virtual threads and PathPattern parser setting test was combined with more CPU (from 2 to 3 CPUs).
+
+![vt-pp-more-cpu-general](vt-pp-more-cpu-general.png)
+![vt-pp-more-cpu-latency](vt-pp-more-cpu-latency.png)
+
+The test is running stable, but not to be further observed (as we have seen they might fail at a later point in time.)
+
+![vt-pp-cpu](vt-pp-cpu.png)
+
+The CPU consumption and throttling looks rather stable.
