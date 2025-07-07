@@ -14,19 +14,19 @@ authors: zell
 
 At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
-**TL;DR;** We are actively investigating and try to improve our implementation regarding this topic.
+**TL;DR;** We are actively investigating and trying to improve our implementation regarding this topic.
 
 _Potential topics we want to look at and improve next:_
 
  * Improve the web filter chaining from Spring
-   * Make use of PathPattern instead of legacy AntPath parser
+   * Make use of PathPattern instead of the legacy AntPath parser
    * Investigate whether we can reduce filters
  * Refactor REST API response handling
-   * Make use of separate thread pool (instead ForkJoinPool) - make use of VT?
+   * Make use of separate thread pool (instead of ForkJoinPool) - make use of VT?
    * Investigate different send methods from BrokerClient
  * Client applications
    * Investigate Job worker implementation - job push vs job activation
-   * Investigate how endpoint resolution works with headless service - returning multiple endpoints
+   * Investigate how endpoint resolution works with a headless service - returning multiple endpoints
    * Fix starter and worker applications of benchmark project - remove blocking queues, etc.
  
 _What we have done and validated so far:_
@@ -41,9 +41,9 @@ _What we have done and validated so far:_
    * Combine some of them
  * Observe, profile, and investigate performance further
    * Take JFR recordings and profile the system
-   * Make use of async profiler  
+   * Make use of the async profiler  
 
-From what we observed is that some load tests can run stable for quite a while, until they break down. It is often related to restarts/rescheduling or already in general suboptimal resource distribution. At some point the CPU throttling increases, and then the performance breaks down.
+From what we observed is that some load tests can run stable for quite a while, until they break down. It is often related to restarts/rescheduling, or already in general suboptimal resource distribution. At some point, the CPU throttling increases, and then the performance breaks down.
 
 ![all-namespaces-throughput](all-namespaces-throughput.png)
 
@@ -272,7 +272,7 @@ ALL of them were running at the beginning fine, but failed at some point. Some s
 
 ![all-namespaces-throughput.png](all-namespaces-throughput.png)
 
-Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the profile. This is because the filter chain itself doesn't change with using a different pattern parse.
+Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the profile. This is because the filter chain itself doesn't change with using a different pattern parser.
 
 ![rest-base-v3-jfr.png](rest-base-v3-jfr.png)
 ![path-pattern-jfr.png](path-pattern-jfr.png)
@@ -289,7 +289,7 @@ Today, I will validate the following:
 
 ### Anti-affinity
 
-Simply as sanity check I wanted to validate whether we still use our [anti-affinity configuration](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) in our charts. This is to make sure that brokers are not scheduled on the same node. Unfortunately, this only works on namespace level.  
+Simply as a sanity check, I wanted to validate whether we still use our [anti-affinity configuration](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) in our charts. This is to make sure that brokers are not scheduled on the same node. Unfortunately, this only works on the namespace level.  
 
 
 Indeed, we still have the configuration set:
@@ -308,13 +308,13 @@ Indeed, we still have the configuration set:
             topologyKey: kubernetes.io/hostname
 ```
 
-While this helps in the same namespace, this doesn't prevent to have brokers from different namespaces scheduled on the same node (AFAIK). Potential for noisy neighbor. But this is also the reason why we use smaller nodes, and try to assign most of the resources to the corresponding broker pods (which makes them effectively alone on the node).
+While this helps in the same namespace, this doesn't prevent to have brokers from different namespaces from being scheduled on the same node (AFAIK). Potential for a noisy neighbor. But this is also the reason why we use smaller nodes, and try to assign most of the resources to the corresponding broker pods (which makes them effectively alone on the node).
 
 ### REST Base more CPU
 
 To validate once more how the base (simply with REST API enabled) performs with more CPU, we have set up a test with 6 CPUs (request + limit). This is an increase of factor three (from 2 CPU to 6 CPU).
 
-In general the test was performing stable.
+In general, the test was stable.
 
 ![rest-base-more-cpu-general.png](rest-base-more-cpu-general.png)
 ![rest-base-more-cpu-latency.png](rest-base-more-cpu-latency.png)
@@ -322,16 +322,16 @@ In general the test was performing stable.
 As soon as we increased the CPU the throttling went down.
 ![rest-base-more-cpu-throttle.png](rest-base-more-cpu-throttle.png)
 
-The consumption went up to 3 CPU, comparing to our gRPC benchmarks this is an increase of factor two!
+The consumption went up to 3 CPU, comparing to our gRPC benchmarks, this is an increase of factor two!
 
 ![rest-base-more-cpu-usage.png](rest-base-more-cpu-usage.png)
 
 
-While observing the test we noticed some weird behavior of the workers. There are multiple regular job activation requests send (while we still have Job Push enabled and in use). 
+While observing the test, we noticed some weird behavior of the workers. There are multiple regular job activation requests sent (while we still have Job Push enabled and in use). 
 
 ![rest-base-more-cpu-throughput.png](rest-base-more-cpu-throughput.png)
 
-This also causing to have much higher job COMPLETE command rate, where most of them are actually rejected. We see ~500 job completion rejections per second!
+This is also causing to have much higher job COMPLETE command rate, where most of them are actually rejected. We see ~500 job completion rejections per second!
 
 ![rest-base-more-cpu-logstream.png](rest-base-more-cpu-logstream.png)
 
@@ -343,14 +343,14 @@ At some-point it went into struggle again, as it run out of disk space. The expo
 
 ![rest-base-more-cpu-exporting.png](rest-base-more-cpu-exporting.png)
 
-This might be related to huge amount of commands and rejections that need to be skipped.
+This might be related to the huge number of commands and rejections that need to be skipped.
 
 ### Combination of VT and PathPattern
 
-As another experiment we run a load test with enabling virtual threads and PathPattern parser on Spring.
+As another experiment, we run a load test with enabling virtual threads and PathPattern parser on Spring.
 
 To summarize, it doesn't help to reduce the CPU consumption to a level that the system can run stable.
-At the beginning, the worker was able to at least complete ~30 jobs per second, later it fully stopped. 
+At the beginning, the worker was able to complete at least ~30 jobs per second, but later it fully stopped. 
 
 ![vt-pathpattern-cpu-general.png](vt-pathpattern-cpu-general.png)
 
@@ -358,7 +358,7 @@ At the beginning, the worker was able to at least complete ~30 jobs per second, 
 ![vt-pathpattern-cpu-usage.png](vt-pathpattern-throughput.png)
 
 
-In our JFR recording we see a similar pattern, that the Spring filtering is still taking most of the samples.
+In our JFR recording, we see a similar pattern, where the Spring filtering is still taking most of the samples.
 
 ![vt-pathpattern-cpu-jfr.png](vt-pathpattern-cpu-jfr.png)
 
@@ -372,7 +372,7 @@ Zeebe-2 is often between 50-80% CPU throttling, as it is consuming 1.8 CPU (limi
 
 ![vt-pathpattern-cpu-usage.png](vt-pathpattern-cpu-usage.png)
 
-The workers stopped working at some point completely. Investigating this we can see that it fails with some OOM as well.
+The workers stopped working at some point completely. Investigating this, we can see that it fails with some OOM as well.
 
 ```shell
 Jul 05, 2025 07:16:48.330 [pool-4-thread-8] WARN  io.camunda.client.job.worker - Worker benchmark failed to handle job with key 2251799882041322 of type benchmark-task, sending fail command to broker
@@ -415,7 +415,7 @@ To enrich our insights and inputs (have more data to investigate), we tried to s
 
 We had some [out dated documentation](https://github.com/camunda/camunda/tree/main/zeebe/benchmarks/docs/debug#async-profiler) in our mono repository. Due to several refactorings, restructurings, etc. this guide was no longer working.
 
-I was able to create a script to set up it for now:
+I was able to create a script to set it up for now:
 
 ```shell
 #!/bin/bash -xeu
@@ -448,9 +448,9 @@ The results need to be investigated next.
 
 ### Follow-up questions
 
-1. Why are benchmark applications target the same gateway, how does the IP resolution work with the headless service (which returns an array of IPs). It looks like it is picking always the same gateway.
-2. Why are the workers sending so often job activations, while job push is active?
-3. Why we had 500+ job completions per second? Overloading the cluster?
+1. Why are benchmark applications targeted at the same gateway? How does the IP resolution work with the headless service (which returns an array of IPs). It looks like it is picking always the same gateway.
+2. Why are the workers sending so often job activations, while the job push is active?
+3. Why do we have 500+ job completions per second? Overloading the cluster?
 
 
 ## Day 4: Investigate profiles and experiments
