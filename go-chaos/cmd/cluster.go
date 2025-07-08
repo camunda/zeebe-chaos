@@ -27,33 +27,33 @@ import (
 )
 
 func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
-	var clusterCommand = &cobra.Command{
+	clusterCommand := &cobra.Command{
 		Use:   "cluster",
 		Short: "Interact with the Cluster API",
 		Long:  "Can be used to query cluster topology and to request dynamic scaling",
 	}
-	var statusCommand = &cobra.Command{
+	statusCommand := &cobra.Command{
 		Use:   "status",
 		Short: "Queries the current cluster topology",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return printCurrentTopology(flags)
 		},
 	}
-	var waitCommand = &cobra.Command{
+	waitCommand := &cobra.Command{
 		Use:   "wait",
 		Short: "Waits for a topology change to complete",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return portForwardAndWaitForChange(flags)
 		},
 	}
-	var scaleCommand = &cobra.Command{
+	scaleCommand := &cobra.Command{
 		Use:   "scale",
 		Short: "Scales the cluster to the given size",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return scaleCluster(flags)
 		},
 	}
-	var forceFailoverCommand = &cobra.Command{
+	forceFailoverCommand := &cobra.Command{
 		Use:   "forceFailover",
 		Short: "Force scale down the cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
