@@ -69,7 +69,7 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	clusterCommand.AddCommand(scaleCommand)
 	scaleCommand.Flags().IntVar(&flags.brokers, "brokers", 0, "The amount of brokers to scale to")
 	scaleCommand.Flags().Int32Var(&flags.replicationFactor, "replicationFactor", -1, "The new replication factor")
-	scaleCommand.MarkFlagRequired("brokers")
+	scaleCommand.Flags().Int32Var(&flags.partitionCount, "partitionCount", 0, "The number of partitions to scale to")
 	forceFailoverCommand.Flags().Int32Var(&flags.regions, "regions", 1, "The number of regions in the cluster")
 	forceFailoverCommand.Flags().Int32Var(&flags.regionId, "regionId", 0, "The id of the region to failover to")
 	forceFailoverCommand.MarkFlagRequired("regions")
@@ -96,7 +96,12 @@ func scaleCluster(flags *Flags) error {
 	if len(currentTopology.Brokers) > flags.brokers {
 		_, err = scaleDownBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
 	} else if len(currentTopology.Brokers) < flags.brokers {
-		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
+		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.partitionCount, flags.replicationFactor)
+	} else if currentTopology.partitionCount() < flags.partitionCount {
+		fmt.Println("Scaling partitions to ", flags.partitionCount)
+		sendScaleRequest(port, nil, flags.partitionCount, false, flags.replicationFactor)
+	} else if currentTopology.partitionCount() >= flags.partitionCount {
+		internal.LogInfo("Cannot scale down to %d or it's the same number of partitions", flags.partitionCount)
 	} else {
 		internal.LogInfo("cluster is already at size %d", flags.brokers)
 		return nil
@@ -106,8 +111,8 @@ func scaleCluster(flags *Flags) error {
 	return nil
 }
 
-func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
-	changeResponse, err := requestBrokerScaling(port, brokers, replicationFactor)
+func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
+	changeResponse, err := requestBrokerScaling(port, brokers, partitionCount, replicationFactor)
 	ensureNoError(err)
 	_, err = k8Client.ScaleZeebeCluster(brokers)
 	ensureNoError(err)
@@ -115,7 +120,7 @@ func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, replicati
 }
 
 func scaleDownBrokers(k8Client internal.K8Client, port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
-	changeResponse, err := requestBrokerScaling(port, brokers, replicationFactor)
+	changeResponse, err := requestBrokerScaling(port, brokers, 0, replicationFactor)
 	ensureNoError(err)
 
 	// Wait for brokers to leave before scaling down
@@ -128,12 +133,12 @@ func scaleDownBrokers(k8Client internal.K8Client, port int, brokers int, replica
 	return changeResponse, nil
 }
 
-func requestBrokerScaling(port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
+func requestBrokerScaling(port int, brokers int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
 	brokerIds := make([]int32, brokers)
 	for i := 0; i < brokers; i++ {
 		brokerIds[i] = int32(i)
 	}
-	return sendScaleRequest(port, brokerIds, 0, false, replicationFactor)
+	return sendScaleRequest(port, brokerIds, partitionCount, false, replicationFactor)
 }
 
 func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
@@ -366,6 +371,17 @@ type CurrentTopology struct {
 	Brokers       []BrokerState
 	LastChange    *LastChange
 	PendingChange *TopologyChange
+}
+
+func (topology *CurrentTopology) partitionCount() int32 {
+	partitionCount := int32(0)
+
+	for _, broker := range topology.Brokers {
+		for _, partition := range broker.Partitions {
+			partitionCount = max(partitionCount, partition.Id)
+		}
+	}
+	return partitionCount
 }
 
 type BrokerState struct {
