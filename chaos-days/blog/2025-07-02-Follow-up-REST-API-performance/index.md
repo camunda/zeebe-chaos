@@ -499,7 +499,7 @@ It looks like that a new job stream has been started, at time the cluster starts
 Additionally more jobs are pushed out to the clients, causing more to complete (duplicated) increasing the rejections.
 ![](vt-pp-later-more-push.png)
 
-We can also see that the workers start to crash loop, because they receive to many jobs.
+We can also see that the workers start to crash loop, because they receive too many jobs.
 ![](vt-pp-later-worker-restart.png)
 
 ### Investigating command distribution
