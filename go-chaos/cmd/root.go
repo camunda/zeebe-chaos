@@ -89,11 +89,13 @@ type Flags struct {
 	awaitReadiness bool
 }
 
-var Version = "development"
-var Commit = "HEAD"
-var Verbose bool
-var JsonLogging bool
-var DockerImageTag string = "zeebe"
+var (
+	Version        = "development"
+	Commit         = "HEAD"
+	Verbose        bool
+	JsonLogging    bool
+	DockerImageTag string = "zeebe"
+)
 
 func NewCmd() *cobra.Command {
 	flags := Flags{}
