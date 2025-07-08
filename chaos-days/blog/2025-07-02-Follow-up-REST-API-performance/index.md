@@ -464,7 +464,7 @@ The virtual threads and PathPattern parser setting test was combined with more C
 ![vt-pp-more-cpu-general](vt-pp-more-cpu-general.png)
 ![vt-pp-more-cpu-latency](vt-pp-more-cpu-latency.png)
 
-The test is running stable, but need to be further observed (as we have seen they might fail at a later point in time.)
+The test is running stable, but needs to be further observed (as we have seen they might fail at a later point in time.)
 
 ![vt-pp-cpu](vt-pp-cpu.png)
 
