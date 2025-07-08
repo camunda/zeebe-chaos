@@ -523,7 +523,7 @@ deploy the standalone gateway (again) to better separate the concerns.
 
 As mentioned the other day I have run async profiler to get some more information/details from a different angle of the application execution.
 
-Again what [we can see is](ck-rest-base-more-cpu-zeebe-2-flamegraph-2025-07-07_15-12-02.html) that the web filter chaining is taking a big chunk of the samples.
+Again what we can see is that the web filter chaining is taking a big chunk of the samples.
 
 ![async-profile-rest-more-cpu-filter.png](async-profile-rest-more-cpu-filter.png)
 
