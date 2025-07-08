@@ -133,24 +133,37 @@ func requestBrokerScaling(port int, brokers int, replicationFactor int32) (*Chan
 	for i := 0; i < brokers; i++ {
 		brokerIds[i] = int32(i)
 	}
-	return sendScaleRequest(port, brokerIds, false, replicationFactor)
+	return sendScaleRequest(port, brokerIds, 0, false, replicationFactor)
 }
 
-func sendScaleRequest(port int, brokerIds []int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
+func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
 	forceParam := "false"
 	if force {
 		forceParam = "true"
 	}
-	url := fmt.Sprintf("http://localhost:%d/actuator/cluster/brokers?force=%s", port, forceParam)
+	url := fmt.Sprintf("http://localhost:%d/actuator/cluster?force=%s", port, forceParam)
 	if replicationFactor > 0 {
 		url = url + fmt.Sprintf("&replicationFactor=%d", replicationFactor)
 	}
-	request, err := json.Marshal(brokerIds)
+	clusterRequest := &ClusterPatchRequest{}
+	if partitionCount > 0 {
+		clusterRequest.partitions = ClusterPatchRequestPartition{count: partitionCount, replicationFactor: replicationFactor}
+	}
+	if brokerIds != nil {
+		clusterRequest.brokers = ClusterPatchRequestBroker{add: brokerIds}
+	}
+
+	requestBody, err := json.Marshal(clusterRequest)
 	if err != nil {
 		return nil, err
 	}
-	internal.LogInfo("Requesting scaling %s with input  %s", url, request)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(request))
+	internal.LogInfo("Requesting scaling %s with input  %s", url, requestBody)
+	request, err := http.NewRequest("PATCH", url, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +282,7 @@ func forceFailover(flags *Flags) error {
 
 	brokersInRegion := getBrokers(currentTopology, flags.regions, flags.regionId)
 
-	changeResponse, err := sendScaleRequest(port, brokersInRegion, true, -1)
+	changeResponse, err := sendScaleRequest(port, brokersInRegion, 0, true, -1)
 	ensureNoError(err)
 
 	timeout := time.Minute * 5
@@ -386,4 +399,19 @@ type Operation struct {
 	BrokerId    int32
 	PartitionId int32
 	Priority    int32
+}
+
+type ClusterPatchRequest struct {
+	brokers    ClusterPatchRequestBroker
+	partitions ClusterPatchRequestPartition
+}
+
+type ClusterPatchRequestBroker struct {
+	add    []int32
+	remove []int32
+	count  int32
+}
+type ClusterPatchRequestPartition struct {
+	count             int32
+	replicationFactor int32
 }
