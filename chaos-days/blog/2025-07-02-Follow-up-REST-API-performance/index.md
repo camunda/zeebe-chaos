@@ -464,8 +464,84 @@ The virtual threads and PathPattern parser setting test was combined with more C
 ![vt-pp-more-cpu-general](vt-pp-more-cpu-general.png)
 ![vt-pp-more-cpu-latency](vt-pp-more-cpu-latency.png)
 
-The test is running stable, but not to be further observed (as we have seen they might fail at a later point in time.)
+The test is running stable, but needs to be further observed (as we have seen they might fail at a later point in time.)
 
 ![vt-pp-cpu](vt-pp-cpu.png)
 
 The CPU consumption and throttling looks rather stable.
+
+#### Running for a day
+
+![vt-pp-later-general.png](vt-pp-latern-general.png)
+
+The test was running stable for good amount of time, but suddenly breaks down.
+The CPU usage increases heavily causing throttling and break the system again, but this is just a symptom.
+
+![vt-pp-later-cpu.png](vt-pp-later-cpu.png)
+
+
+When we investigate further the metrics we can see that the latency, especially the commit latency is increasing at the same time. 
+
+![vt-pp-later-latency.png](vt-pp-later-latency.png)
+
+This is likely because we might exhaust our available I/O. Indeed, we write or commit more at this point in time.
+
+![vt-pp-later-commit-rate.png](vt-pp-later-commit-rate.png)
+
+Further investigation highlight that the rejections of JOB completions are spiking high
+
+![vt-pp-increase-of-rejections.png](vt-pp-increase-of-rejections.png)
+
+It looks like that a new job stream has been started, at time the cluster starts to go into a failure mode.
+
+![](vt-pp-later-stream-start.png)
+
+Additionally more jobs are pushed out to the clients, causing more to complete (duplicated) increasing the rejections.
+![](vt-pp-later-more-push.png)
+
+We can also see that the workers start to crash loop, because they receive too many jobs.
+![](vt-pp-later-worker-restart.png)
+
+### Investigating command distribution
+
+Running all of these tests I investigate several things, and realized that for all of these tests there is always one Camunda pod doing more than others. To me, it looks like our load is not even distributed.
+
+![gateway-cmd-distribution](gateway-cmd-distribution.png)
+
+Due to the imbalance one pod is doing more than the others, this pod is sacrificing of CPU throttling.
+
+![gateway-cmd-distribution-cpu.png](gateway-cmd-distribution-cpu.png)
+
+I think the challenge we face here is related to our set-up using [a headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) in our [Camunda Platform Helm Chart](https://github.com/camunda/camunda-platform-helm/blob/main/charts/camunda-platform-8.8/templates/core/service.yaml).
+
+This means we have a service deployed in K8 that is returning all IPs for all PODs when resolving. Likely our client applications, simply use the first IP they retrieve (instead of doing some more clever).
+I think this would be something we should further investigate. Potential options are to have client load balancing (with the multiple IPs), use a different service or 
+deploy the standalone gateway (again) to better separate the concerns.
+
+
+### Profiling with Async profiler
+
+As mentioned the other day I have run async profiler to get some more information/details from a different angle of the application execution.
+
+Again what we can see is that the web filter chaining is taking a big chunk of the samples.
+
+![async-profile-rest-more-cpu-filter.png](async-profile-rest-more-cpu-filter.png)
+
+Furthermore, logging is also a big part of the profile.
+
+![async-profile-rest-more-cpu-logging.png](async-profile-rest-more-cpu-logging.png)
+
+At the time of profiling we were retrieving a lot of errors from the Brokers, due to rejections, etc. (see above).
+
+#### Usage metrics
+
+When I investigated this further and check our logging, I saw that we wrote a LOT of usage metrics logs
+
+![usage-metrics-rest-logs.png](usage-metrics-rest-logs.png)
+
+Based on the metrics the exporting of usage metrics seem to be correlating to the state size growing.
+![usage-metrics-rest-state-size.png](usage-metrics-rest-test.png)
+
+![usage-metrics-rest-state-size.png](usage-metrics-rest-state-size.png)
+
+This needs to be further clarified, whether this is expected.
