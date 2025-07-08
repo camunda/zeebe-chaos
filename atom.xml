@@ -237,9 +237,49 @@ At the beginning, the worker was able to complete at least ~30 jobs per second, 
 <p>The virtual threads and PathPattern parser setting test was combined with more CPU (from 2 to 3 CPUs).</p>
 <p><img decoding="async" loading="lazy" alt="vt-pp-more-cpu-general" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-more-cpu-general-26a90fdcf6b39068121037b78a2ae693.png" width="1894" height="699" class="img_ev3q">
 <img decoding="async" loading="lazy" alt="vt-pp-more-cpu-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-more-cpu-latency-426cff7ce93d998d9cfecb7a04050d32.png" width="1889" height="904" class="img_ev3q"></p>
-<p>The test is running stable, but not to be further observed (as we have seen they might fail at a later point in time.)</p>
+<p>The test is running stable, but needs to be further observed (as we have seen they might fail at a later point in time.)</p>
 <p><img decoding="async" loading="lazy" alt="vt-pp-cpu" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-cpu-5079fd7215db24f34be6f4812f807b42.png" width="1911" height="573" class="img_ev3q"></p>
-<p>The CPU consumption and throttling looks rather stable.</p>]]></content>
+<p>The CPU consumption and throttling looks rather stable.</p>
+<h4 class="anchor anchorWithStickyNavbar_LWe7" id="running-for-a-day">Running for a day<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#running-for-a-day" class="hash-link" aria-label="Direct link to Running for a day" title="Direct link to Running for a day">​</a></h4>
+<p><img decoding="async" loading="lazy" alt="vt-pp-later-general.png" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-latern-general-96509b51933ea37e9642d25dfe82fb68.png" width="1889" height="682" class="img_ev3q"></p>
+<p>The test was running stable for good amount of time, but suddenly breaks down.
+The CPU usage increases heavily causing throttling and break the system again, but this is just a symptom.</p>
+<p><img decoding="async" loading="lazy" alt="vt-pp-later-cpu.png" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-cpu-1d750c077153e327bbe6c29226326d0d.png" width="1884" height="572" class="img_ev3q"></p>
+<p>When we investigate further the metrics we can see that the latency, especially the commit latency is increasing at the same time.</p>
+<p><img decoding="async" loading="lazy" alt="vt-pp-later-latency.png" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-latency-9f2d4ab1fb68c535739983f273c9756f.png" width="1894" height="265" class="img_ev3q"></p>
+<p>This is likely because we might exhaust our available I/O. Indeed, we write or commit more at this point in time.</p>
+<p><img decoding="async" loading="lazy" alt="vt-pp-later-commit-rate.png" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-commit-rate-d32992c19ffeb7b2a86f1665427b13ce.png" width="1918" height="299" class="img_ev3q"></p>
+<p>Further investigation highlight that the rejections of JOB completions are spiking high</p>
+<p><img decoding="async" loading="lazy" alt="vt-pp-increase-of-rejections.png" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-increase-of-rejections-94d9092237d99dcb7295e1bed9eabdaf.png" width="1889" height="351" class="img_ev3q"></p>
+<p>It looks like that a new job stream has been started, at time the cluster starts to go into a failure mode.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-stream-start-0570880679983aa837aa093b9f11dd3a.png" width="645" height="213" class="img_ev3q"></p>
+<p>Additionally more jobs are pushed out to the clients, causing more to complete (duplicated) increasing the rejections.
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-more-push-4bb3245ec49ef3e42502c639502c74c6.png" width="1908" height="649" class="img_ev3q"></p>
+<p>We can also see that the workers start to crash loop, because they receive too many jobs.
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/vt-pp-later-worker-restart-1e6674c009b72589cb8a5c9f71721ffb.png" width="552" height="228" class="img_ev3q"></p>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="investigating-command-distribution">Investigating command distribution<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#investigating-command-distribution" class="hash-link" aria-label="Direct link to Investigating command distribution" title="Direct link to Investigating command distribution">​</a></h3>
+<p>Running all of these tests I investigate several things, and realized that for all of these tests there is always one Camunda pod doing more than others. To me, it looks like our load is not even distributed.</p>
+<p><img decoding="async" loading="lazy" alt="gateway-cmd-distribution" src="https://camunda.github.io/zeebe-chaos/assets/images/gateway-cmd-distribution-ad6a04a30d2e5d8b1d6731a4cbb861e9.png" width="2555" height="845" class="img_ev3q"></p>
+<p>Due to the imbalance one pod is doing more than the others, this pod is sacrificing of CPU throttling.</p>
+<p><img decoding="async" loading="lazy" alt="gateway-cmd-distribution-cpu.png" src="https://camunda.github.io/zeebe-chaos/assets/images/gateway-cmd-distribution-cpu-b1007184fb6188c17ff378e5efa9fb7a.png" width="2544" height="640" class="img_ev3q"></p>
+<p>I think the challenge we face here is related to our set-up using <a href="https://kubernetes.io/docs/concepts/services-networking/service/#headless-services" target="_blank" rel="noopener noreferrer">a headless service</a> in our <a href="https://github.com/camunda/camunda-platform-helm/blob/main/charts/camunda-platform-8.8/templates/core/service.yaml" target="_blank" rel="noopener noreferrer">Camunda Platform Helm Chart</a>.</p>
+<p>This means we have a service deployed in K8 that is returning all IPs for all PODs when resolving. Likely our client applications, simply use the first IP they retrieve (instead of doing some more clever).
+I think this would be something we should further investigate. Potential options are to have client load balancing (with the multiple IPs), use a different service or
+deploy the standalone gateway (again) to better separate the concerns.</p>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="profiling-with-async-profiler">Profiling with Async profiler<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#profiling-with-async-profiler" class="hash-link" aria-label="Direct link to Profiling with Async profiler" title="Direct link to Profiling with Async profiler">​</a></h3>
+<p>As mentioned the other day I have run async profiler to get some more information/details from a different angle of the application execution.</p>
+<p>Again what we can see is that the web filter chaining is taking a big chunk of the samples.</p>
+<p><img decoding="async" loading="lazy" alt="async-profile-rest-more-cpu-filter.png" src="https://camunda.github.io/zeebe-chaos/assets/images/async-profile-rest-more-cpu-filter-45875207d59ca6d1e49f1b4752852e4f.png" width="1905" height="946" class="img_ev3q"></p>
+<p>Furthermore, logging is also a big part of the profile.</p>
+<p><img decoding="async" loading="lazy" alt="async-profile-rest-more-cpu-logging.png" src="https://camunda.github.io/zeebe-chaos/assets/images/async-profile-rest-more-cpu-logging-2cd0ca8b7e1bc0ba2fc52e5172e0f642.png" width="1910" height="947" class="img_ev3q"></p>
+<p>At the time of profiling we were retrieving a lot of errors from the Brokers, due to rejections, etc. (see above).</p>
+<h4 class="anchor anchorWithStickyNavbar_LWe7" id="usage-metrics">Usage metrics<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#usage-metrics" class="hash-link" aria-label="Direct link to Usage metrics" title="Direct link to Usage metrics">​</a></h4>
+<p>When I investigated this further and check our logging, I saw that we wrote a LOT of usage metrics logs</p>
+<p><img decoding="async" loading="lazy" alt="usage-metrics-rest-logs.png" src="https://camunda.github.io/zeebe-chaos/assets/images/usage-metrics-rest-logs-7e8059c9f2da56a472abcaadb56a1226.png" width="1845" height="518" class="img_ev3q"></p>
+<p>Based on the metrics the exporting of usage metrics seem to be correlating to the state size growing.
+<img decoding="async" loading="lazy" alt="usage-metrics-rest-state-size.png" src="https://camunda.github.io/zeebe-chaos/assets/images/usage-metrics-rest-test-223a5e1c7017d4883483e06d63640a63.png" width="2523" height="342" class="img_ev3q"></p>
+<p><img decoding="async" loading="lazy" alt="usage-metrics-rest-state-size.png" src="https://camunda.github.io/zeebe-chaos/assets/images/usage-metrics-rest-state-size-1e3f9754c526ac949b8fe6ec73af64ab.png" width="1262" height="290" class="img_ev3q"></p>
+<p>This needs to be further clarified, whether this is expected.</p>]]></content>
         <author>
             <name>Christopher Kujawa</name>
             <uri>https://github.com/ChrisKujawa</uri>
