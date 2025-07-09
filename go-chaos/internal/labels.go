@@ -16,6 +16,7 @@ package internal
 
 import (
 	"context"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -77,6 +78,17 @@ func (c K8Client) getGatewayLabels() string {
 	} else {
 		return getSelfManagedGatewayLabels()
 	}
+}
+
+func getSelfManagedCoreLabels() string {
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{"app.kubernetes.io/component": "core"},
+	}
+	return labels.Set(labelSelector.MatchLabels).String()
+}
+
+func (c K8Client) GetCoreLabels() string {
+	return getSelfManagedCoreLabels()
 }
 
 func (c K8Client) getWorkerLabels() string {

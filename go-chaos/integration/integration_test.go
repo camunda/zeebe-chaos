@@ -63,6 +63,7 @@ func Test_ShouldBeAbleToRunExperiments(t *testing.T) {
 	vars["clusterPlan"] = "test" // specifies the cluster plan for which we read the experiments
 	vars["clusterId"] = ""       // need to be set to empty string, otherwise we run into a SIGSEG
 	vars["zeebeImage"] = "gcr.io/zeebe-io/zeebe:SNAPSHOT"
+	vars["targetVersion"] = "8.8.0"
 
 	commandStep3, err := zeebeClient.NewCreateInstanceCommand().BPMNProcessId("chaosToolkit").LatestVersion().VariablesFromMap(vars)
 	require.NoError(t, err)

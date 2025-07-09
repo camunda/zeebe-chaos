@@ -135,9 +135,14 @@ func HandleReadExperiments(client worker.JobClient, job entities.Job) {
 	ctx := context.Background()
 	internal.LogInfo("Handle read experiments job [key: %d]", job.Key)
 
-	jobVariables := ZbChaosVariables{
-		Provider: ChaosProvider{
-			Timeout: 15 * 60, // 15 minute default Timeout
+	jobVariables := struct {
+		TargetVersion string
+		ZbChaosVariables
+	}{
+		ZbChaosVariables: ZbChaosVariables{
+			Provider: ChaosProvider{
+				Timeout: 15 * 60, // 15 minute default Timeout
+			},
 		},
 	}
 	err := job.GetVariablesAs(&jobVariables)
@@ -151,7 +156,12 @@ func HandleReadExperiments(client worker.JobClient, job entities.Job) {
 	if jobVariables.ClusterId != nil && *jobVariables.ClusterId != "" {
 		namespace = *jobVariables.ClusterId + "-zeebe"
 	}
-	targetClusterVersion := getTargetClusterVersion(namespace)
+	var targetClusterVersion string
+	if len(jobVariables.TargetVersion) > 0 {
+		targetClusterVersion = jobVariables.TargetVersion
+	} else {
+		targetClusterVersion = getTargetClusterVersion(namespace)
+	}
 	experiments, err := chaos_experiments.ReadExperimentsForClusterPlan(*jobVariables.ClusterPlan, targetClusterVersion)
 	if err != nil {
 		internal.LogInfo("Can't read experiments for given cluster plan %s, no sense in retrying will fail job. Error: %s", *jobVariables.ClusterPlan, err.Error())
