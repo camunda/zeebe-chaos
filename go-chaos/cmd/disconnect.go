@@ -26,14 +26,13 @@ func ensureNoError(err error) {
 }
 
 func AddDisconnectCommand(rootCmd *cobra.Command, flags *Flags) {
-
-	var disconnect = &cobra.Command{
+	disconnect := &cobra.Command{
 		Use:   "disconnect",
 		Short: "Disconnect Zeebe nodes",
 		Long:  `Disconnect Zeebe nodes, uses sub-commands to disconnect leaders, followers, etc.`,
 	}
 
-	var disconnectBrokers = &cobra.Command{
+	disconnectBrokers := &cobra.Command{
 		Use:   "brokers",
 		Short: "Disconnect Zeebe Brokers",
 		Long:  `Disconnect Zeebe Brokers with a given partition and role.`,
@@ -50,12 +49,14 @@ func AddDisconnectCommand(rootCmd *cobra.Command, flags *Flags) {
 					Role:        flags.broker2Role,
 				},
 				OneDirection: flags.oneDirection,
-			})
+			},
+				makeClientCredentials(flags),
+			)
 			ensureNoError(err)
 		},
 	}
 
-	var disconnectGateway = &cobra.Command{
+	disconnectGateway := &cobra.Command{
 		Use:   "gateway",
 		Short: "Disconnect Zeebe Gateway",
 		Long:  `Disconnect Zeebe Gateway from Broker with a given partition and role.`,
@@ -68,7 +69,7 @@ func AddDisconnectCommand(rootCmd *cobra.Command, flags *Flags) {
 					PartitionId: flags.partitionId,
 					NodeId:      flags.nodeId,
 				},
-			})
+			}, makeClientCredentials(flags))
 			ensureNoError(err)
 		},
 	}

@@ -55,7 +55,6 @@ func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, er
 	}
 
 	client, err := zbc.NewClient(clientConfig)
-
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +71,8 @@ type ClientCredentials struct {
 func GetBrokerPodNameForPartitionAndRole(k8Client K8Client,
 	zbClient zbc.Client,
 	partitionId int,
-	role string) (string, error) {
+	role string,
+) (string, error) {
 	pod, err := GetBrokerPodForPartitionAndRole(k8Client, zbClient, partitionId, role)
 	if err != nil {
 		return "", err
@@ -84,8 +84,8 @@ func GetBrokerPodNameForPartitionAndRole(k8Client K8Client,
 func GetBrokerPodForPartitionAndRole(k8Client K8Client,
 	zbClient zbc.Client,
 	partitionId int,
-	role string) (*v1.Pod, error) {
-
+	role string,
+) (*v1.Pod, error) {
 	firstBrokerNodeId, err := GetBrokerNodeId(zbClient, partitionId, role)
 	if err != nil {
 		return nil, err
@@ -206,8 +206,7 @@ func readModels(bpmnFileName string, dmnFileName string) (*models, error) {
 }
 
 func deployModels(client zbc.Client, models *models) error {
-	_, err :=
-		client.NewDeployResourceCommand().AddResource(models.bpmnBytes, models.bpmnFileName).AddResource(models.dmnBytes, models.dmnFileName).Send(context.TODO())
+	_, err := client.NewDeployResourceCommand().AddResource(models.bpmnBytes, models.bpmnFileName).AddResource(models.dmnBytes, models.dmnFileName).Send(context.TODO())
 	if err != nil {
 		return err
 	}

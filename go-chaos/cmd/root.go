@@ -94,11 +94,13 @@ type Flags struct {
 	clientSecret string
 }
 
-var Version = "development"
-var Commit = "HEAD"
-var Verbose bool
-var JsonLogging bool
-var DockerImageTag string = "zeebe"
+var (
+	Version        = "development"
+	Commit         = "HEAD"
+	Verbose        bool
+	JsonLogging    bool
+	DockerImageTag string = "zeebe"
+)
 
 func NewCmd() *cobra.Command {
 	flags := Flags{}
@@ -153,4 +155,27 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func makeClientCredentials(flags *Flags) *internal.ClientCredentials {
+	if len(flags.authServer) == 0 {
+		return nil
+	}
+	if len(flags.audience) == 0 {
+		return nil
+	}
+	if len(flags.clientSecret) == 0 {
+		return nil
+	}
+	if len(flags.clientId) == 0 {
+		return nil
+	}
+	credentials := &internal.ClientCredentials{
+		AuthServer:   flags.authServer,
+		Audience:     flags.audience,
+		ClientID:     flags.clientId,
+		ClientSecret: flags.clientSecret,
+	}
+
+	return credentials
 }

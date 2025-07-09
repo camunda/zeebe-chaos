@@ -19,10 +19,10 @@ import (
 	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 )
 
-func ConnectToZeebeCluster(k8Client internal.K8Client) (zbc.Client, func(), error) {
+func ConnectToZeebeCluster(k8Client internal.K8Client, credentials *internal.ClientCredentials) (zbc.Client, func(), error) {
 	port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 
-	zbClient, err := internal.CreateZeebeClient(port)
+	zbClient, err := internal.CreateZeebeClient(port, credentials)
 	if err != nil {
 		return nil, closeFn, err
 	}

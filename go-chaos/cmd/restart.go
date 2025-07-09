@@ -20,14 +20,13 @@ import (
 )
 
 func AddRestartCmd(rootCmd *cobra.Command, flags *Flags) {
-
-	var restartCmd = &cobra.Command{
+	restartCmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Restarts a Zeebe node",
 		Long:  `Restarts a Zeebe node, it can be chosen between: broker, gateway or a worker.`,
 	}
 
-	var restartBrokerCmd = &cobra.Command{
+	restartBrokerCmd := &cobra.Command{
 		Use:   "broker",
 		Short: "Restarts a Zeebe broker",
 		Long:  `Restarts a Zeebe broker with a certain role and given partition.`,
@@ -37,13 +36,13 @@ func AddRestartCmd(rootCmd *cobra.Command, flags *Flags) {
 			if flags.all {
 				restartBrokers(k8Client, "restart", nil)
 			} else {
-				brokerPod := restartBroker(k8Client, flags.nodeId, flags.partitionId, flags.role, nil)
+				brokerPod := restartBroker(k8Client, flags.nodeId, flags.partitionId, flags.role, nil, makeClientCredentials(flags))
 				internal.LogInfo("Restarted %s", brokerPod)
 			}
 		},
 	}
 
-	var restartGatewayCmd = &cobra.Command{
+	restartGatewayCmd := &cobra.Command{
 		Use:   "gateway",
 		Short: "Restarts a Zeebe gateway",
 		Long:  `Restarts a Zeebe gateway.`,
@@ -60,7 +59,7 @@ func AddRestartCmd(rootCmd *cobra.Command, flags *Flags) {
 		},
 	}
 
-	var restartWorkerCmd = &cobra.Command{
+	restartWorkerCmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Restart a Zeebe worker",
 		Long:  `Restart a Zeebe worker.`,

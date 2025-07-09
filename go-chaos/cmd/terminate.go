@@ -23,14 +23,13 @@ import (
 )
 
 func AddTerminateCommand(rootCmd *cobra.Command, flags *Flags) {
-
-	var terminateCmd = &cobra.Command{
+	terminateCmd := &cobra.Command{
 		Use:   "terminate",
 		Short: "Terminates a Zeebe node",
 		Long:  `Terminates a Zeebe node, it can be chosen between: broker, gateway or a worker.`,
 	}
 
-	var terminateBrokerCmd = &cobra.Command{
+	terminateBrokerCmd := &cobra.Command{
 		Use:   "broker",
 		Short: "Terminates a Zeebe broker",
 		Long:  `Terminates a Zeebe broker with a certain role and given partition.`,
@@ -41,13 +40,13 @@ func AddTerminateCommand(rootCmd *cobra.Command, flags *Flags) {
 			if flags.all {
 				restartBrokers(k8Client, "terminate", &gracePeriodSec)
 			} else {
-				brokerPod := restartBroker(k8Client, flags.nodeId, flags.partitionId, flags.role, &gracePeriodSec)
+				brokerPod := restartBroker(k8Client, flags.nodeId, flags.partitionId, flags.role, &gracePeriodSec, makeClientCredentials(flags))
 				internal.LogInfo("Terminated %s", brokerPod)
 			}
 		},
 	}
 
-	var terminateGatewayCmd = &cobra.Command{
+	terminateGatewayCmd := &cobra.Command{
 		Use:   "gateway",
 		Short: "Terminates a Zeebe gateway",
 		Long:  `Terminates a Zeebe gateway.`,
@@ -65,7 +64,7 @@ func AddTerminateCommand(rootCmd *cobra.Command, flags *Flags) {
 		},
 	}
 
-	var terminateWorkerCmd = &cobra.Command{
+	terminateWorkerCmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Terminates a Zeebe worker",
 		Long:  `Terminates a Zeebe worker.`,
@@ -92,17 +91,16 @@ func AddTerminateCommand(rootCmd *cobra.Command, flags *Flags) {
 
 	terminateCmd.AddCommand(terminateWorkerCmd)
 	terminateWorkerCmd.Flags().BoolVar(&flags.all, "all", false, "Specify whether all workers should be terminated")
-
 }
 
 // Restart a broker pod. Pod is identified either by nodeId or by partitionId and role.
 // GracePeriod (in second) can be nil, which would mean using K8 default.
 // Returns the broker which has been restarted
-func restartBroker(k8Client internal.K8Client, nodeId int, partitionId int, role string, gracePeriod *int64) string {
+func restartBroker(k8Client internal.K8Client, nodeId int, partitionId int, role string, gracePeriod *int64, credentials *internal.ClientCredentials) string {
 	port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 	defer closeFn()
 
-	zbClient, err := internal.CreateZeebeClient(port)
+	zbClient, err := internal.CreateZeebeClient(port, credentials)
 	ensureNoError(err)
 	defer zbClient.Close()
 
