@@ -86,6 +86,12 @@ type Flags struct {
 
 	// dataloss
 	awaitReadiness bool
+
+	// client connection
+	authServer   string
+	audience     string
+	clientId     string
+	clientSecret string
 }
 
 var Version = "development"

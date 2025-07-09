@@ -29,17 +29,44 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-func CreateZeebeClient(port int) (zbc.Client, error) {
+func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, error) {
 	endpoint := fmt.Sprintf("localhost:%d", port)
-	client, err := zbc.NewClient(&zbc.ClientConfig{
+
+	clientConfig := &zbc.ClientConfig{
 		GatewayAddress:         endpoint,
 		DialOpts:               []grpc.DialOption{},
 		UsePlaintextConnection: true,
-	})
+	}
+
+	if credentials != nil {
+		credsProvider, err := zbc.NewOAuthCredentialsProvider(&zbc.OAuthProviderConfig{
+			Audience:               credentials.Audience,
+			AuthorizationServerURL: credentials.AuthServer,
+			ClientID:               credentials.ClientID,
+			ClientSecret:           credentials.ClientSecret,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if credsProvider != nil {
+			clientConfig.CredentialsProvider = credsProvider
+			clientConfig.UsePlaintextConnection = false
+		}
+	}
+
+	client, err := zbc.NewClient(clientConfig)
+
 	if err != nil {
 		return nil, err
 	}
 	return client, nil
+}
+
+type ClientCredentials struct {
+	AuthServer   string
+	Audience     string
+	ClientID     string
+	ClientSecret string
 }
 
 func GetBrokerPodNameForPartitionAndRole(k8Client K8Client,
