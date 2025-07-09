@@ -125,6 +125,11 @@ func NewCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&flags.kubeConfigPath, "kubeconfig", "", "path the the kube config that will be used")
 	rootCmd.PersistentFlags().StringVarP(&flags.namespace, "namespace", "n", "", "connect to the given namespace")
 	rootCmd.PersistentFlags().StringVarP(&DockerImageTag, "dockerImageTag", "", DockerImageTag, "use the given docker image tag for deployed resources, e.g. worker/starter")
+	// auth flags
+	rootCmd.PersistentFlags().StringVar(&flags.audience, "audience", "", "authentication audience")
+	rootCmd.PersistentFlags().StringVar(&flags.authServer, "authServer", "", "authentication authserver")
+	rootCmd.PersistentFlags().StringVar(&flags.clientId, "clientId", "", "authentication clientId")
+	rootCmd.PersistentFlags().StringVar(&flags.clientSecret, "clientSecret", "", "authentication clientSecret")
 
 	AddBackupCommand(rootCmd, &flags)
 	AddBrokersCommand(rootCmd, &flags)
