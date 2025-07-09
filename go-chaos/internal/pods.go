@@ -85,6 +85,9 @@ func (c K8Client) GetGatewayPods() (*v1.PodList, error) {
 }
 
 func (c K8Client) GetCorePods() (*v1.PodList, error) {
+	if c.SaaSEnv {
+		return nil, nil
+	}
 	listOptions := metav1.ListOptions{
 		LabelSelector: c.GetCoreLabels(),
 		// we check for running gateways, since terminated gateways can be lying around
