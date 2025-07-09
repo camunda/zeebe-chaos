@@ -40,10 +40,29 @@ type ChaosProvider struct {
 
 type AuthenticationProvider struct {
 	Audience         string
-	AuthorizationUrl string
+	AuthorizationURL string
 	ClientId         string
 	ClientSecret     string
 	ContactPoint     string
+}
+
+func (c *AuthenticationProvider) toFlags() []string {
+	var flags []string
+
+	if c.AuthorizationURL != "" {
+		flags = append(flags, fmt.Sprintf("--authServer=%s", c.AuthorizationURL))
+	}
+	if c.Audience != "" {
+		flags = append(flags, fmt.Sprintf("--audience=%s", c.Audience))
+	}
+	if c.ClientId != "" {
+		flags = append(flags, fmt.Sprintf("--clientId=%s", c.ClientId))
+	}
+	if c.ClientSecret != "" {
+		flags = append(flags, fmt.Sprintf("--clientSecret=%s", c.ClientSecret))
+	}
+
+	return flags
 }
 
 type ZbChaosVariables struct {
@@ -58,6 +77,8 @@ type ZbChaosVariables struct {
 	ZeebeImage string
 	// the chaos provider, which contain details to the chaos experiment
 	Provider ChaosProvider
+
+	AuthenticationDetails AuthenticationProvider
 }
 
 func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner CommandRunner) {
@@ -88,9 +109,9 @@ func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner C
 	commandCtx, cancelCommand := context.WithTimeout(ctx, timeout)
 	defer cancelCommand()
 
-	var clusterAccessArgs []string
+	var extraFlags []string
 	if *jobVariables.ClusterId != "" {
-		clusterAccessArgs = append(clusterAccessArgs, "--namespace", *jobVariables.ClusterId+"-zeebe")
+		extraFlags = append(extraFlags, "--namespace", *jobVariables.ClusterId+"-zeebe")
 	} // else we run local against our k8 context
 
 	dockerImageSplit := strings.Split(jobVariables.ZeebeImage, ":")
@@ -101,7 +122,10 @@ func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner C
 		return
 	}
 
-	commandArgs := append(clusterAccessArgs, jobVariables.Provider.Arguments...)
+	authFlags := jobVariables.AuthenticationDetails.toFlags()
+	extraFlags = append(extraFlags, authFlags...)
+
+	commandArgs := append(extraFlags, jobVariables.Provider.Arguments...)
 	commandArgs = append(commandArgs, "--verbose", "--jsonLogging", "--dockerImageTag", dockerImageSplit[1])
 
 	err = commandRunner(commandArgs, commandCtx)
