@@ -77,8 +77,4 @@ func Test_ShouldReturnErrorForNonExistingStatefulSetInSaaS(t *testing.T) {
 	// then
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "statefulsets.apps \"zeebe\" not found")
-
-	// API No longer returns nil pointer but empty initialized struct
-	//assert.Nil(t, statefulset)
-
 }
