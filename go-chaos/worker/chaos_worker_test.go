@@ -308,7 +308,6 @@ func createZbChaosVariables() ZbChaosVariables {
 			AuthorizationURL: "https://auth.com/url",
 			ClientId:         "randomClientId",
 			ClientSecret:     "superSecret",
-			ContactPoint:     "1-0293-10293",
 		},
 	}
 	return variables
