@@ -177,7 +177,7 @@ func Test_ShouldSendExperimentsForClusterPlan(t *testing.T) {
 	job := entities.Job{
 		ActivatedJob: &pb.ActivatedJob{
 			Key:       123,
-			Variables: "{\"clusterPlan\":\"Production - S\"}",
+			Variables: "{\"clusterPlan\":\"Production - S\", \"targetVersion\":\"8.8.0\"}",
 		},
 	}
 
@@ -199,7 +199,7 @@ func Test_ShouldFailWhenNoClusterPlanForReadExperimentsJob(t *testing.T) {
 	job := entities.Job{
 		ActivatedJob: &pb.ActivatedJob{
 			Key:       123,
-			Variables: "{\"clusterPlan\":\"noop\"}",
+			Variables: "{\"clusterPlan\":\"noop\", \"targetVersion\":\"8.8.0\"}",
 		},
 	}
 
