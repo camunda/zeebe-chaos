@@ -156,7 +156,7 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	if err != nil {
 		return nil, err
 	}
-	internal.LogInfo("Requesting scaling %s with input  %s", url, requestBody)
+	internal.LogInfo("Requesting scaling %s with input %s \n", url, string(requestBody))
 	request, err := http.NewRequest("PATCH", url, bytes.NewReader(requestBody))
 	if err != nil {
 		return nil, err
