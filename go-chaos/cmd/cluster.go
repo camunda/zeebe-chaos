@@ -93,7 +93,7 @@ func scaleCluster(flags *Flags) error {
 		return err
 	}
 
-	if len(currentTopology.Brokers) > flags.brokers {
+	if flags.brokers > 0 && len(currentTopology.Brokers) > flags.brokers {
 		_, err = scaleDownBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
 	} else if len(currentTopology.Brokers) < flags.brokers {
 		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.partitionCount, flags.replicationFactor)
@@ -166,6 +166,8 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	if err != nil {
 		return nil, err
 	}
+	body, err := io.ReadAll(resp.Body)
+	internal.LogInfo("Response body", string(body))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
 	}
