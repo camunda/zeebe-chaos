@@ -431,9 +431,7 @@ func (req *ClusterPatchRequest) withPartitions(partitionCount, replicationFactor
 }
 
 type ClusterPatchRequestBroker struct {
-	add    []int32
-	remove []int32
-	count  int32
+	Count int32 `json:"count"`
 }
 type ClusterPatchRequestPartition struct {
 	count             int32
