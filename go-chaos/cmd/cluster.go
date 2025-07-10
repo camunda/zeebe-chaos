@@ -177,6 +177,10 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 		return nil, err
 	}
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	internal.LogInfo("Response body %s", string(body))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
 	}
@@ -185,13 +189,8 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 		_ = Body.Close()
 	}(resp.Body)
 
-	response, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	var changeResponse ChangeResponse
-	err = json.Unmarshal(response, &changeResponse)
+	err = json.Unmarshal(body, &changeResponse)
 	if err != nil {
 		return nil, err
 	}
