@@ -434,6 +434,6 @@ type ClusterPatchRequestBroker struct {
 	Count int32 `json:"count"`
 }
 type ClusterPatchRequestPartition struct {
-	count             int32
-	replicationFactor int32
+	Count             int32 `json:"count"`
+	ReplicationFactor int32 `json:"replicationFactor"`
 }
