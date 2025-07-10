@@ -12,46 +12,40 @@ authors: zell
 
 ## Investigating REST API performance
 
-At this point in time, we don't have one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
+This post collates the experiments, findings, and lessons learned during the REST API performance investigation.
 
-**TL;DR;** We are actively investigating and trying to improve our implementation regarding this topic.
+There wasn't one explicit root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
-_Potential topics we want to look at and improve next:_
+**Quint essence:** REST API is more CPU intense/heavy than gRPC. You can read more about this in the [conclusion part](#conclusion). We have discovered ~10 issues we have to follow up with, where at least 2-3 might have a significant impact in the performance. Details can be found in the [Discovered issues](#discovered-issues) section
 
- * Improve the web filter chaining from Spring
-   * Make use of PathPattern instead of the legacy AntPath parser
-   * Investigate whether we can reduce filters
- * Refactor REST API response handling
-   * Make use of separate thread pool (instead of ForkJoinPool) - make use of VT?
-   * Investigate different send methods from BrokerClient
- * Client applications
-   * Investigate Job worker implementation - job push vs job activation
-   * Investigate how endpoint resolution works with a headless service - returning multiple endpoints
-   * Fix starter and worker applications of benchmark project - remove blocking queues, etc.
+<!--truncate-->
  
-_What we have done and validated so far:_
+_Short summary of what we have done and validated_
+  
+ * Investigations
+    * Investigated existing REST api metrics
+        * Breakdown metrics to have a better overview of where time is spent (created a tmp dashboard)
+    * Investigated worker failing with OOM
+    * Investigated deployments and anti-affinities
+    * Investigated command distribution
+    * Investigated JFR recordings and profiles
+      * Take JFR recordings and profile the system
+      * Make use of the async profiler
+ * Experiments
+    * Increase CPU resources to understand whether it is resource contention - it is.
+    * Improve Spring request filtering and execution
+      * Use virtual threads for Spring
+      * Use PathPattern instead of legacy AntPathPattern
+      * Use direct response handling instead of asynchronous
+      * Combine some of them
+    * Experiment with different setups to better distribute the load
 
- * Investigated existing REST api metrics + breakdown metrics to have a better overview of where time is spent
- * Investigated worker failing with OOM - due to performance issue and using a queue to store the response futures
- * Increase CPU resources to understand whether it is resource contention - it is.
- * Improve Spring request filtering and execution
-   * Use virtual threads for Spring
-   * Use PathPattern instead of legacy AntPathPattern
-   * Use direct response handling instead of asynchronous
-   * Combine some of them
- * Observe, profile, and investigate performance further
-   * Take JFR recordings and profile the system
-   * Make use of the async profiler  
-
-From what we observed is that some load tests can run stable for quite a while, until they break down. It is often related to restarts/rescheduling, or already in general suboptimal resource distribution. At some point, the CPU throttling increases, and then the performance breaks down.
-
-![all-namespaces-throughput](all-namespaces-throughput.png)
 
 <!--truncate-->
 
 ## Day 1: Investigation REST API Performance
 
-This blog post aims to summarize the investigation of the REST API performance, and give some hints and collections of what to improve.
+This blog post aims to summarize the investigation of the REST API performance and give some hints and suggestions on what to improve.
 
 ### REST API Metrics
 
@@ -68,10 +62,10 @@ Looking at a different Benchmark using gRPC, we can see that requests take 5-10m
 ![grpc-latency](grpc-latency.png)
 ![grpc](grpc.png)
 
-Due to the slower workers (on completion), we can see error reports of the workers not being able to accept further job pushes. This has been mentioned in the previous blog post as well.  This, in consequence, means the worker sends FAIL commands for such jobs, to give them back. It has a cascading effect, as jobs are sent back and forth and impacting the general process instance execution latency (which grows up to 60s compared to 0.2 s).
+Due to the slower workers (on completion), we can see error reports of the workers not being able to accept further job pushes. This has been mentioned in the previous blog post as well.  This, in consequence, means the worker sends FAIL commands for such jobs, to give them back. It has a cascading effect, as jobs are sent back and forth, impacting the general process instance execution latency (which grows up to 60s compared to 0.2s).
 
 
-### Investigating Worker errors
+### Investigating Worker Errors
 
 In our previous experiments, we have seen the following exceptions
 
@@ -243,7 +237,7 @@ We were able to reduce the latencies by half, which also allowed us to bring bac
 
 ![path-pattern-general.png](path-pattern-general.png)
 
-I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will run this for a while to see the results, as it might fail after certain period of time. As this might be also related to where the pods are scheduled (noisy neighbours etc.)
+I did a cross-check with the current SNAPSHOT, and weirdly the SNAPSHOT now behaved the same. I will run this for a while to see the results, as it might fail after a certain period of time. As this might also be related to where the pods are scheduled (noisy neighbours etc.)
 
 ![rest-base-v2-breakdown.png](rest-base-v2-breakdown.png)
 ![rest-base-v2-general.png](rest-base-v2-general.png)
@@ -268,9 +262,9 @@ This gives a great stable throughput again.
 
 Yesterday, I have started several load tests for things I have tried out in code (like PathPattern or direct response handling), but also from different commits of the main branch (the current SNASPHOT, some commits that touch the rest gateway, and from begin of the week).
 
-ALL of them were running at the beginning fine, but failed at some point. Some sooner, some later.
+From what we observed is that some load tests can run stable for quite a while, until they break down. It is often related to restarts/rescheduling, or is already in general suboptimal resource distribution. At some point, the CPU throttling increases, and then the performance breaks down.
 
-![all-namespaces-throughput.png](all-namespaces-throughput.png)
+![all-namespaces-throughput](all-namespaces-throughput.png)
 
 Interesting was that on all JFR recordings (with and without PathPattern), I still saw the Spring filter chain take a big chunk of the profile. This is because the filter chain itself doesn't change with using a different pattern parser.
 
@@ -448,7 +442,7 @@ The results need to be investigated next.
 
 ### Follow-up questions
 
-1. Why are benchmark applications targeted at the same gateway? How does the IP resolution work with the headless service (which returns an array of IPs). It looks like it is picking always the same gateway.
+1. Why are benchmark applications targeted at the same gateway? How does the IP resolution work with the headless service (which returns an array of IPs)? It looks like it is picking always the same gateway.
 2. Why are the workers sending so often job activations, while the job push is active?
 3. Why do we have 500+ job completions per second? Overloading the cluster?
 
@@ -459,12 +453,12 @@ We will continue with investigating certain areas of our REST API, checking prof
 
 ### Combination with more CPU
 
-The virtual threads and PathPattern parser setting test was combined with more CPU (from 2 to 3 CPUs).
+The virtual threads and PathPattern parser setting test was combined with more CPUs (from 2 to 3 CPUs).
 
 ![vt-pp-more-cpu-general](vt-pp-more-cpu-general.png)
 ![vt-pp-more-cpu-latency](vt-pp-more-cpu-latency.png)
 
-The test is running stable, but needs to be further observed (as we have seen they might fail at a later point in time.)
+The test is running stable, but needs to be further observed (as we have seen, they might fail at a later point in time).
 
 ![vt-pp-cpu](vt-pp-cpu.png)
 
@@ -474,13 +468,13 @@ The CPU consumption and throttling looks rather stable.
 
 ![vt-pp-later-general.png](vt-pp-latern-general.png)
 
-The test was running stable for good amount of time, but suddenly breaks down.
-The CPU usage increases heavily causing throttling and break the system again, but this is just a symptom.
+The test was running stably for a good amount of time, but suddenly broke down.
+The CPU usage increases heavily, causing throttling and breaking the system again, but this is just a symptom.
 
 ![vt-pp-later-cpu.png](vt-pp-later-cpu.png)
 
 
-When we investigate further the metrics we can see that the latency, especially the commit latency is increasing at the same time. 
+When we investigate further the metrics, we can see that the latency, especially the commit latency, is increasing at the same time. 
 
 ![vt-pp-later-latency.png](vt-pp-later-latency.png)
 
@@ -488,42 +482,42 @@ This is likely because we might exhaust our available I/O. Indeed, we write or c
 
 ![vt-pp-later-commit-rate.png](vt-pp-later-commit-rate.png)
 
-Further investigation highlight that the rejections of JOB completions are spiking high
+Further investigation highlights that the rejections of JOB completions are spiking high
 
 ![vt-pp-increase-of-rejections.png](vt-pp-increase-of-rejections.png)
 
-It looks like that a new job stream has been started, at time the cluster starts to go into a failure mode.
+It looks like that a new job stream has been started, at which time the cluster starts to go into a failure mode.
 
 ![](vt-pp-later-stream-start.png)
 
-Additionally more jobs are pushed out to the clients, causing more to complete (duplicated) increasing the rejections.
+Additionally, more jobs are pushed out to the clients, causing more to complete (duplicate), increasing the rejections.
 ![](vt-pp-later-more-push.png)
 
-We can also see that the workers start to crash loop, because they receive too many jobs.
+We can also see that the workers start to crash the loop, because they receive too many jobs.
 ![](vt-pp-later-worker-restart.png)
 
 ### Investigating command distribution
 
-Running all of these tests I investigate several things, and realized that for all of these tests there is always one Camunda pod doing more than others. To me, it looks like our load is not even distributed.
+Running all of these tests, I investigate several things, and realized that for all of these tests, there is always one Camunda pod doing more than the others. To me, it looks like our load is not even distributed.
 
 ![gateway-cmd-distribution](gateway-cmd-distribution.png)
 
-Due to the imbalance one pod is doing more than the others, this pod is sacrificing of CPU throttling.
+Due to the imbalanc,e one pod is doing more than the others, this pod is sacrificing of CPU throttling.
 
 ![gateway-cmd-distribution-cpu.png](gateway-cmd-distribution-cpu.png)
 
-I think the challenge we face here is related to our set-up using [a headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) in our [Camunda Platform Helm Chart](https://github.com/camunda/camunda-platform-helm/blob/main/charts/camunda-platform-8.8/templates/core/service.yaml).
+I think the challenge we face here is related to our setup using [a headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) in our [Camunda Platform Helm Chart](https://github.com/camunda/camunda-platform-helm/blob/main/charts/camunda-platform-8.8/templates/core/service.yaml).
 
-This means we have a service deployed in K8 that is returning all IPs for all PODs when resolving. Likely our client applications, simply use the first IP they retrieve (instead of doing some more clever).
-I think this would be something we should further investigate. Potential options are to have client load balancing (with the multiple IPs), use a different service or 
-deploy the standalone gateway (again) to better separate the concerns.
+This means we have a service deployed in K8 that is returning all IPs for all PODs when resolving. Likely, our client applications simply use the first IP they retrieve (instead of doing some more clever).
+I think this would be something we should further investigate. Potential options are to have client load balancing (with the multiple IPs), use a different service, or 
+Deploy the standalone gateway (again) to better separate the concerns.
 
 
-### Profiling with Async profiler
+### Profiling with Async Profiler
 
-As mentioned the other day I have run async profiler to get some more information/details from a different angle of the application execution.
+As mentioned the other day, I have run the async profiler to get some more information/details from a different angle of the application execution.
 
-Again what we can see is that the web filter chaining is taking a big chunk of the samples.
+Again, what we can see is that the web filter chaining is taking a big chunk of the samples.
 
 ![async-profile-rest-more-cpu-filter.png](async-profile-rest-more-cpu-filter.png)
 
@@ -531,17 +525,153 @@ Furthermore, logging is also a big part of the profile.
 
 ![async-profile-rest-more-cpu-logging.png](async-profile-rest-more-cpu-logging.png)
 
-At the time of profiling we were retrieving a lot of errors from the Brokers, due to rejections, etc. (see above).
+At the time of profiling, we were retrieving a lot of errors from the Brokers, due to rejections, etc. (see above).
+
+We can see that we repeatedly log exceptions with no message at all.
+
+![logging-null](logging-null.png)
+![logs-repeating](logs-repeating.png)
 
 #### Usage metrics
 
-When I investigated this further and check our logging, I saw that we wrote a LOT of usage metrics logs
+When I investigated this further and checked our logging, I saw that we wrote a LOT of usage metrics logs
 
 ![usage-metrics-rest-logs.png](usage-metrics-rest-logs.png)
 
-Based on the metrics the exporting of usage metrics seem to be correlating to the state size growing.
+Based on the metrics, the exporting of usage metrics seem to be correlating to the state size growing.
 ![usage-metrics-rest-state-size.png](usage-metrics-rest-test.png)
 
 ![usage-metrics-rest-state-size.png](usage-metrics-rest-state-size.png)
 
 This needs to be further clarified, whether this is expected.
+
+## Last day (experimenting)
+
+### Load balance
+
+As discovered on the previous day, we are sending requests mainly to one node. This is because of the usage of a [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) in our [Camunda Platform Helm Chart](https://github.com/camunda/camunda-platform-helm/blob/main/charts/camunda-platform-8.8/templates/core/service.yaml).
+
+Today, I experimented with using a different service to access the Gateway API with the clients.
+
+<details>
+<summary>Manifest</summary>
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    meta.helm.sh/release-name: ck-rest-baseload-balancer
+    meta.helm.sh/release-namespace: ck-rest-baseload-balancer
+  labels:
+    app: camunda-platform
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/instance: ck-rest-baseload-balancer
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: camunda-platform
+    app.kubernetes.io/part-of: camunda-platform
+    app.kubernetes.io/version: ck-rest-base-more-cpu-cd459997
+    helm.sh/chart: camunda-platform-13.0.0-alpha4.2
+  name: ck-rest-baseload-balancer-core-gw
+  namespace: ck-rest-baseload-balancer
+spec:
+  type: ClusterIP # <---- That is the important part
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  - name: internal
+    port: 26502
+    protocol: TCP
+    targetPort: 26502
+  - name: command
+    port: 26501
+    protocol: TCP
+    targetPort: 26501
+  - name: server
+    port: 9600
+    protocol: TCP
+    targetPort: 9600
+  - name: gateway
+    port: 26500
+    protocol: TCP
+    targetPort: 26500
+  selector:
+    app: camunda-platform
+    app.kubernetes.io/component: core
+    app.kubernetes.io/instance: ck-rest-baseload-balancer
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: camunda-platform
+    app.kubernetes.io/part-of: camunda-platform
+```
+</details>
+
+By deploying this service and changing the client application deployments, we can see the effect directly.
+
+![service-differences-load.png](service-differences-load.png)
+
+The load is well distributed, and the CPU is as well.
+
+![service-differences-cpu.png](service-differences-cpu.png)
+
+In general the performance looks pretty stable and good.
+![service-differences-general.png](service-differences-general.png)
+
+#### After the night
+
+After running it for a while, the cluster was still looking quite stable.
+
+![service-differences-general-later.png](service-differences-general-later.png)
+![service-differences-cpu-later.png](service-differences-cpu-later.png)
+
+#### After lunch
+
+![service-differences-general-later2.png](service-differences-general-later2.png)
+![service-differences-cpu-later2.png](service-differences-cpu-later2.png)
+
+The general throughput looks still stable, even if the latency is much higher than for gRPC (was mostly ~3-5 ms).
+
+![service-differences-latency-later.png](service-differences-latency-later.png)
+
+#### Exporter runs into an issue
+
+Observing the cluster, we have detected that the disk usage is increasing over time.
+
+![service-differences-disk.png](service-differences-disk.png)
+
+The reason seem to be that the exporter is not able to catch up. Something that needs to be investigated separately.
+
+![service-differences-exporter-not-catch-up.png](service-differences-exporter-not-catch-up.png)
+
+## Conclusion 
+
+When correctly and evenly distributing the load we are able to handle the expected load on the cluster. Of course, this goes just until a certain load (even higher load) until it dips (as the CPU is exhausted again).
+
+With gRPC, the bad request distribution was not an issue, as the overhead is low and has less of an impact.
+
+The same behavior we had when assigning more resources to the cluster. Indicating CPU as the bottleneck (the issue is parallelizable)
+
+**Quint essence:** REST API is more CPU intense/heavy than gRPC.
+
+In general, this is not surprising. The REST API (and incl. Spring) works completely differently and is not as optimized for performance as gRPC is.
+We can see this also in our latencies, which are twice+ higher even when we have enough resources available.
+
+The CPU consumption can't be pinpointed to one single thing, but multiple inefficiencies coming together.
+
+### Discovered issues:
+
+During the investigation, the following issues have been discovered, which we should look at (and ideally fix).
+
+* [Helm Chart 8.8 is using a headless service for the single Application](https://github.com/camunda/camunda-platform-helm/issues/3784)
+* **REST API**
+    * [Investigate and improve web filter chain - as this was the dominator in all our profiles](https://github.com/camunda/camunda/issues/35067)
+    * [Sub-optimal logging in REST API v2](https://github.com/camunda/camunda/issues/35069)
+    * [REST API response handling is running into contention](https://github.com/camunda/camunda/issues/35076)
+* **Zeebe**
+    * [Usage metrics heavily looping](https://github.com/camunda/camunda/issues/35071)
+    * [Usage metrics records are divided unnecessary](https://github.com/camunda/camunda/issues/35072)
+    * [Job push vicious circle](https://github.com/camunda/camunda/issues/35074)
+    * [Camunda Exporter is not able to catch up on all partitions](https://github.com/camunda/camunda/issues/35080)
+* Clients
+    * [Client failure handling ends in Stackoverflow (causing the client to completelty stop working)](https://github.com/camunda/camunda/issues/34597)
+    * [Workers and Starters are holding futures in a queue](https://github.com/camunda/camunda/issues/35077)
