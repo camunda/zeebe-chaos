@@ -645,17 +645,16 @@ The reason seem to be that the exporter is not able to catch up. Something that 
 
 ## Conclusion 
 
-When correctly and evenly distributing the load we are able to handle the expected load on the cluster. Of course, this goes just until a certain load (even higher load) until it dips (as the CPU is exhausted again).
-
-With gRPC, the bad request distribution was not an issue, as the overhead is low and has less of an impact.
-
-The same behavior we had when assigning more resources to the cluster. Indicating CPU as the bottleneck (the issue is parallelizable)
-
 **Quint essence:** REST API is more CPU intense/heavy than gRPC.
 
 In general, this is not surprising. The REST API (and incl. Spring) works completely differently and is not as optimized for performance as gRPC is.
 We can see this also in our latencies, which are twice+ higher even when we have enough resources available.
 
+When correctly and evenly distributing the load we are able to handle the expected load on the cluster. Of course, this goes just until a certain load (even higher load) until it dips (as the CPU is exhausted again).
+
+With gRPC, the bad request distribution was not an issue, as the overhead is low and has less of an impact.
+
+The same behavior we had when assigning more resources to the cluster. Indicating CPU as the bottleneck (the issue is parallelizable)
 The CPU consumption can't be pinpointed to one single thing, but multiple inefficiencies coming together.
 
 ### Discovered issues:
