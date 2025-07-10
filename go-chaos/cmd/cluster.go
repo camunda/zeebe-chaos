@@ -150,13 +150,7 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	if replicationFactor > 0 {
 		url = url + fmt.Sprintf("&replicationFactor=%d", replicationFactor)
 	}
-	clusterRequest := &ClusterPatchRequest{}
-	if partitionCount > 0 {
-		clusterRequest.partitions = ClusterPatchRequestPartition{count: partitionCount, replicationFactor: replicationFactor}
-	}
-	if brokerIds != nil {
-		clusterRequest.brokers = ClusterPatchRequestBroker{add: brokerIds}
-	}
+	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
 
 	requestBody, err := json.Marshal(clusterRequest)
 	if err != nil {
