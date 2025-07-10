@@ -14,7 +14,7 @@ authors: zell
 
 This post collates the experiments, findings, and lessons learned during the REST API performance investigation.
 
-There wasn't one explicit one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
+There wasn't one explicit root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
 **Quint essence:** REST API is more CPU intense/heavy than gRPC. You can read more about this in the [conclusion part](#conclusion). We have discovered ~10 issues we have to follow up with, where at least 2-3 might have a significant impact in the performance. Details can be find in the [Discovered issues](#discovered-issues-) section
 
