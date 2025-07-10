@@ -302,13 +302,13 @@ Deploy the standalone gateway (again) to better separate the concerns.</p>
 <p>The reason seem to be that the exporter is not able to catch up. Something that needs to be investigated separately.</p>
 <p><img decoding="async" loading="lazy" alt="service-differences-exporter-not-catch-up.png" src="https://camunda.github.io/zeebe-chaos/assets/images/service-differences-exporter-not-catch-up-bb0dfa673863e0eac699b7f89ff12bfb.png" width="524" height="223" class="img_ev3q"></p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion">​</a></h2>
-<p>When correctly and evenly distributing the load we are able to handle the expected load on the cluster. Of course, this goes just until a certain load (even higher load) until it dips (as the CPU is exhausted again).</p>
-<p>With gRPC, the bad request distribution was not an issue, as the overhead is low and has less of an impact.</p>
-<p>The same behavior we had when assigning more resources to the cluster. Indicating CPU as the bottleneck (the issue is parallelizable)</p>
 <p><strong>Quint essence:</strong> REST API is more CPU intense/heavy than gRPC.</p>
 <p>In general, this is not surprising. The REST API (and incl. Spring) works completely differently and is not as optimized for performance as gRPC is.
 We can see this also in our latencies, which are twice+ higher even when we have enough resources available.</p>
-<p>The CPU consumption can't be pinpointed to one single thing, but multiple inefficiencies coming together.</p>
+<p>When correctly and evenly distributing the load we are able to handle the expected load on the cluster. Of course, this goes just until a certain load (even higher load) until it dips (as the CPU is exhausted again).</p>
+<p>With gRPC, the bad request distribution was not an issue, as the overhead is low and has less of an impact.</p>
+<p>The same behavior we had when assigning more resources to the cluster. Indicating CPU as the bottleneck (the issue is parallelizable)
+The CPU consumption can't be pinpointed to one single thing, but multiple inefficiencies coming together.</p>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="discovered-issues">Discovered issues:<a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#discovered-issues" class="hash-link" aria-label="Direct link to Discovered issues:" title="Direct link to Discovered issues:">​</a></h3>
 <p>During the investigation, the following issues have been discovered, which we should look at (and ideally fix).</p>
 <ul>
