@@ -412,8 +412,22 @@ type Operation struct {
 }
 
 type ClusterPatchRequest struct {
-	brokers    ClusterPatchRequestBroker
-	partitions ClusterPatchRequestPartition
+	Brokers    *ClusterPatchRequestBroker    `json:"brokers"`
+	Partitions *ClusterPatchRequestPartition `json:"partitions"`
+}
+
+func (req *ClusterPatchRequest) withBrokers(brokerIds []int32) *ClusterPatchRequest {
+	if brokerIds != nil && len(brokerIds) > 0 {
+		req.Brokers = &ClusterPatchRequestBroker{Count: int32(len(brokerIds))}
+	}
+	return req
+}
+
+func (req *ClusterPatchRequest) withPartitions(partitionCount, replicationFactor int32) *ClusterPatchRequest {
+	if partitionCount > 0 && replicationFactor > 0 {
+		req.Partitions = &ClusterPatchRequestPartition{Count: partitionCount, ReplicationFactor: replicationFactor}
+	}
+	return req
 }
 
 type ClusterPatchRequestBroker struct {
