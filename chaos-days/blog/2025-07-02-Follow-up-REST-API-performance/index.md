@@ -12,7 +12,7 @@ authors: zell
 
 ## Investigating REST API performance
 
-This blog post collects the different experiments, learnings and discoveries we did and had during the REST API performance investigation.
+This post collates the experiments, findings, and lessons learned during the REST API performance investigation.
 
 There wasn't one explicit one root cause identified. As it is often the case with such performance issues, it is the combination of several things.
 
