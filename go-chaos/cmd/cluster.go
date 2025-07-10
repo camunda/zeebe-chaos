@@ -99,7 +99,7 @@ func scaleCluster(flags *Flags) error {
 		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.partitionCount, flags.replicationFactor)
 	} else if currentTopology.partitionCount() < flags.partitionCount {
 		fmt.Println("Scaling partitions to ", flags.partitionCount)
-		sendScaleRequest(port, nil, flags.partitionCount, false, flags.replicationFactor)
+		scaleUpPartitions(k8Client, port, flags.partitionCount, flags.replicationFactor)
 	} else if currentTopology.partitionCount() >= flags.partitionCount {
 		internal.LogInfo("Cannot scale down to %d or it's the same number of partitions", flags.partitionCount)
 	} else {
@@ -111,11 +111,21 @@ func scaleCluster(flags *Flags) error {
 	return nil
 }
 
+func scaleUpPartitions(k8Client internal.K8Client, port int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
+	changeResponse, err := sendScaleRequest(port, nil, partitionCount, false, replicationFactor)
+	ensureNoError(err)
+	timeout := time.Minute * 5
+	err = waitForChange(port, changeResponse.ChangeId, timeout)
+	return changeResponse, nil
+}
+
 func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
 	changeResponse, err := requestBrokerScaling(port, brokers, partitionCount, replicationFactor)
 	ensureNoError(err)
 	_, err = k8Client.ScaleZeebeCluster(brokers)
 	ensureNoError(err)
+	timeout := time.Minute * 5
+	err = waitForChange(port, changeResponse.ChangeId, timeout)
 	return changeResponse, nil
 }
 
@@ -167,7 +177,6 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 		return nil, err
 	}
 	body, err := io.ReadAll(resp.Body)
-	internal.LogInfo("Response body", string(body))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
 	}
