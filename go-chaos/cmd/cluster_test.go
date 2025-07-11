@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -98,4 +99,52 @@ func Test_DescribeChangeStatusWithoutCompleted(t *testing.T) {
 	assert.Equal(t, ChangeStatusUnknown, describeChangeStatus(&topology, 1))
 	assert.Equal(t, ChangeStatusPending, describeChangeStatus(&topology, 3))
 	assert.Equal(t, ChangeStatusUnknown, describeChangeStatus(&topology, 4))
+}
+
+func Test_ClusterPatchRequestJsonWithAllFields(t *testing.T) {
+	// given
+	req := (&ClusterPatchRequest{}).withBrokers([]int32{1, 2, 3}).withPartitions(6, 3)
+	// when
+	json, err := json.Marshal(req)
+	// then
+	assert.Nil(t, err)
+	assert.NotNil(t, json)
+	expected := `{"brokers":{"count":3},"partitions":{"count":6,"replicationFactor":3}}`
+	assert.Equal(t, expected, string(json))
+}
+
+func Test_ClusterPatchRequestJsonBrokerOnly(t *testing.T) {
+	// given
+	req := (&ClusterPatchRequest{}).withBrokers([]int32{1, 2, 3}).withPartitions(0, 0)
+	// when
+	json, err := json.Marshal(req)
+	// then
+	assert.Nil(t, err)
+	assert.NotNil(t, json)
+	expected := `{"brokers":{"count":3},"partitions":null}`
+	assert.Equal(t, expected, string(json))
+}
+
+func Test_ClusterPatchRequestJsonPartitionOnly(t *testing.T) {
+	// given
+	req := (&ClusterPatchRequest{}).withBrokers(nil).withPartitions(8, 3)
+	// when
+	json, err := json.Marshal(req)
+	// then
+	assert.Nil(t, err)
+	assert.NotNil(t, json)
+	expected := `{"brokers":null,"partitions":{"count":8,"replicationFactor":3}}`
+	assert.Equal(t, expected, string(json))
+}
+
+func Test_ClusterPatchRequestJsonReplicationFactorOnly(t *testing.T) {
+	// given
+	req := (&ClusterPatchRequest{}).withBrokers(nil).withPartitions(0, 3)
+	// when
+	json, err := json.Marshal(req)
+	// then
+	assert.Nil(t, err)
+	assert.NotNil(t, json)
+	expected := `{"brokers":null,"partitions":{"count":null,"replicationFactor":3}}`
+	assert.Equal(t, expected, string(json))
 }

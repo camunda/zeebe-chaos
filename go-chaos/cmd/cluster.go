@@ -27,33 +27,33 @@ import (
 )
 
 func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
-	var clusterCommand = &cobra.Command{
+	clusterCommand := &cobra.Command{
 		Use:   "cluster",
 		Short: "Interact with the Cluster API",
 		Long:  "Can be used to query cluster topology and to request dynamic scaling",
 	}
-	var statusCommand = &cobra.Command{
+	statusCommand := &cobra.Command{
 		Use:   "status",
 		Short: "Queries the current cluster topology",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return printCurrentTopology(flags)
 		},
 	}
-	var waitCommand = &cobra.Command{
+	waitCommand := &cobra.Command{
 		Use:   "wait",
 		Short: "Waits for a topology change to complete",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return portForwardAndWaitForChange(flags)
 		},
 	}
-	var scaleCommand = &cobra.Command{
+	scaleCommand := &cobra.Command{
 		Use:   "scale",
 		Short: "Scales the cluster to the given size",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return scaleCluster(flags)
 		},
 	}
-	var forceFailoverCommand = &cobra.Command{
+	forceFailoverCommand := &cobra.Command{
 		Use:   "forceFailover",
 		Short: "Force scale down the cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -69,7 +69,8 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	clusterCommand.AddCommand(scaleCommand)
 	scaleCommand.Flags().IntVar(&flags.brokers, "brokers", 0, "The amount of brokers to scale to")
 	scaleCommand.Flags().Int32Var(&flags.replicationFactor, "replicationFactor", -1, "The new replication factor")
-	scaleCommand.MarkFlagRequired("brokers")
+	scaleCommand.Flags().Int32Var(&flags.partitionCount, "partitionCount", -1, "The number of partitions to scale to")
+	scaleCommand.MarkFlagsOneRequired("brokers", "partitionCount", "replicationFactor")
 	forceFailoverCommand.Flags().Int32Var(&flags.regions, "regions", 1, "The number of regions in the cluster")
 	forceFailoverCommand.Flags().Int32Var(&flags.regionId, "regionId", 0, "The id of the region to failover to")
 	forceFailoverCommand.MarkFlagRequired("regions")
@@ -93,10 +94,14 @@ func scaleCluster(flags *Flags) error {
 		return err
 	}
 
-	if len(currentTopology.Brokers) > flags.brokers {
+	if flags.brokers > 0 && len(currentTopology.Brokers) > flags.brokers {
 		_, err = scaleDownBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
 	} else if len(currentTopology.Brokers) < flags.brokers {
-		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
+		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.partitionCount, flags.replicationFactor)
+	} else if currentTopology.partitionCount() <= flags.partitionCount || (flags.replicationFactor > 0 && flags.partitionCount <= 0) {
+		_, err = scalePartitions(k8Client, port, flags.partitionCount, flags.replicationFactor)
+	} else if currentTopology.partitionCount() >= flags.partitionCount {
+		internal.LogInfo("Cannot scale down to %d or it's the same number of partitions", flags.partitionCount)
 	} else {
 		internal.LogInfo("cluster is already at size %d", flags.brokers)
 		return nil
@@ -106,16 +111,26 @@ func scaleCluster(flags *Flags) error {
 	return nil
 }
 
-func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
-	changeResponse, err := requestBrokerScaling(port, brokers, replicationFactor)
+func scalePartitions(k8Client internal.K8Client, port int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
+	changeResponse, err := sendScaleRequest(port, nil, partitionCount, false, replicationFactor)
+	ensureNoError(err)
+	timeout := time.Minute * 5
+	err = waitForChange(port, changeResponse.ChangeId, timeout)
+	return changeResponse, nil
+}
+
+func scaleUpBrokers(k8Client internal.K8Client, port int, brokers int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
+	changeResponse, err := requestBrokerScaling(port, brokers, partitionCount, replicationFactor)
 	ensureNoError(err)
 	_, err = k8Client.ScaleZeebeCluster(brokers)
 	ensureNoError(err)
+	timeout := time.Minute * 5
+	err = waitForChange(port, changeResponse.ChangeId, timeout)
 	return changeResponse, nil
 }
 
 func scaleDownBrokers(k8Client internal.K8Client, port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
-	changeResponse, err := requestBrokerScaling(port, brokers, replicationFactor)
+	changeResponse, err := requestBrokerScaling(port, brokers, 0, replicationFactor)
 	ensureNoError(err)
 
 	// Wait for brokers to leave before scaling down
@@ -128,51 +143,65 @@ func scaleDownBrokers(k8Client internal.K8Client, port int, brokers int, replica
 	return changeResponse, nil
 }
 
-func requestBrokerScaling(port int, brokers int, replicationFactor int32) (*ChangeResponse, error) {
+func requestBrokerScaling(port int, brokers int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
 	brokerIds := make([]int32, brokers)
 	for i := 0; i < brokers; i++ {
 		brokerIds[i] = int32(i)
 	}
-	return sendScaleRequest(port, brokerIds, false, replicationFactor)
+	return sendScaleRequest(port, brokerIds, partitionCount, false, replicationFactor)
 }
 
-func sendScaleRequest(port int, brokerIds []int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
+func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
+	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
+
+	changeResponse, err := sendPatchCluster(port, force, *clusterRequest)
+	if err != nil {
+		return nil, err
+	}
+	return changeResponse, nil
+}
+
+func sendPatchCluster(port int, force bool, clusterRequest ClusterPatchRequest) (*ChangeResponse, error) {
 	forceParam := "false"
 	if force {
 		forceParam = "true"
 	}
-	url := fmt.Sprintf("http://localhost:%d/actuator/cluster/brokers?force=%s", port, forceParam)
-	if replicationFactor > 0 {
-		url = url + fmt.Sprintf("&replicationFactor=%d", replicationFactor)
-	}
-	request, err := json.Marshal(brokerIds)
+	url := fmt.Sprintf("http://localhost:%d/actuator/cluster?force=%s", port, forceParam)
+	requestBody, err := json.Marshal(clusterRequest)
 	if err != nil {
 		return nil, err
 	}
-	internal.LogInfo("Requesting scaling %s with input  %s", url, request)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(request))
+	internal.LogInfo("Requesting scaling %s with input %s \n", url, string(requestBody))
+	resp, err := sendHTTPJsonRequest(url, "PATCH", requestBody)
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
+	internal.LogInfo("Response body %s", string(body))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
 	}
 
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
-
-	response, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	var changeResponse ChangeResponse
-	err = json.Unmarshal(response, &changeResponse)
+	err = json.Unmarshal(body, &changeResponse)
 	if err != nil {
 		return nil, err
 	}
 	return &changeResponse, nil
+}
+
+func sendHTTPJsonRequest(url, method string, body []byte) (*http.Response, error) {
+	request, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func printCurrentTopology(flags *Flags) error {
@@ -269,7 +298,7 @@ func forceFailover(flags *Flags) error {
 
 	brokersInRegion := getBrokers(currentTopology, flags.regions, flags.regionId)
 
-	changeResponse, err := sendScaleRequest(port, brokersInRegion, true, -1)
+	changeResponse, err := sendScaleRequest(port, brokersInRegion, 0, true, -1)
 	ensureNoError(err)
 
 	timeout := time.Minute * 5
@@ -355,6 +384,17 @@ type CurrentTopology struct {
 	PendingChange *TopologyChange
 }
 
+func (topology *CurrentTopology) partitionCount() int32 {
+	partitionCount := int32(0)
+
+	for _, broker := range topology.Brokers {
+		for _, partition := range broker.Partitions {
+			partitionCount = max(partitionCount, partition.Id)
+		}
+	}
+	return partitionCount
+}
+
 type BrokerState struct {
 	Id         int32
 	State      string
@@ -386,4 +426,37 @@ type Operation struct {
 	BrokerId    int32
 	PartitionId int32
 	Priority    int32
+}
+
+type ClusterPatchRequest struct {
+	Brokers    *ClusterPatchRequestBroker    `json:"brokers"`
+	Partitions *ClusterPatchRequestPartition `json:"partitions"`
+}
+
+func (req *ClusterPatchRequest) withBrokers(brokerIds []int32) *ClusterPatchRequest {
+	if brokerIds != nil && len(brokerIds) > 0 {
+		req.Brokers = &ClusterPatchRequestBroker{Count: int32(len(brokerIds))}
+	}
+	return req
+}
+
+func (req *ClusterPatchRequest) withPartitions(partitionCount, replicationFactor int32) *ClusterPatchRequest {
+	if partitionCount > 0 {
+		req.Partitions = &ClusterPatchRequestPartition{Count: &partitionCount}
+	}
+	if replicationFactor > 0 {
+		if req.Partitions == nil {
+			req.Partitions = &ClusterPatchRequestPartition{}
+		}
+		req.Partitions.ReplicationFactor = &replicationFactor
+	}
+	return req
+}
+
+type ClusterPatchRequestBroker struct {
+	Count int32 `json:"count"`
+}
+type ClusterPatchRequestPartition struct {
+	Count             *int32 `json:"count"`
+	ReplicationFactor *int32 `json:"replicationFactor"`
 }
