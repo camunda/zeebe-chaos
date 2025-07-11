@@ -43,7 +43,6 @@ type AuthenticationProvider struct {
 	AuthorizationURL string
 	ClientId         string
 	ClientSecret     string
-	// ContactPoint     string
 }
 
 func (c *AuthenticationProvider) toFlags() []string {
