@@ -136,3 +136,15 @@ func Test_ClusterPatchRequestJsonPartitionOnly(t *testing.T) {
 	expected := `{"brokers":null,"partitions":{"count":8,"replicationFactor":3}}`
 	assert.Equal(t, expected, string(json))
 }
+
+func Test_ClusterPatchRequestJsonReplicationFactorOnly(t *testing.T) {
+	// given
+	req := (&ClusterPatchRequest{}).withBrokers(nil).withPartitions(0, 3)
+	// when
+	json, err := json.Marshal(req)
+	// then
+	assert.Nil(t, err)
+	assert.NotNil(t, json)
+	expected := `{"brokers":null,"partitions":{"count":null,"replicationFactor":3}}`
+	assert.Equal(t, expected, string(json))
+}
