@@ -121,14 +121,19 @@ func Test_ShouldHandleCommand(t *testing.T) {
 	// then
 	assert.True(t, fakeJobClient.Succeeded)
 	assert.Equal(t, 123, fakeJobClient.Key)
-	var expectedArgs = []string{
+	expectedArgs := []string{
 		"--namespace", "clusterId-zeebe",
+		"--authServer=https://auth.com/url",
+		"--audience=zeebe.com",
+		"--clientId=randomClientId",
+		"--clientSecret=superSecret",
 		"disconnect", "gateway",
 		"--all",
 		"--verbose",
 		"--jsonLogging",
 		"--dockerImageTag",
-		"test"}
+		"test",
+	}
 	assert.Equal(t, expectedArgs, appliedArgs)
 }
 
@@ -161,13 +166,18 @@ func Test_ShouldHandleCommandForSelfManagedWhenNoClusterId(t *testing.T) {
 	// then
 	assert.True(t, fakeJobClient.Succeeded)
 	assert.Equal(t, 123, fakeJobClient.Key)
-	var expectedArgs = []string{
+	expectedArgs := []string{
+		"--authServer=https://auth.com/url",
+		"--audience=zeebe.com",
+		"--clientId=randomClientId",
+		"--clientSecret=superSecret",
 		"disconnect", "gateway",
 		"--all",
 		"--verbose",
 		"--jsonLogging",
 		"--dockerImageTag",
-		"test"}
+		"test",
+	}
 	assert.Equal(t, expectedArgs, appliedArgs)
 }
 
@@ -241,15 +251,51 @@ func Test_ShouldFailJobWhenHandleFails(t *testing.T) {
 	// retry count is not decreased
 	assert.Equal(t, 3, fakeJobClient.RetriesVal)
 	assert.Equal(t, time.Duration(10)*time.Second, fakeJobClient.RetryBackoff)
-	var expectedArgs = []string{
+	expectedArgs := []string{
 		"--namespace", "clusterId-zeebe",
+		"--authServer=https://auth.com/url",
+		"--audience=zeebe.com",
+		"--clientId=randomClientId",
+		"--clientSecret=superSecret",
 		"disconnect", "gateway",
 		"--all",
 		"--verbose",
 		"--jsonLogging",
 		"--dockerImageTag",
-		"test"}
+		"test",
+	}
 	assert.Equal(t, expectedArgs, appliedArgs)
+}
+
+func Test_shouldUnmarshalAuthCredentials(t *testing.T) {
+	jsonAuth := `{
+		"audience":"audience.zeebe.ultrawombat.com",
+		"authorizationURL":"https://login.cloud.ultrawombat.com/oauth/token",
+		"clientId":"myClientId",
+		"clientSecret":"superSecret",
+		"contactPoint":"example.chaos-1.zeebe.ultrawombat.com:443"
+	}`
+	var authentication AuthenticationProvider
+	err := json.Unmarshal([]byte(jsonAuth), &authentication)
+	assert.Nil(t, err)
+
+	assert.Equal(t, authentication.Audience, "audience.zeebe.ultrawombat.com")
+	assert.Equal(t, authentication.ClientId, "myClientId")
+	assert.Equal(t, authentication.AuthorizationURL, "https://login.cloud.ultrawombat.com/oauth/token")
+	assert.Equal(t, authentication.ClientSecret, "superSecret")
+}
+
+func Test_shouldCreateFlagsCorrectly(t *testing.T) {
+	auth := createZbChaosVariables().AuthenticationDetails
+
+	flags := auth.toFlags()
+	expectedFlags := []string{
+		"--authServer=https://auth.com/url",
+		"--audience=zeebe.com",
+		"--clientId=randomClientId",
+		"--clientSecret=superSecret",
+	}
+	assert.Equal(t, expectedFlags, flags)
 }
 
 func createVariablesAsJson() (string, error) {
@@ -270,6 +316,12 @@ func createZbChaosVariables() ZbChaosVariables {
 			Arguments: []string{"disconnect", "gateway", "--all"},
 		},
 		ZeebeImage: "gcr.io/zeebe-io/zeebe:test",
+		AuthenticationDetails: AuthenticationProvider{
+			Audience:         "zeebe.com",
+			AuthorizationURL: "https://auth.com/url",
+			ClientId:         "randomClientId",
+			ClientSecret:     "superSecret",
+		},
 	}
 	return variables
 }

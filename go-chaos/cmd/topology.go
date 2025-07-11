@@ -28,8 +28,7 @@ import (
 )
 
 func AddTopologyCmd(rootCmd *cobra.Command, flags *Flags) {
-
-	var topologyCmd = &cobra.Command{
+	topologyCmd := &cobra.Command{
 		Use:   "topology",
 		Short: "Print the Zeebe topology deployed in the current namespace",
 		Long:  `Shows the current Zeebe topology, in the current kubernetes namespace.`,
@@ -42,7 +41,7 @@ func AddTopologyCmd(rootCmd *cobra.Command, flags *Flags) {
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			client, err := internal.CreateZeebeClient(port)
+			client, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			if err != nil {
 				panic(err)
 			}

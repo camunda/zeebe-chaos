@@ -16,8 +16,9 @@ package internal
 
 import (
 	"context"
-	v1 "k8s.io/api/core/v1"
 	"testing"
+
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,7 +122,7 @@ func Test_ShouldDeployWorkerDeploymentWithDifferentDockerImage(t *testing.T) {
 	k8Client := CreateFakeClient()
 
 	// when
-	err := k8Client.CreateWorkerDeployment("testTag", 1)
+	err := k8Client.CreateWorkerDeployment("testTag", 1, mockedCredentials())
 
 	// then
 	require.NoError(t, err)
@@ -175,7 +176,7 @@ func Test_ShouldDeployWorkerInSaasWithDifferentDockerImageTag(t *testing.T) {
 	k8Client.createSaaSCRD(t)
 
 	// when
-	err := k8Client.CreateWorkerDeployment("testTag", 1)
+	err := k8Client.CreateWorkerDeployment("testTag", 1, mockedCredentials())
 
 	// then
 	require.NoError(t, err)
@@ -194,7 +195,7 @@ func Test_ShouldDeployWorkerWithDifferentPollingDelay(t *testing.T) {
 	k8Client.createSaaSCRD(t)
 
 	// when
-	err := k8Client.CreateWorkerDeployment("testTag", 50)
+	err := k8Client.CreateWorkerDeployment("testTag", 50, mockedCredentials())
 
 	// then
 	require.NoError(t, err)
@@ -262,4 +263,13 @@ func Test_ShouldDeployWorkerWithoutTolerationsForSM(t *testing.T) {
 
 	podSpec := deploymentList.Items[0].Spec.Template.Spec
 	assert.Equal(t, 0, len(podSpec.Tolerations))
+}
+
+func mockedCredentials() *ClientCredentials {
+	return &ClientCredentials{
+		AuthServer:   "AuthServer",
+		Audience:     "Audience",
+		ClientId:     "ClientId",
+		ClientSecret: "SuperSecret",
+	}
 }

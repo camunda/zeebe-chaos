@@ -22,19 +22,17 @@ import (
 )
 
 func AddVerifyCommands(rootCmd *cobra.Command, flags *Flags) {
-
-	var verifyCmd = &cobra.Command{
+	verifyCmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify certain properties",
 		Long:  `Verify certain properties on Zeebe nodes, like readiness or steady-state.`,
 	}
 
-	var verifyReadinessCmd = &cobra.Command{
+	verifyReadinessCmd := &cobra.Command{
 		Use:   "readiness",
 		Short: "Verify readiness of a Zeebe nodes",
 		Long:  `Verifies the readiness of Zeebe nodes.`,
 		Run: func(cmd *cobra.Command, args []string) {
-
 			k8Client, err := createK8ClientWithFlags(flags)
 			ensureNoError(err)
 
@@ -45,7 +43,7 @@ func AddVerifyCommands(rootCmd *cobra.Command, flags *Flags) {
 		},
 	}
 
-	var verifyInstanceCreation = &cobra.Command{
+	verifyInstanceCreation := &cobra.Command{
 		Use:   "instance-creation",
 		Short: "Verify the instance creation",
 		Long: `Verifies that an instance from a specific process model can be created on a specific partition.
@@ -57,7 +55,7 @@ Process instances are created until the required partition is reached.`,
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			zbClient, err := internal.CreateZeebeClient(port)
+			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			ensureNoError(err)
 			defer zbClient.Close()
 
@@ -79,7 +77,7 @@ Process instances are created until the required partition is reached.`,
 		},
 	}
 
-	var verifyInstanceCount = &cobra.Command{
+	verifyInstanceCount := &cobra.Command{
 		Use:   "instance-count",
 		Short: "Verify the instance creation count",
 		Long:  `Verifies that a specific count of process instances from a specific process model can be created.`,
@@ -90,7 +88,7 @@ Process instances are created until the required partition is reached.`,
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			zbClient, err := internal.CreateZeebeClient(port)
+			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			ensureNoError(err)
 			defer zbClient.Close()
 
@@ -108,7 +106,7 @@ Process instances are created until the required partition is reached.`,
 		},
 	}
 
-	var verifyJobCompletion = &cobra.Command{
+	verifyJobCompletion := &cobra.Command{
 		Use:   "job-completion",
 		Short: "Verify that X jobs can be completed",
 		Long:  `Verifies that an specific count of jobs can be completed for a specific job type.`,
@@ -119,7 +117,7 @@ Process instances are created until the required partition is reached.`,
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			zbClient, err := internal.CreateZeebeClient(port)
+			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			ensureNoError(err)
 			defer zbClient.Close()
 

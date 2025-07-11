@@ -23,8 +23,7 @@ import (
 )
 
 func AddPublishCmd(rootCmd *cobra.Command, flags *Flags) {
-
-	var publishCmd = &cobra.Command{
+	publishCmd := &cobra.Command{
 		Use:   "publish",
 		Short: "Publish a message",
 		Long:  `Publish a message to a certain partition.`,
@@ -35,7 +34,7 @@ func AddPublishCmd(rootCmd *cobra.Command, flags *Flags) {
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			zbClient, err := internal.CreateZeebeClient(port)
+			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			panicOnError(err)
 			defer zbClient.Close()
 

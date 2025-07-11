@@ -103,10 +103,10 @@ type DisconnectBrokerCfg struct {
 	OneDirection bool
 }
 
-func DisconnectBroker(kubeConfigPath string, namespace string, disconnectBrokerCfg DisconnectBrokerCfg) error {
+func DisconnectBroker(kubeConfigPath string, namespace string, disconnectBrokerCfg DisconnectBrokerCfg, credentials *internal.ClientCredentials) error {
 	k8Client, err := prepareBrokerDisconnect(kubeConfigPath, namespace)
 
-	zbClient, closeFn, err := ConnectToZeebeCluster(k8Client)
+	zbClient, closeFn, err := ConnectToZeebeCluster(k8Client, credentials)
 	if err != nil {
 		return err
 	}
@@ -138,8 +138,8 @@ type DisconnectGatewayCfg struct {
 	BrokerCfg       Broker
 }
 
-func DisconnectGateway(kubeConfigPath string, namespace string, disconnectGatewayCfg DisconnectGatewayCfg) error {
-	k8Client, zbClient, closeFn, err := prepareGatewayDisconnect(kubeConfigPath, namespace)
+func DisconnectGateway(kubeConfigPath string, namespace string, disconnectGatewayCfg DisconnectGatewayCfg, credentials *internal.ClientCredentials) error {
+	k8Client, zbClient, closeFn, err := prepareGatewayDisconnect(kubeConfigPath, namespace, credentials)
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func DisconnectGateway(kubeConfigPath string, namespace string, disconnectGatewa
 	return nil
 }
 
-func prepareGatewayDisconnect(kubeConfigPath string, namespace string) (internal.K8Client, zbc.Client, func(), error) {
+func prepareGatewayDisconnect(kubeConfigPath string, namespace string, credentials *internal.ClientCredentials) (internal.K8Client, zbc.Client, func(), error) {
 	k8Client, err := prepareBrokerDisconnect(kubeConfigPath, namespace)
 	if err != nil {
 		return k8Client, nil, nil, err
@@ -186,7 +186,7 @@ func prepareGatewayDisconnect(kubeConfigPath string, namespace string) (internal
 		return internal.K8Client{}, nil, nil, err
 	}
 
-	zbClient, closeFn, err := ConnectToZeebeCluster(k8Client)
+	zbClient, closeFn, err := ConnectToZeebeCluster(k8Client, credentials)
 	if err != nil {
 		return internal.K8Client{}, nil, nil, err
 	}

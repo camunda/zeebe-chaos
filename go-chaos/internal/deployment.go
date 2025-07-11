@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	template "text/template"
 
 	v12 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -35,7 +36,6 @@ import (
 var k8Deployments embed.FS
 
 func (c K8Client) getGatewayDeployment() (*v12.Deployment, error) {
-
 	listOptions := metav1.ListOptions{
 		LabelSelector: c.getGatewayLabels(),
 	}
@@ -53,14 +53,29 @@ func (c K8Client) getGatewayDeployment() (*v12.Deployment, error) {
 }
 
 func (c K8Client) CreateWorkerDeploymentDefault() error {
-	return c.CreateWorkerDeployment("zeebe", 1)
+	return c.CreateWorkerDeployment("zeebe", 1, &ClientCredentials{})
 }
 
-func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs int) error {
-	workerBytes, err := k8Deployments.ReadFile("manifests/worker.yaml")
+func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs int, credentials *ClientCredentials) error {
+	filename := "manifests/worker.yaml"
+	// the tempalte name must be the filename
+	tmpl, err := template.New("worker.yaml").ParseFiles(filename)
 	if err != nil {
 		return err
 	}
+	pollingDelayStr := strconv.FormatInt(int64(pollingDelayMs), 10) + "ms"
+	workerBuilder := new(strings.Builder)
+	replacements := TemplateReplacements{
+		ImageTag:          dockerImageTag,
+		PollingDelay:      pollingDelayStr,
+		ClientCredentials: *credentials,
+	}
+	err = tmpl.ExecuteTemplate(workerBuilder, "worker.yaml", replacements)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Template execute is ", workerBuilder.String())
+	workerBytes := []byte(workerBuilder.String())
 
 	LogVerbose("Deploy worker deployment to the current namespace: %s", c.GetCurrentNamespace())
 
@@ -96,9 +111,6 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 		}
 	}
 
-	container.Image = strings.Replace(container.Image, "{{ imageTag }}", dockerImageTag, 1)
-	replaceJavaOptions(container, "{{ pollingDelay }}", strconv.FormatInt(int64(pollingDelayMs), 10)+"ms")
-
 	_, err = c.Clientset.AppsV1().Deployments(c.GetCurrentNamespace()).Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		if err.Error() == "deployments.apps \"worker\" already exists" {
@@ -111,6 +123,12 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 		}
 	}
 	return err
+}
+
+type TemplateReplacements struct {
+	PollingDelay string
+	ImageTag     string
+	ClientCredentials
 }
 
 // Replaces a given string for a substitution in the JAVA_OPTIONS env var

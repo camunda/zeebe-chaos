@@ -86,13 +86,21 @@ type Flags struct {
 
 	// dataloss
 	awaitReadiness bool
+
+	// client connection
+	authServer   string
+	audience     string
+	clientId     string
+	clientSecret string
 }
 
-var Version = "development"
-var Commit = "HEAD"
-var Verbose bool
-var JsonLogging bool
-var DockerImageTag string = "zeebe"
+var (
+	Version        = "development"
+	Commit         = "HEAD"
+	Verbose        bool
+	JsonLogging    bool
+	DockerImageTag string = "zeebe"
+)
 
 func NewCmd() *cobra.Command {
 	flags := Flags{}
@@ -117,6 +125,12 @@ func NewCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&flags.kubeConfigPath, "kubeconfig", "", "path the the kube config that will be used")
 	rootCmd.PersistentFlags().StringVarP(&flags.namespace, "namespace", "n", "", "connect to the given namespace")
 	rootCmd.PersistentFlags().StringVarP(&DockerImageTag, "dockerImageTag", "", DockerImageTag, "use the given docker image tag for deployed resources, e.g. worker/starter")
+	// auth flags
+	rootCmd.PersistentFlags().StringVar(&flags.audience, "audience", "", "authentication audience")
+	rootCmd.PersistentFlags().StringVar(&flags.authServer, "authServer", "", "authentication authserver")
+	rootCmd.PersistentFlags().StringVar(&flags.clientId, "clientId", "", "authentication clientId")
+	rootCmd.PersistentFlags().StringVar(&flags.clientSecret, "clientSecret", "", "authentication clientSecret")
+	rootCmd.MarkFlagsRequiredTogether("audience", "authServer", "clientId", "clientSecret")
 
 	AddBackupCommand(rootCmd, &flags)
 	AddBrokersCommand(rootCmd, &flags)
@@ -147,4 +161,19 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func makeClientCredentials(flags *Flags) *internal.ClientCredentials {
+	// check only one of the auth flags, as they are `MarkFlagsRequiredTogether`
+	if flags.clientSecret == "" {
+		return nil
+	}
+	credentials := &internal.ClientCredentials{
+		AuthServer:   flags.authServer,
+		Audience:     flags.audience,
+		ClientId:     flags.clientId,
+		ClientSecret: flags.clientSecret,
+	}
+
+	return credentials
 }

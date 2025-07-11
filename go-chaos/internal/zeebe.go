@@ -29,23 +29,50 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-func CreateZeebeClient(port int) (zbc.Client, error) {
+func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, error) {
 	endpoint := fmt.Sprintf("localhost:%d", port)
-	client, err := zbc.NewClient(&zbc.ClientConfig{
+
+	clientConfig := &zbc.ClientConfig{
 		GatewayAddress:         endpoint,
 		DialOpts:               []grpc.DialOption{},
 		UsePlaintextConnection: true,
-	})
+	}
+
+	if credentials != nil {
+		credsProvider, err := zbc.NewOAuthCredentialsProvider(&zbc.OAuthProviderConfig{
+			Audience:               credentials.Audience,
+			AuthorizationServerURL: credentials.AuthServer,
+			ClientID:               credentials.ClientId,
+			ClientSecret:           credentials.ClientSecret,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if credsProvider != nil {
+			clientConfig.CredentialsProvider = credsProvider
+			clientConfig.UsePlaintextConnection = false
+		}
+	}
+
+	client, err := zbc.NewClient(clientConfig)
 	if err != nil {
 		return nil, err
 	}
 	return client, nil
 }
 
+type ClientCredentials struct {
+	AuthServer   string
+	Audience     string
+	ClientId     string
+	ClientSecret string
+}
+
 func GetBrokerPodNameForPartitionAndRole(k8Client K8Client,
 	zbClient zbc.Client,
 	partitionId int,
-	role string) (string, error) {
+	role string,
+) (string, error) {
 	pod, err := GetBrokerPodForPartitionAndRole(k8Client, zbClient, partitionId, role)
 	if err != nil {
 		return "", err
@@ -57,8 +84,8 @@ func GetBrokerPodNameForPartitionAndRole(k8Client K8Client,
 func GetBrokerPodForPartitionAndRole(k8Client K8Client,
 	zbClient zbc.Client,
 	partitionId int,
-	role string) (*v1.Pod, error) {
-
+	role string,
+) (*v1.Pod, error) {
 	firstBrokerNodeId, err := GetBrokerNodeId(zbClient, partitionId, role)
 	if err != nil {
 		return nil, err
@@ -179,8 +206,7 @@ func readModels(bpmnFileName string, dmnFileName string) (*models, error) {
 }
 
 func deployModels(client zbc.Client, models *models) error {
-	_, err :=
-		client.NewDeployResourceCommand().AddResource(models.bpmnBytes, models.bpmnFileName).AddResource(models.dmnBytes, models.dmnFileName).Send(context.TODO())
+	_, err := client.NewDeployResourceCommand().AddResource(models.bpmnBytes, models.bpmnFileName).AddResource(models.dmnBytes, models.dmnFileName).Send(context.TODO())
 	if err != nil {
 		return err
 	}

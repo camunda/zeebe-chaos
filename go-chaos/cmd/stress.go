@@ -43,7 +43,7 @@ func AddStressCmd(rootCmd *cobra.Command, flags *Flags) {
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 			defer closeFn()
 
-			zbClient, err := internal.CreateZeebeClient(port)
+			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			ensureNoError(err)
 			defer zbClient.Close()
 
@@ -88,7 +88,6 @@ func AddStressCmd(rootCmd *cobra.Command, flags *Flags) {
 	stressBroker.Flags().IntVar(&flags.partitionId, "partitionId", 1, "Specify the partition id of the Broker")
 
 	stress.AddCommand(stressGateway)
-
 }
 
 func getBrokerPod(k8Client internal.K8Client, zbClient zbc.Client, brokerNodeId int, brokerPartitionId int, brokerRole string) *v1.Pod {
