@@ -70,6 +70,7 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	scaleCommand.Flags().IntVar(&flags.brokers, "brokers", 0, "The amount of brokers to scale to")
 	scaleCommand.Flags().Int32Var(&flags.replicationFactor, "replicationFactor", -1, "The new replication factor")
 	scaleCommand.Flags().Int32Var(&flags.partitionCount, "partitionCount", -1, "The number of partitions to scale to")
+	scaleCommand.MarkFlagsOneRequired("brokers", "partitionCount", "replicationFactor")
 	forceFailoverCommand.Flags().Int32Var(&flags.regions, "regions", 1, "The number of regions in the cluster")
 	forceFailoverCommand.Flags().Int32Var(&flags.regionId, "regionId", 0, "The id of the region to failover to")
 	forceFailoverCommand.MarkFlagRequired("regions")
@@ -77,9 +78,6 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 }
 
 func scaleCluster(flags *Flags) error {
-	if flags.partitionCount <= 0 && flags.brokers <= 0 && flags.replicationFactor <= 0 {
-		internal.LogInfo("Either partitionCount, replicationFactor or brokers must be set for scale command")
-	}
 	k8Client, err := createK8ClientWithFlags(flags)
 	ensureNoError(err)
 
@@ -100,7 +98,7 @@ func scaleCluster(flags *Flags) error {
 		_, err = scaleDownBrokers(k8Client, port, flags.brokers, flags.replicationFactor)
 	} else if len(currentTopology.Brokers) < flags.brokers {
 		_, err = scaleUpBrokers(k8Client, port, flags.brokers, flags.partitionCount, flags.replicationFactor)
-	} else if currentTopology.partitionCount() <= flags.partitionCount || (flags.replicationFactor > 0 && flags.partitionCount < 0) {
+	} else if currentTopology.partitionCount() <= flags.partitionCount || (flags.replicationFactor > 0 && flags.partitionCount <= 0) {
 		_, err = scalePartitions(k8Client, port, flags.partitionCount, flags.replicationFactor)
 	} else if currentTopology.partitionCount() >= flags.partitionCount {
 		internal.LogInfo("Cannot scale down to %d or it's the same number of partitions", flags.partitionCount)
