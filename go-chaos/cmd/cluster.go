@@ -152,31 +152,29 @@ func requestBrokerScaling(port int, brokers int, partitionCount int32, replicati
 }
 
 func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
+	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
+
+	changeResponse, err := sendPatchCluster(port, force, *clusterRequest)
+	if err != nil {
+		return nil, err
+	}
+	return changeResponse, nil
+}
+
+func sendPatchCluster(port int, force bool, clusterRequest ClusterPatchRequest) (*ChangeResponse, error) {
 	forceParam := "false"
 	if force {
 		forceParam = "true"
 	}
 	url := fmt.Sprintf("http://localhost:%d/actuator/cluster?force=%s", port, forceParam)
-	if replicationFactor > 0 {
-		url = url + fmt.Sprintf("&replicationFactor=%d", replicationFactor)
-	}
-	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
-
 	requestBody, err := json.Marshal(clusterRequest)
 	if err != nil {
 		return nil, err
 	}
 	internal.LogInfo("Requesting scaling %s with input %s \n", url, string(requestBody))
-	request, err := http.NewRequest("PATCH", url, bytes.NewReader(requestBody))
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
+	resp, err := sendHTTPJsonRequest(url, "PATCH", requestBody)
 	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -185,16 +183,25 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
 	}
 
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
-
 	var changeResponse ChangeResponse
 	err = json.Unmarshal(body, &changeResponse)
 	if err != nil {
 		return nil, err
 	}
 	return &changeResponse, nil
+}
+
+func sendHTTPJsonRequest(url, method string, body []byte) (*http.Response, error) {
+	request, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func printCurrentTopology(flags *Flags) error {
