@@ -285,6 +285,19 @@ func Test_shouldUnmarshalAuthCredentials(t *testing.T) {
 	assert.Equal(t, authentication.ClientSecret, "superSecret")
 }
 
+func Test_shouldCreateFlagsCorrectly(t *testing.T) {
+	auth := createZbChaosVariables().AuthenticationDetails
+
+	flags := auth.toFlags()
+	expectedFlags := []string{
+		"--authServer=https://auth.com/url",
+		"--audience=zeebe.com",
+		"--clientId=randomClientId",
+		"--clientSecret=superSecret",
+	}
+	assert.Equal(t, expectedFlags, flags)
+}
+
 func createVariablesAsJson() (string, error) {
 	variables := createZbChaosVariables()
 
