@@ -183,7 +183,7 @@ func HandleReadExperiments(client worker.JobClient, job entities.Job) {
 	if len(jobVariables.TargetVersion) > 0 {
 		targetClusterVersion = jobVariables.TargetVersion
 	} else {
-		targetClusterVersion = getTargetClusterVersion(namespace, nil)
+		targetClusterVersion = getTargetClusterVersion(namespace)
 	}
 	experiments, err := chaos_experiments.ReadExperimentsForClusterPlan(*jobVariables.ClusterPlan, targetClusterVersion)
 	if err != nil {
@@ -208,7 +208,7 @@ func HandleReadExperiments(client worker.JobClient, job entities.Job) {
 	_, _ = command.Send(ctx)
 }
 
-func getTargetClusterVersion(namespace string, credentials *internal.ClientCredentials) string {
+func getTargetClusterVersion(namespace string) string {
 	k8Client, err := internal.CreateK8Client("", namespace)
 	if k8Client.ClientConfig == nil || k8Client.Clientset == nil {
 		internal.LogInfo(
@@ -220,7 +220,7 @@ func getTargetClusterVersion(namespace string, credentials *internal.ClientCrede
 	port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
 	defer closeFn()
 
-	zbClient, err := internal.CreateZeebeClient(port, credentials)
+	zbClient, err := internal.CreateZeebeClient(port, nil)
 	if err != nil {
 		internal.LogInfo("Failed to read target cluster version from topology of '%s', will only read experiments without version bounds. Error: '%s'", namespace, err)
 		return ""
