@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: gcr.io/zeebe-io/worker:{{ imageTag }}
+          image: gcr.io/zeebe-io/worker:{{.ImageTag}}
           imagePullPolicy: Always
           env:
             - name: JDK_JAVA_OPTIONS
@@ -24,11 +24,19 @@ spec:
                 -Dapp.brokerUrl=zeebe-service:26500
                 -Dzeebe.client.requestTimeout=62000
                 -Dapp.worker.capacity=10
-                -Dapp.worker.pollingDelay={{ pollingDelay }}
+                -Dapp.worker.pollingDelay={{.PollingDelay}}
                 -Dapp.worker.completionDelay=50ms
                 -XX:+HeapDumpOnOutOfMemoryError
             - name: LOG_LEVEL
               value: "debug"
+            - name: CAMUNDA_AUTHORIZATION_SERVER_URL
+              value: {{.AuthServer}}
+            - name: CAMUNDA_TOKEN_AUDIENCE
+              value: {{.Audience}}
+            - name: CAMUNDA_CLIENT_ID
+              value: {{.ClientId}}
+            - name: CAMUNDA_CLIENT_SECRET
+              value: {{.ClientSecret}}
           resources:
             limits:
               cpu: 4
