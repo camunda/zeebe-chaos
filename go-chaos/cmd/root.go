@@ -130,6 +130,7 @@ func NewCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&flags.authServer, "authServer", "", "authentication authserver")
 	rootCmd.PersistentFlags().StringVar(&flags.clientId, "clientId", "", "authentication clientId")
 	rootCmd.PersistentFlags().StringVar(&flags.clientSecret, "clientSecret", "", "authentication clientSecret")
+	rootCmd.Parent().MarkFlagsRequiredTogether("audience", "authServer", "clientId", "clientSecret")
 
 	AddBackupCommand(rootCmd, &flags)
 	AddBrokersCommand(rootCmd, &flags)
@@ -163,16 +164,8 @@ func Execute() {
 }
 
 func makeClientCredentials(flags *Flags) *internal.ClientCredentials {
-	if len(flags.authServer) == 0 {
-		return nil
-	}
-	if len(flags.audience) == 0 {
-		return nil
-	}
-	if len(flags.clientSecret) == 0 {
-		return nil
-	}
-	if len(flags.clientId) == 0 {
+	// check only one of the auth flags, as they are `MarkFlagsRequiredTogether`
+	if flags.clientSecret == "" {
 		return nil
 	}
 	credentials := &internal.ClientCredentials{
