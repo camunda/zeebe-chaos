@@ -42,7 +42,7 @@ func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, er
 		credsProvider, err := zbc.NewOAuthCredentialsProvider(&zbc.OAuthProviderConfig{
 			Audience:               credentials.Audience,
 			AuthorizationServerURL: credentials.AuthServer,
-			ClientID:               credentials.ClientID,
+			ClientID:               credentials.ClientId,
 			ClientSecret:           credentials.ClientSecret,
 		})
 		if err != nil {
@@ -64,7 +64,7 @@ func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, er
 type ClientCredentials struct {
 	AuthServer   string
 	Audience     string
-	ClientID     string
+	ClientId     string
 	ClientSecret string
 }
 
