@@ -38,6 +38,9 @@ func (c K8Client) GetZeebeStatefulSet() (*v1.StatefulSet, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(sfs.Items) == 0 {
+			sfs, err = statefulSets.List(ctx, meta.ListOptions{LabelSelector: getSelfManagedZeebeStatefulSetLabelsBefore88()})
+		}
 		if len(sfs.Items) == 1 {
 			return &sfs.Items[0], nil
 		}
