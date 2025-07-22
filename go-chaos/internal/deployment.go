@@ -57,9 +57,12 @@ func (c K8Client) CreateWorkerDeploymentDefault() error {
 }
 
 func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs int, credentials *ClientCredentials) error {
-	filename := "manifests/worker.yaml"
-	// the tempalte name must be the filename
-	tmpl, err := template.New("worker.yaml").ParseFiles(filename)
+	templateFile, err := k8Deployments.ReadFile("manifests/worker.yaml")
+	if err != nil {
+		return err
+	}
+	// the template name must be the filename
+	tmpl, err := template.New("worker.yaml").Parse(string(templateFile))
 	if err != nil {
 		return err
 	}
