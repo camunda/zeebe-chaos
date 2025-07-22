@@ -48,10 +48,7 @@ func CreateZeebeClient(port int, credentials *ClientCredentials) (zbc.Client, er
 		if err != nil {
 			return nil, err
 		}
-		if credsProvider != nil {
-			clientConfig.CredentialsProvider = credsProvider
-			clientConfig.UsePlaintextConnection = false
-		}
+		clientConfig.CredentialsProvider = credsProvider
 	}
 
 	client, err := zbc.NewClient(clientConfig)
