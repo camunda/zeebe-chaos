@@ -114,7 +114,7 @@ func Test_ShouldDeployWorkerDeployment(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=testNamespace-zeebe-gateway:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://testNamespace-zeebe-gateway:26500")
 }
 
 func Test_ShouldDeployWorkerDeploymentWithDifferentDockerImage(t *testing.T) {
@@ -131,7 +131,7 @@ func Test_ShouldDeployWorkerDeploymentWithDifferentDockerImage(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=testNamespace-zeebe-gateway:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://testNamespace-zeebe-gateway:26500")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "testTag")
 }
 
@@ -167,7 +167,7 @@ func Test_ShouldDeployWorkerInSaas(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
 }
 
 func Test_ShouldDeployWorkerInSaasWithDifferentDockerImageTag(t *testing.T) {
@@ -185,7 +185,7 @@ func Test_ShouldDeployWorkerInSaasWithDifferentDockerImageTag(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "testTag")
 }
 
@@ -221,7 +221,7 @@ func Test_ShouldDeployWorkerWithDefaults(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
 	assert.Equal(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "gcr.io/zeebe-io/worker:zeebe")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.worker.pollingDelay=1ms")
 }
