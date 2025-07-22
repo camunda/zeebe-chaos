@@ -21,7 +21,7 @@ spec:
           env:
             - name: JDK_JAVA_OPTIONS
               value: >-
-                -Dapp.brokerUrl=zeebe-service:26500
+                -Dapp.brokerUrl=http://zeebe-service:26500
                 -Dzeebe.client.requestTimeout=62000
                 -Dapp.worker.capacity=10
                 -Dapp.worker.pollingDelay={{.PollingDelay}}
