@@ -103,6 +103,7 @@ func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner C
 		internal.LoggingContext = nil
 	}() // reset the context
 	internal.LogInfo("Handle zbchaos job [key: %d]", job.Key)
+	internal.LogVerbose("Got variables for job %d: %v", job.Key, job.GetVariables())
 
 	timeout := time.Duration(jobVariables.Provider.Timeout) * time.Second
 	commandCtx, cancelCommand := context.WithTimeout(ctx, timeout)
@@ -122,6 +123,7 @@ func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner C
 	}
 
 	authFlags := jobVariables.AuthenticationDetails.toFlags()
+	internal.LogVerbose("Built auth flags %v from %v", authFlags, jobVariables.AuthenticationDetails)
 	extraFlags = append(extraFlags, authFlags...)
 
 	commandArgs := append(extraFlags, jobVariables.Provider.Arguments...)
