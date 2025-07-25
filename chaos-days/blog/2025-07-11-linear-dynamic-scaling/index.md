@@ -89,12 +89,12 @@ At this point, we have the following topology:
 
 Let's start increasing the load incrementally, by adding 30 Process instances/s for every step.
 
-| Time   | Brokers | Partitions | Throughput       | CPU Usage               | Throttling (CPU)        | Backpressure     | Notes               |
-|--------|---------|------------|------------------|-------------------------|-------------------------|------------------|---------------------|
-| 09:30  | 3       | 3          | 150 PI/s, 150 jobs/s | 1.28 / 1.44 / 1.02  | 12% / 7% / 1%          | 0                 |                     |
-| 09:49  | 3       | 3          | 180 PI/s, 180 jobs/s | 1.34 / 1.54 / 1.12  | 20% / 17% / 2%         | 0                 | Increased input to 6 starters |
-| 10:00  | 3       | 3          | 210 PI/s, 210 jobs/s | 1.79 / 1.62 / 1.33  | 28% / 42% / 4%         | 0                 | 7 starters          |
-| 10:12  | 3       | 3          | 240 PI/s, 240 jobs/s | 1.77 / 1.95 / 1.62  | 45% / 90% / 26%        | 0/0.5%            | 8 starters          |
+| Time   | Brokers | Partitions | Throughput       | CPU Usage               | Throttling (CPU)        | Backpressure     |
+|--------|---------|------------|------------------|-------------------------|-------------------------|------------------|
+| 09:30  | 3       | 3          | 150 PI/s, 150 jobs/s | 1.28 / 1.44 / 1.02  | 12% / 7% / 1%          | 0                 |
+| 09:49  | 3       | 3          | 180 PI/s, 180 jobs/s | 1.34 / 1.54 / 1.12  | 20% / 17% / 2%         | 0                 |
+| 10:00  | 3       | 3          | 210 PI/s, 210 jobs/s | 1.79 / 1.62 / 1.33  | 28% / 42% / 4%         | 0                 |
+| 10:12  | 3       | 3          | 240 PI/s, 240 jobs/s | 1.77 / 1.95 / 1.62  | 45% / 90% / 26%        | 0/0.5%            |
 
 At 240 Process Instances spawned per second, the system starts to hit the limits:
 ![CPU usage @ 240 PI/s](./config_1_240_cpu.png)
@@ -131,30 +131,36 @@ As we did before, let's start increasing the load incrementally as we did with t
 | 11:10  | 6       | 6          | 360 PI/s         | 1.39/1.76/1.26/1.43/1.37/1.42                | 19%/42%/2%/16%/21%/22%    | 0                    | Stable           |
 | 11:10  | 6       | 6          | 420 PI/s         | 1.76/1.89/1.50/1.72/1.50/1.70                | 76%/84%/52%/71%/60%/65%     | 0 (spurts on 1 partition) | Pushing hard    |
 
-However, at 11:32 one of the workers restarted, causing some spyke in the processing.
-While the pod was restarting, not all jobs were able to be completed so there was a queue build up.
-When the pod started again, it started going through the job queue, creating a spyke of `CompleteJobRequest` which resulted in a load that was simply too high (around 820 job req/s, which is twice as much as the 420 req/s of the steady state).
+However, at 11:32 one of the workers restarted, causing a spike in the processing due to jobs being yielded back to the engine, less jobs to be activated,
+and thus less to be completed. This caused a job backlog to build up in the engine. Once the worker restarted, the backlog was drained, leading to a spike in
+job completion requests: around 820 req/s, as opposed to the expected 420 req/s.
 
-Because of this extra load, the cluster started to consume even more CPU, reaching almost the CPU limits almost constantly.
+Because of this extra load, the cluster started to consume even more CPU, resulting in heavy CPU throttling from the cloud provider.
+
 ![CPU usage @ 420 PI/s](./config_2_420_cpu.png)
 ![CPU throttling @ 420 PI/s](./config_2_420_cpu_throttling.png)
 
-Unfortunately, at 12:05 some broker restarted. We scaled the load down to 60 PI/s to give the cluster the time to heal.
-After the cluster was healthy again, we increased the throughput to 480 PI/s to verify the scalability with twice as much throughput as the initial configuration.
+On top of this, eventually a broker restarted (most likely as we run on spot VMs). In order to continue with our test, we scaled the load down to 60 PI/s
+to give the cluster the time to heal.
+
+Once the cluster was healthy again, we raised the throughput back to 480 PI/s to verify the scalability with twice as much throughput as the initial configuration.
 
 The cluster was able to sustain 480 process instances per second with similar levels of backpressure of the initial configuration:
+
 ![Backpressure @ 480 PI/s](./config_2_480_backpressure.png)
 
-The cpu usage and CPU throttling are :
+We can see below that CPU usage is high, and there is still some throttling, indicating we might be able to do more with a little bit of vertical scaling, or by scaling out and reducing the number of partitions per broker:
+
 ![CPU usage @ 480 PI/s](./config_2_480_cpu.png)
 ![CPU throttling](./config_2_480_cpu_throttling.png)
 
 ## Conclusion
 
-We are able to verify that the cluster can scale almost linearly when new brokers and new partitions are added, granted that the other components/services are able to bear the extra load, such as workers and Elasticsearch by adding new replicas.
+We were able to verify that the cluster can scale almost linearly with new brokers and partitions, so long as the other components, like the secondary storage, workers, connectors, etc., are able to sustain a similar.
 
-Making sure that the secondary storage is able to keep up with the throughput is important to keep the cluster stable as it's crucial to avoid filling up the Zeebe disks, which would bring to a halt the cluster.
+In particular, making sure that the secondary storage is able to keep up with the throughput turned out to be crucial to keep the cluster stablein order to
+avoid filling up the Zeebe disks, which would bring to a halt the cluster.
 
-In this specific test case, we could have achieved vertical scalability by increasing the CPU limits first, this remains an interesting direction to explore for another experiment.
+We encountered a similar issue when one worker restarts: initially it creates a backlog of unhandled jobs, which turns into a massive increase in requests per second when the worker comes back, as it starts activating jobs faster than the cluster can complete them.
 
-We encountered a similar issue when one worker restarts, increasing the amount of job pushed to the cluster, which in turn generates a load that is not able to be sustained.
+Finally, with this specific test, it would be interesting to explore the limits of vertical scalability, as we often saw CPU throttling being a major blocker for processing. This would make for an interesting future experiment.
