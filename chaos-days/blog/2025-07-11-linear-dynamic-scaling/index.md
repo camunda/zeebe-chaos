@@ -113,7 +113,7 @@ With 240 process instances per second being spawned, we send the commands to sca
 We first scale the `zeebe` *statefulset* to 6 brokers. As soon as the new brokers are running, even before they are healthy,
 we can send the command to include them in the cluster and to increase the number of partition to 6.
 
-This can be done following the [guide in the official docs](https://docs.camunda.io/docs/next/self-managed/zeebe-deployment/operations/cluster-scaling/#2b-scaling-brokers-and-partitions).
+This can be done following the [guide in the official docs](https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/operations/cluster-scaling/#2b-scaling-brokers-and-partitions).
 
 Once the scaling has been completed, as can be seen from the **Cluster operation** section in the dashboard, we see the newly created
 partitions participate in the workload.
