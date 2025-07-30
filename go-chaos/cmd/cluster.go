@@ -160,9 +160,9 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	}
 
 	// if it failed due to 405, fall back
-	var httpErr *http.Response
-	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusMethodNotAllowed {
-		internal.LogInfo("PATCH endpoint not supported, falling back to legacy endpoint…")
+	var statErr *httpStatusError
+	if errors.As(err, &statErr) && statErr.StatusCode == http.StatusMethodNotAllowed {
+		internal.LogInfo("PATCH endpoint not supported (<8.6?), falling back to legacy endpoint…")
 		return sendScaleRequestLegacy(port, brokerIds, force, replicationFactor)
 	}
 
@@ -513,4 +513,13 @@ type ClusterPatchRequestBroker struct {
 type ClusterPatchRequestPartition struct {
 	Count             *int32 `json:"count"`
 	ReplicationFactor *int32 `json:"replicationFactor"`
+}
+
+type httpStatusError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("HTTP status %d: %s", e.StatusCode, string(e.Body))
 }
