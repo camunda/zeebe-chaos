@@ -158,7 +158,7 @@ We can see below that CPU usage is high, and there is still some throttling, ind
 
 We were able to verify that the cluster can scale almost linearly with new brokers and partitions, so long as the other components, like the secondary storage, workers, connectors, etc., are able to sustain a similar.
 
-In particular, making sure that the secondary storage is able to keep up with the throughput turned out to be crucial to keep the cluster stablein order to
+In particular, making sure that the secondary storage is able to keep up with the throughput turned out to be crucial to keep the cluster stable in order to
 avoid filling up the Zeebe disks, which would bring to a halt the cluster.
 
 We encountered a similar issue when one worker restarts: initially it creates a backlog of unhandled jobs, which turns into a massive increase in requests per second when the worker comes back, as it starts activating jobs faster than the cluster can complete them.
