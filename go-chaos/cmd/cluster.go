@@ -17,13 +17,13 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/camunda/zeebe-chaos/go-chaos/internal"
-	"github.com/spf13/cobra"
 )
 
 func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
@@ -155,10 +155,18 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
 
 	changeResponse, err := sendPatchCluster(port, force, *clusterRequest)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return changeResponse, err
 	}
-	return changeResponse, nil
+
+	// if it failed due to 405, fall back
+	var statErr *httpStatusError
+	if errors.As(err, &statErr) && statErr.StatusCode == http.StatusMethodNotAllowed {
+		internal.LogInfo("PATCH endpoint not supported (<8.6?), falling back to legacy endpoint…")
+		return sendScaleRequestLegacy(port, brokerIds, force, replicationFactor)
+	}
+
+	return nil, err
 }
 
 func sendPatchCluster(port int, force bool, clusterRequest ClusterPatchRequest) (*ChangeResponse, error) {
@@ -202,6 +210,52 @@ func sendHTTPJsonRequest(url, method string, body []byte) (*http.Response, error
 		return nil, err
 	}
 	return resp, nil
+}
+
+// sendScaleRequestLegacy implements the old behavior:
+//
+//	POST http://…/actuator/cluster/brokers?force=…&replicationFactor=…
+//	with a JSON body of brokerIds to support 8.5 chaos tests
+func sendScaleRequestLegacy(port int, brokerIds []int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
+	forceParam := "false"
+	if force {
+		forceParam = "true"
+	}
+	url := fmt.Sprintf("http://localhost:%d/actuator/cluster/brokers?force=%s", port, forceParam)
+	if replicationFactor > 0 {
+		url = url + fmt.Sprintf("&replicationFactor=%d", replicationFactor)
+	}
+	request, err := json.Marshal(brokerIds)
+	if err != nil {
+		return nil, err
+	}
+	internal.LogInfo("Requesting scaling %s with input  %s", url, request)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(request))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("received nil response from server")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
+	}
+
+	defer func(Body io.ReadCloser) {
+		_ = Body.Close()
+	}(resp.Body)
+
+	response, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var changeResponse ChangeResponse
+	err = json.Unmarshal(response, &changeResponse)
+	if err != nil {
+		return nil, err
+	}
+	return &changeResponse, nil
 }
 
 func printCurrentTopology(flags *Flags) error {
@@ -459,4 +513,13 @@ type ClusterPatchRequestBroker struct {
 type ClusterPatchRequestPartition struct {
 	Count             *int32 `json:"count"`
 	ReplicationFactor *int32 `json:"replicationFactor"`
+}
+
+type httpStatusError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("HTTP status %d: %s", e.StatusCode, string(e.Body))
 }
