@@ -161,7 +161,8 @@ func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force b
 	}
 
 	// if it failed due to 405, fall back
-	if strings.Contains(err.Error(), "code 405") {
+	var httpErr *http.Response
+	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusMethodNotAllowed {
 		internal.LogInfo("PATCH endpoint not supported, falling back to legacy endpoint…")
 		return sendScaleRequestLegacy(port, brokerIds, force, replicationFactor)
 	}
