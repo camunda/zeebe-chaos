@@ -17,14 +17,13 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	"github.com/spf13/cobra"
+	"io"
+	"net/http"
+	"time"
 )
 
 func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
@@ -234,6 +233,9 @@ func sendScaleRequestLegacy(port int, brokerIds []int32, force bool, replication
 	resp, err := http.Post(url, "application/json", bytes.NewReader(request))
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("received nil response from server")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
