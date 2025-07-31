@@ -106,7 +106,7 @@ to give the cluster the time to heal.</p>
 <img decoding="async" loading="lazy" alt="CPU throttling" src="https://camunda.github.io/zeebe-chaos/assets/images/config_2_480_cpu_throttling-dc7f857c52e898fb159f70761f142499.png" width="1702" height="1127" class="img_ev3q"></p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2025/07/11/linear-dynamic-scaling#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion">​</a></h2>
 <p>We were able to verify that the cluster can scale almost linearly with new brokers and partitions, so long as the other components, like the secondary storage, workers, connectors, etc., are able to sustain a similar.</p>
-<p>In particular, making sure that the secondary storage is able to keep up with the throughput turned out to be crucial to keep the cluster stablein order to
+<p>In particular, making sure that the secondary storage is able to keep up with the throughput turned out to be crucial to keep the cluster stable in order to
 avoid filling up the Zeebe disks, which would bring to a halt the cluster.</p>
 <p>We encountered a similar issue when one worker restarts: initially it creates a backlog of unhandled jobs, which turns into a massive increase in requests per second when the worker comes back, as it starts activating jobs faster than the cluster can complete them.</p>
 <p>Finally, with this specific test, it would be interesting to explore the limits of vertical scalability, as we often saw CPU throttling being a major blocker for processing. This would make for an interesting future experiment.</p>]]></content:encoded>
