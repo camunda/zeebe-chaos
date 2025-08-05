@@ -19,11 +19,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/camunda/zeebe-chaos/go-chaos/internal"
-	"github.com/spf13/cobra"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/spf13/cobra"
 )
 
 func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
@@ -188,7 +189,7 @@ func sendPatchCluster(port int, force bool, clusterRequest ClusterPatchRequest) 
 	}
 	internal.LogInfo("Response body %s", string(body))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("scaling failed with code %d", resp.StatusCode)
+		return nil, &httpStatusError{StatusCode: resp.StatusCode}
 	}
 
 	var changeResponse ChangeResponse
