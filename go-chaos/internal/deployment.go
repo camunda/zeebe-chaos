@@ -77,7 +77,7 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 	if err != nil {
 		return err
 	}
-	fmt.Println("Template execute is ", workerBuilder.String())
+	LogInfo("Deploying worker with config:\n%s", workerBuilder.String())
 	workerBytes := []byte(workerBuilder.String())
 
 	LogVerbose("Deploy worker deployment to the current namespace: %s", c.GetCurrentNamespace())
