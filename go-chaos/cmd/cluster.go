@@ -153,9 +153,15 @@ func requestBrokerScaling(port int, brokers int, partitionCount int32, replicati
 }
 
 func sendScaleRequest(port int, brokerIds []int32, partitionCount int32, force bool, replicationFactor int32) (*ChangeResponse, error) {
-	clusterRequest := (&ClusterPatchRequest{}).withBrokers(brokerIds).withPartitions(partitionCount, replicationFactor)
+	req := &ClusterPatchRequest{}
+	if force {
+		req = req.withBrokersToRemove(brokerIds)
+	} else {
+		req = req.withBrokers(brokerIds)
+	}
+	req = req.withPartitions(partitionCount, replicationFactor)
 
-	changeResponse, err := sendPatchCluster(port, force, *clusterRequest)
+	changeResponse, err := sendPatchCluster(port, force, *req)
 	if err == nil {
 		return changeResponse, err
 	}
@@ -495,6 +501,13 @@ func (req *ClusterPatchRequest) withBrokers(brokerIds []int32) *ClusterPatchRequ
 	return req
 }
 
+func (req *ClusterPatchRequest) withBrokersToRemove(brokerIds []int32) *ClusterPatchRequest {
+	if len(brokerIds) > 0 {
+		req.Brokers = &ClusterPatchRequestBroker{Remove: brokerIds}
+	}
+	return req
+}
+
 func (req *ClusterPatchRequest) withPartitions(partitionCount, replicationFactor int32) *ClusterPatchRequest {
 	if partitionCount > 0 {
 		req.Partitions = &ClusterPatchRequestPartition{Count: &partitionCount}
@@ -509,8 +522,11 @@ func (req *ClusterPatchRequest) withPartitions(partitionCount, replicationFactor
 }
 
 type ClusterPatchRequestBroker struct {
-	Count int32 `json:"count"`
+	Count  int32   `json:"count,omitempty"`
+	Add    []int32 `json:"add,omitempty"`
+	Remove []int32 `json:"remove,omitempty"`
 }
+
 type ClusterPatchRequestPartition struct {
 	Count             *int32 `json:"count"`
 	ReplicationFactor *int32 `json:"replicationFactor"`
