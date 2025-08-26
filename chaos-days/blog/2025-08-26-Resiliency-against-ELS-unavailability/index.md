@@ -13,21 +13,21 @@ authors: zell
 # Chaos Day Summary
 
 
-Due to recent initiatives and architecture changes we coupled us even more against the secondary storage (often Elasticsearch, but can also be OpenSearch or in the future RDBMS).
+Due to recent initiatives and architecture changes, we coupled us even more against the secondary storage (often Elasticsearch, but can also be OpenSearch or in the future RDBMS).
 
-We now have one single application to run Webapps, Gateway, Broker, Exporters etc. together. Including the new Camunda Exporter exporting all necessary data to the secondary storage. On bootstrap we need to create expected schema, so our components work as expected, allowing Operate and Tasklist Web apps to consume the data and the exporter to export correctly. Furthermore, we have a new query API (REST API) allowing the search for available data in the secondary storage.
+We now have one single application to run Webapps, Gateway, Broker, Exporters, etc., together. Including the new Camunda Exporter exporting all necessary data to the secondary storage. On bootstrap we need to create an expected schema, so our components work as expected, allowing Operate and Tasklist Web apps to consume the data and the exporter to export correctly. Furthermore, we have a new query API (REST API) allowing the search for available data in the secondary storage.
 
 We have seen in previous experiments and load tests that unavailable ELS and not properly configured replicas can cause issues like the exporter not catching up or queries not succeeding. See related [GitHub issue](https://github.com/camunda/camunda/issues/35080).
 
-In todays chaos day we want to play around with the replicas setting of the indices, which can be set in the Camunda Exporter (which is in charge of writing the data to the secondary storage).
+In todays chaos day, we want to play around with the replicas setting of the indices, which can be set in the Camunda Exporter (which is in charge of writing the data to the secondary storage).
 
-**TL;DR;** Without the index replicas set, the Camunda Exporter is directly impacted on ELS node restarts. The query API seem to handle this transparently, but changing resulting data. Having the replicas set, will cause some performance impact, as the ELS node might run into CPU throttling (as they have much more to do). ELS slowing down, has an impact on processing as well due to our write throttling mechanics. This means we need to be careful with this setting, while it gives us better availability (CamundaExporter can continue when ELS nodes restart) it might come with some cost.
+**TL;DR;** Without the index replicas set, the Camunda Exporter is directly impacted by ELS node restarts. The query API seem to handle this transparently, but changing the resulting data. Having the replicas set will cause some performance impact, as the ELS node might run into CPU throttling (as they have much more to do). ELS slowing down has an impact on processing as well due to our write throttling mechanics. This means we need to be careful with this setting, while it gives us better availability (CamundaExporter can continue when ELS nodes restart), it might come with some cost.
 
 <!--truncate-->
 
 ## Chaos Experiment
 
-In the following we want to experiment with the following:
+In the following, we want to experiment with the following:
 
 1. We restart the first Elasticsearch node and observe how the CamundaExporter performs.
 2. We restart the Elasticsearch node that is primary for a certain index, and use the query API.
@@ -45,7 +45,7 @@ We will set up a base load test, having the default configuration, and some incr
 
 ##### Set up
 
-Creating the default load test, by simply runnig our [benchmark github action](https://github.com/camunda/camunda/actions/workflows/zeebe-benchmark.yml). Per default the load tests install Elasticsearch with three nodes.
+Creating the default load test by simply running our [benchmark GitHub action](https://github.com/camunda/camunda/actions/workflows/zeebe-benchmark.yml). By default, the load tests install Elasticsearch with three nodes.
 
 ![base-es](base-indices.png)
 
@@ -63,7 +63,7 @@ $ k delete pod elastic-0
 pod "elastic-0" deleted
 ```
 
-As soon as the Elasticsearch pod was restarted, the cluster reacted, with backpressure. The decrease of exporting was detected, causing to throttle the writing. We can see the cluster load metric, which spiked. Having direct impact of the processing performance.
+As soon as the Elasticsearch pod was restarted, the cluster reacted with backpressure. The decrease of exporting was detected, causing to throttle the writing. We can see the cluster load metric, which spiked. Having a direct impact of the processing performance.
 
 ![base-restart](base-es-restart.png)
 
@@ -73,14 +73,14 @@ As soon as the Elasticsearch pod recovers and comes back the cluster and process
 
 ###### Restart primary
 
-Looking at the nodes and the index distributions we can for example see that the Node 1 is primary of the flow node instance index.
+Looking at the nodes and the index distributions, we can, for example, see that Node 1 is the primary of the flow node instance index.
 
 ![base-primary](base-primary-node.png) 
 
 
 **Querying for flownode instances:**
 
-First we have to port-forward to our Camunda instance.
+First, we have to port-forward to our Camunda instance.
 
 ```
 k port-forward svc/camunda 8080
@@ -88,7 +88,7 @@ Forwarding from 127.0.0.1:8080 -> 8080
 Forwarding from [::1]:8080 -> 8080
 ```
 
-Search flow node instances following the [documentation ](https://docs.camunda.io/docs/next/apis-tools/operate-api/specifications/search-4/) we can copy the cURL command (removing the Autorization header as we dont need it with our current installation):
+Search flow node instances following the [documentation ](https://docs.camunda.io/docs/next/apis-tools/operate-api/specifications/search-4/), we can copy the cURL command (removing the Authorization header as we don't need it with our current installation):
 
 ```sh
  curl -L 'http://localhost:8080/v1/flownode-instances/search' \
@@ -123,7 +123,7 @@ Search flow node instances following the [documentation ](https://docs.camunda.i
 {"status":400,"message":"Sort has invalid field(s): string","instance":"f5ddf702-7ad6-4a05-af9a-9112f2436706","type":"Data invalid"}
 ```
 
-Seem to cause some issues with the sorting. Removing this and setting the size to 1 (as this was another failure returned) we run into:
+Seems to cause some issues with the sorting. Removing this and setting the size to 1 (as this was another failure returned), we run into:
 
 ```
  curl -L 'http://localhost:8080/v1/flownode-instances/search' -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{
@@ -155,7 +155,7 @@ $ curl -L 'http://localhost:8080/v1/flownode-instances/search' -H 'Content-Type:
 {"items":[{"key":2251799817981066,"processInstanceKey":2251799817981049,"processDefinitionKey":2251799813685298,"startDate":"2025-08-26T12:13:23.156+0000","endDate":"2025-08-26T12:13:23.156+0000","flowNodeId":"start","flowNodeName":"start","type":"START_EVENT","state":"COMPLETED","incident":false,"tenantId":"<default>"}],"sortValues":[2251799817981066],"total":10000}
 ```
 
-Now going a head and restarting Elasticsearch node 1.
+Now going ahead and restarting Elasticsearch node 1.
 
 ```
 $ k delete pod elastic-1
@@ -204,7 +204,7 @@ pod "elastic-2" deleted
 {"items":[{"key":2251799818301951,"processInstanceKey":2251799818301934,"processDefinitionKey":2251799813685298,"startDate":"2025-08-26T12:18:43.362+0000","endDate":"2025-08-26T12:18:43.362+0000","flowNodeId":"start","flowNodeName":"start","type":"START_EVENT","state":"COMPLETED","incident":false,"tenantId":"<default>"}],"sortValues":[2251799818301951,2251799818301951],"total":9916}
 ```
 
-We retrieve `2251799818301951` which is likely in the runtime index, an instance that haven't archived yet.
+We retrieve `2251799818301951` which is likely in the runtime index, an instance that haven't been archived yet.
 
 The Query API is handling the Elasticsearch availability transparently, by returning different results (likely this depends on the filter criteria). Something we (and users) should be aware. 
 
@@ -227,7 +227,7 @@ The error handling should be improved to better indicate the current issue.
 
 ##### Set up
 
-Setting: `--set zeebe.config.zeebe.broker.exporters.CamundaExporter.args.index.numberOfReplicas=1` should allows us to configure the CamundaExporter creating indices with one replica (instead of zero as per default).
+Setting: `--set zeebe.config.zeebe.broker.exporters.CamundaExporter.args.index.numberOfReplicas=1` should allow us to configure the CamundaExporter to create indices with one replica (instead of zero as per default).
 
 Deploying a configmap with:
 
@@ -247,11 +247,11 @@ This seems to have no affect.
 
 ![index-template-no-replica](index-template-no-replica.png)
 
-The reason is that the config has been moved to: `camunda.database.index.numberOfReplicas` (in current SNAPSHOT). After changing the configuration (and restarting the pods) the indices settings are updated.
+The reason is that the config has been moved to: `camunda.database.index.numberOfReplicas` (in the current SNAPSHOT). After changing the configuration (and restarting the pods), the indices settings are updated.
 
 ![replicas](replicas.png)
 
-Generally the performance of the cluster seem to be highly affected.
+Generally, the performance of the cluster seem to be highly affected.
 
 ![one-replica-general](one-replica-general.png)
 
@@ -263,13 +263,13 @@ In comparison to the base.
 
 ![base-cpu](base-cpu.png)
 
-I think in general it is not suprising, as the ES nodes need to do more (replicating) but something we should be aware when rolling it out.
+I think in general it is not suprising, as the ES nodes need to do more (replicating), but something we should be aware of when rolling it out.
 
 This means enabling the replicas can highly impact the system performance, and likely need some resource adjustments (not only disk space).
 
 ##### Restart first node
 
-Even though the performance is already impacted, we should see less impact when restarting the first node, so we will continue with the experimenting for now.
+Even though the performance is already impacted, we should see less impact when restarting the first node, so we will continue with the experimentation for now.
 
 ```
 $ k delete pod elastic-0
@@ -278,9 +278,9 @@ pod "elastic-0" deleted
 
 ![one-replica-impact](one-replica-impact.png)
 
-When restarting the first node, we can see that "only" one partition seem to be affected. But due to the limit of resources on the nodes, and already existing CPU throttling this also impacts other nodes. Causing our cluster load going up, and backpressure in consequence. 
+When restarting the first node, we can see that "only" one partition seems to be affected. But due to the limit of resources on the nodes and already existing CPU throttling, this also impacts other nodes. Causing our cluster load going up, and backpressure in consequence. 
 
-Comparing to base, we still can see some difference as it before impacted all partitions.
+Compared to the base, we still can see some difference, as it was before it impacted all partitions.
 
 ![base-impact](base-impact.png)
 
@@ -292,7 +292,7 @@ When we check the index-node distribution, we can see the replicas as well.
 
 ![one-replica-distribution](one-replica-distribution.png)
 
-We have already seen in our base, that the query API works still when one of the historic or runtime index is available. 
+We have already seen in our base that the query API still works when one of the historic or runtime indices is available. 
 
 Interesting would be now, if we still return the same result, even when we restart the primary of the historic index.
 
@@ -311,22 +311,22 @@ $ curl -L 'http://localhost:8080/v1/flownode-instances/search' -H 'Content-Type:
 {"items":[{"key":2251799813772120,"processInstanceKey":2251799813772101,"processDefinitionKey":2251799813685252,"startDate":"2025-08-26T11:22:09.083+0000","endDate":"2025-08-26T11:22:12.640+0000","flowNodeId":"task","flowNodeName":"task","type":"SERVICE_TASK","state":"COMPLETED","incident":false,"tenantId":"<default>"}],"sortValues":[2251799813772120,2251799813772120],"total":10000}
 ```
 
-As expected the results are the same (as we have an replica).
+As expected, the results are the same (as we have a replica).
 
 ## Result
 
-When running the experiment against the base, we were not expecting that the Query API handles ES unavailability until a certain point. The error messaging need to improved here, if there is actually a problem, like wrong filter or no index available.
+When running the experiment against the base, we were not expecting that the Query API handles ES unavailability until a certain point. The error messaging needs to be improved here if there is actually a problem, like a wrong filter or no index available.
 
-Enabling the replicas, was harder then expected, as we are currently in the progress of changing our configuration (unified configuration). After finding the right properties (thanks to Houssain) we were even able to update an existing installation. 
+Enabling the replicas was harder than expected, as we are currently in the process of changing our configuration (unified configuration). After finding the right properties (thanks to Houssain), we were even able to update an existing installation. 
 
-The replicas setting has an not forseen performance impact, we expected disk space increase in our past discussions but not how it impacts the general performance. It should be consindered when rolling it out per default.
+The replicas setting has an unforeseen performance impact; we expected disk space increase in our past discussions, but not how it impacts the general performance. It should be considered when rolling it out by default.
 
 Having this setting allows to better handle ELS unavailability, especially for the Query API. When enough resources, likely also for the Camunda Exporter, this should be re-tested.
 
 ### Observations
 
-* Query API handles ELS unavailabilty transparently, we should clarify whether this is expected
-* Query API returns useless errors, when needed indices are not available or when the given filter don't work
-* Query API document is not easy to start with - we should give an command that can be easily tried out
-* Replicas setting has impact on cluster performance - as ELS can run in CPU throttling causing slow down general the processing (due to write throttling).
+* Query API handles ELS unavailability transparently; we should clarify whether this is expected
+* Query API returns useless errors when the needed indices are not available or when the given filter doesn't work
+* The Query API documentation is not easy to start with - we should give a command that can be easily tried out
+* Replicas setting has an impact on cluster performance - as ELS can run in CPU throttling, causing slow in general processing (due to write throttling).
 
