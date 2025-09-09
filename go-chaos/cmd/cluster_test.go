@@ -149,7 +149,7 @@ func Test_ClusterPatchRequestJsonReplicationFactorOnly(t *testing.T) {
 	assert.Equal(t, expected, string(json))
 }
 
-func Test_BrokersToRemoveCalculation(t *testing.T) {
+func Test_BrokersInOtherRegionsCalculation(t *testing.T) {
 	// given
 	currentTopology := CurrentTopology{
 		Brokers: []BrokerState{
@@ -161,8 +161,8 @@ func Test_BrokersToRemoveCalculation(t *testing.T) {
 	}
 
 	// when - failing over to region 0
-	brokersToRemove := getBrokersToRemove(&currentTopology, 2, 0)
+	brokersInOtherRegions := getBrokersInOtherRegions(&currentTopology, 2, 0)
 
 	// then - brokers in region 1 should be removed
-	assert.Equal(t, []int32{1, 3}, brokersToRemove)
+	assert.Equal(t, []int32{1, 3}, brokersInOtherRegions)
 }

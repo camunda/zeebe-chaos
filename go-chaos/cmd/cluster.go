@@ -357,7 +357,7 @@ func forceFailover(flags *Flags) error {
 		return fmt.Errorf("cluster is already scaling")
 	}
 
-	brokersToRemove := getBrokersToRemove(currentTopology, flags.regions, flags.regionId)
+	brokersToRemove := getBrokersInOtherRegions(currentTopology, flags.regions, flags.regionId)
 
 	changeResponse, err := sendScaleRequest(port, brokersToRemove, 0, true, -1)
 	ensureNoError(err)
@@ -369,15 +369,15 @@ func forceFailover(flags *Flags) error {
 	return nil
 }
 
-func getBrokersToRemove(topology *CurrentTopology, regions int32, regionId int32) []int32 {
-	brokersInRegion := make([]int32, 0)
+func getBrokersInOtherRegions(topology *CurrentTopology, regions int32, regionId int32) []int32 {
+	brokersInOtherRegions := make([]int32, 0)
 	for _, b := range topology.Brokers {
 		if b.Id%regions != regionId {
-			brokersInRegion = append(brokersInRegion, b.Id)
+			brokersInOtherRegions = append(brokersInOtherRegions, b.Id)
 		}
 	}
 
-	return brokersInRegion
+	return brokersInOtherRegions
 }
 
 type ChangeStatus string
