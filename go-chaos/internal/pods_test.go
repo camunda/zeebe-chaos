@@ -15,9 +15,10 @@
 package internal
 
 import (
-	v1 "k8s.io/api/core/v1"
 	"testing"
 	"time"
+
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -329,4 +330,43 @@ func Test_ShouldReturnErrorWhenAtleastOneBrokerIsNotRunning(t *testing.T) {
 
 	// then
 	require.Error(t, err)
+}
+
+func Test_MustGatewayPortForward_ServiceSelection(self *testing.T) {
+	t := self // alias to follow existing style if needed
+	k8Client := CreateFakeClient()
+
+	// create gateway pod with labels
+	gatewaySelector, err := metav1.ParseToLabelSelector(getSelfManagedGatewayLabels())
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, gatewaySelector, "gateway-0")
+
+	// create broker pod just to ensure it isn't chosen erroneously
+	brokerSelector, err := metav1.ParseToLabelSelector(getSelfManagedBrokerLabels())
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, brokerSelector, "broker-0")
+
+	// create a service selecting the gateway labels with explicit port mapping
+	servicePorts := []v1.ServicePort{{Port: 26500}}
+	k8Client.CreateServiceWithSelector(t, "test-gateway-service", gatewaySelector.MatchLabels, servicePorts)
+
+	// exercise resolution (no actual port forward due to fake client config)
+	podName, svcName, selector, targetPort := k8Client.mustResolveGatewayServiceTarget(26500)
+
+	assert.Equal(t, "gateway-0", podName, "expected gateway pod to be selected")
+	assert.Equal(t, "test-gateway-service", svcName)
+	assert.Contains(t, selector, "app.kubernetes.io/component=zeebe-gateway")
+	assert.Equal(t, 26500, targetPort)
+}
+
+func Test_MustGatewayPortForward_ServiceSelection_NoServicePanics(t *testing.T) {
+	k8Client := CreateFakeClient()
+	// create a gateway pod but deliberately no service so selection should fail
+	gatewaySelector, err := metav1.ParseToLabelSelector(getSelfManagedGatewayLabels())
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, gatewaySelector, "gateway-0")
+
+	require.Panics(t, func() {
+		k8Client.mustResolveGatewayServiceTarget(26500)
+	}, "expected panic when no gateway service exists")
 }
