@@ -176,7 +176,7 @@ func (c K8Client) AwaitReadinessWithTimeout(timeout time.Duration, tickTime time
 	for {
 		select {
 		case <-timedOut:
-			return errors.New(fmt.Sprintf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout))
+			return fmt.Errorf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout)
 		case <-ticker:
 			brokersAreRunning, err := c.checkIfBrokersAreRunning()
 			if err != nil {
@@ -205,7 +205,7 @@ func (c K8Client) checkIfBrokersAreRunning() (bool, error) {
 	}
 
 	if len(pods.Items) <= 0 {
-		return false, errors.New(fmt.Sprintf("Expected to find brokers in namespace %s, but none found.", c.GetCurrentNamespace()))
+		return false, fmt.Errorf("Expected to find brokers in namespace %s, but none found.", c.GetCurrentNamespace())
 	}
 
 	allRunning := true
@@ -241,7 +241,7 @@ func (c K8Client) AwaitPodReadiness(podName string, timeout time.Duration) error
 	for {
 		select {
 		case <-timedOut:
-			return errors.New(fmt.Sprintf("Pod %s is not ready with in given timeout %v", podName, timeout))
+			return fmt.Errorf("Pod %s is not ready with in given timeout %v", podName, timeout)
 		case <-ticker:
 			// check status of pod on every tick (1 second)
 			pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
