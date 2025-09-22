@@ -440,9 +440,11 @@ type ChangeResponse struct {
 
 type CurrentTopology struct {
 	Version       int32
+	ClusterId     string
 	Brokers       []BrokerState
 	LastChange    *LastChange
 	PendingChange *TopologyChange
+	Routing       *RoutingState
 }
 
 func (topology *CurrentTopology) partitionCount() int32 {
