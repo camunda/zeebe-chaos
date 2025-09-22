@@ -115,8 +115,6 @@ func scaleCluster(flags *Flags) error {
 func scalePartitions(k8Client internal.K8Client, port int, partitionCount int32, replicationFactor int32) (*ChangeResponse, error) {
 	changeResponse, err := sendScaleRequest(port, nil, partitionCount, false, replicationFactor)
 	ensureNoError(err)
-	timeout := time.Minute * 5
-	err = waitForChange(port, changeResponse.ChangeId, timeout)
 	return changeResponse, nil
 }
 
