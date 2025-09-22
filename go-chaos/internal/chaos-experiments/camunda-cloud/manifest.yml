@@ -67,6 +67,10 @@ experiments:
     clusterPlans:
       - production-s
     minVersion: 8.4
+  - path: scaling/broker-partition-scaling.json
+    clusterPlans:
+      - production-s
+    minVersion: 8.8
   # only for testing
   - path: test/experiment.json
     clusterPlans:
