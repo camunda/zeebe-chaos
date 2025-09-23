@@ -166,3 +166,54 @@ func Test_BrokersInOtherRegionsCalculation(t *testing.T) {
 	// then - brokers in region 1 should be removed
 	assert.Equal(t, []int32{1, 3}, brokersInOtherRegions)
 }
+
+func Test_JsonUnmarshalOfClusterTopology(t *testing.T) {
+	// given
+	jsonData := `{
+	"brokers": [
+		{"id": 1, "lastUpdatedAt": "2025-09-22T10:27:50.128126716Z", "partitions": [
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 1, "priority": 2, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 2, "priority": 3, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 3, "priority": 1, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 4, "priority": 1, "state": "ACTIVE"}
+		], "state": "ACTIVE", "version": 2},
+		{"id": 2, "lastUpdatedAt": "2025-09-22T10:27:53.491714139Z", "partitions": [
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 1, "priority": 1, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 2, "priority": 2, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 3, "priority": 3, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 4, "priority": 2, "state": "ACTIVE"}
+		], "state": "ACTIVE", "version": 2},
+		{"id": 0, "lastUpdatedAt": "2025-09-22T10:27:47.333185087Z", "partitions": [
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 1, "priority": 3, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 2, "priority": 1, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 3, "priority": 2, "state": "ACTIVE"},
+			{"config": {"exporting": {"exporters": [{"id": "camundaexporter", "state": "ENABLED"}, {"id": "MetricsExporter", "state": "ENABLED"}]}}, "id": 4, "priority": 3, "state": "ACTIVE"}
+		], "state": "ACTIVE", "version": 2}
+	],
+	"clusterId": "5f3d18fb-0025-454e-94a8-c44b75ba5bcb",
+	"lastChange": {"completedAt": "2025-09-22T10:27:53.609679808Z", "id": 2, "startedAt": "2025-09-22T10:27:44.470567918Z", "status": "COMPLETED"},
+	"routing": {
+		"messageCorrelation": {"partitionCount": 3, "strategy": "HashMod"},
+		"requestHandling": {"partitionCount": 4, "strategy": "AllPartitions"},
+		"version": 3
+	},
+	"version": 3
+}`
+
+	// when
+	var topology CurrentTopology
+	err := json.Unmarshal([]byte(jsonData), &topology)
+
+	// then
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(topology.Brokers))
+	assert.Equal(t, 4, len(topology.Brokers[0].Partitions))
+	assert.Equal(t, int32(4), topology.partitionCount())
+	assert.Equal(t, "5f3d18fb-0025-454e-94a8-c44b75ba5bcb", topology.ClusterId)
+	assert.NotNil(t, topology.Routing)
+	assert.Equal(t, 3, topology.Routing.MessageCorrelation.PartitionCount)
+	assert.Equal(t, "HashMod", topology.Routing.MessageCorrelation.Strategy)
+	assert.Equal(t, 4, topology.Routing.RequestHandling.PartitionCount)
+	assert.Equal(t, "AllPartitions", topology.Routing.RequestHandling.Strategy)
+	assert.Equal(t, 4, topology.Routing.RequestHandling.PartitionCount)
+}

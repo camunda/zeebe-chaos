@@ -32,16 +32,25 @@ func AddPublishCmd(rootCmd *cobra.Command, flags *Flags) {
 			panicOnError(err)
 
 			port, closeFn := k8Client.MustGatewayPortForward(0, 26500)
+			managementPort, closeFn := k8Client.MustGatewayPortForward(0, 9600)
 			defer closeFn()
 
 			zbClient, err := internal.CreateZeebeClient(port, makeClientCredentials(flags))
 			panicOnError(err)
 			defer zbClient.Close()
 
-			topology, err := internal.GetTopology(zbClient)
+			topology, err := QueryTopology(managementPort)
 			panicOnError(err)
 
-			correlationKey, err := internal.FindCorrelationKeyForPartition(flags.partitionId, int(topology.PartitionsCount))
+			// Determine partition count for message correlation
+			var partitionCount int
+			if topology.Routing != nil && topology.Routing.MessageCorrelation.PartitionCount > 0 {
+				partitionCount = topology.Routing.MessageCorrelation.PartitionCount
+			} else {
+				partitionCount = int(topology.partitionCount())
+			}
+
+			correlationKey, err := internal.FindCorrelationKeyForPartition(flags.partitionId, partitionCount)
 			panicOnError(err)
 
 			internal.LogVerbose("Send message '%s', with correaltion key '%s' (ASCII: %d) ", flags.msgName, correlationKey, int(correlationKey[0]))
