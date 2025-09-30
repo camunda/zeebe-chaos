@@ -61,12 +61,12 @@ The results were modest:
 - **CPU throttling:** dropped only marginally (100% → 90%)
 
 Before any changes introduced, results looked like this:
-![syncqueue-req-before](syncqueue-req-before.png)
-![syncqueue-cpu-before](syncqueue-cpu-before.png)
+![syncqueue-req-before](./syncqueue-req-before.png)
+![syncqueue-cpu-before](./syncqueue-cpu-before.png)
 
 Then we started benchmarking after introducing executor with `SynchronousQueue`:
-![syncqueue-req-after](syncqueue-req-after.png)
-![syncqueue-cpu-after](syncqueue-cpu-after.png)
+![syncqueue-req-after](./syncqueue-req-after.png)
+![syncqueue-cpu-after](./syncqueue-cpu-after.png)
 
 This hinted we were on the right track — a dedicated executor helped — but the queue strategy was too restrictive.
 
@@ -104,8 +104,8 @@ This combination made the breakthrough:
 - **CPU throttling:** reduced significantly (100% → 30-40%)
 
 Here are the final results:
-![final-decision-result-rest](final-decision-result-rest.png)
-![final-decision-result-cpu](final-decision-result-cpu.png)
+![final-decision-result-rest](./final-decision-result-rest.png)
+![final-decision-result-cpu](./final-decision-result-cpu.png)
 
 This design struck the right balance: elastic concurrency, backpressure, and resource efficiency.
 
@@ -125,13 +125,13 @@ To validate that our executor change holds up across configurations, we ran extr
 We ran the same workload while varying `maxPoolSize = availableProcessors × {4, 8, 16}`. Below are the observed tops from Grafana panels in the screenshots:
 
 `maxPoolSizeMultiplier=4`
-![max-pool-size-multiplier-4](max-pool-size-multiplier-4.png)
+![max-pool-size-multiplier-4](./max-pool-size-multiplier-4.png)
 
 `maxPoolSizeMultiplier=8`
-![max-pool-size-multiplier-8](max-pool-size-multiplier-8.png)
+![max-pool-size-multiplier-8](./max-pool-size-multiplier-8.png)
 
 `maxPoolSizeMultiplier=16`
-![max-pool-size-multiplier-16](max-pool-size-multiplier-16.png)
+![max-pool-size-multiplier-16](./max-pool-size-multiplier-16.png)
 
 | Multiplier | Request Rate (proc-instances) | Request Rate (completion) | Avg Latency (proc-instances) | Avg Latency (completion) |
 |---:|------------------------------:|--------------------------:|-----------------------------:|-------------------------:|
@@ -152,16 +152,16 @@ We varied the executor **queue capacity** and compared **16**, **64** (our curre
 Below are the observed tops from the Grafana panels for the two hot endpoints:
 
 - POST /v2/process-instances
-- POST /v2/jobs/{jobKey}/completion
+- POST /v2/jobs/\{jobKey\}/completion
 
 `queueCapacity=16`  
-![queue-capacity-16](queue-capacity-16.png)
+![queue-capacity-16](./queue-capacity-16.png)
 
 `queueCapacity=64`  
-![queue-capacity-64](queue-capacity-64.png)
+![queue-capacity-64](./queue-capacity-64.png)
 
 `queueCapacity=256`  
-![queue-capacity-256](queue-capacity-256.png)
+![queue-capacity-256](./queue-capacity-256.png)
 
 #### Measured summary
 
