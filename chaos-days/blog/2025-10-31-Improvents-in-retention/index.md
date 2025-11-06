@@ -1,6 +1,6 @@
 ---
 layout: posts
-title:  "Retention of Historical PIs in Camunda 8.8"
+title:  "Testing retention of historical PIs in Camunda 8.8"
 date:   2025-10-31
 categories: 
   - chaos_experiment
@@ -15,14 +15,16 @@ authors: rodrigo
 
 With Camunda 8.8, a new unified Camunda Exporter is introduced that 
 directly populates data records consumable by read APIs on the 
-secondary storage. This significantly reduces latency until eventually 
+secondary storage. This significantly reduces the time until eventually 
 consistent data becomes available on Get and Search APIs. It also removes unnecessary duplication across multiple indices due to the previous architecture.
 
 This architectural change prompted us to re-run the retention tests to compare 
 PI retention in historical indexes under the same conditions as Camunda 8.7.
 
+The historical data refers to exported data from configured exporters, such as records of completed process instances, tasks, and events that are no longer part of the active (runtime) state but are retained for analysis, auditing, or reporting.
+
 The goal of this experiment is to compare the amount of 
-PIs that we can retain in historical data between Camunda 8.7 and 8.8.
+PIs that we can retain in historical data between Camunda 8.7 and 8.8 running with the same hardware.
 
 ## Chaos experiment
 
@@ -38,14 +40,12 @@ load tests project](https://github.com/camunda/camunda-load-tests-helm) running 
 realistic process containing a mix of BPMN symbols such as tasks, events, 
 and call activities, including subprocesses.
 
+![realistic-process-model](realistic-process-model.png)
+
 For this experiment, we used a [base size 1x cluster](https://docs.camunda.io/docs/components/best-practices/architecture/sizing-your-environment/#camunda-8-saas) 
 consisting of the standard 3 brokers, 3 partitions, a replication factor of 3, and 3 ES pods, each with a disk size of 32GB, for a total of 96GB of storage in ES.
 
-The goal was to run the cluster at maximum rate until we started observing backpressure due to reduced exporting speeds. We considered this point as the waterline for the ES disks.
-After identifying this point, we paused the creation of PIs and observed the number of archived PIs in our historical records. 
-The observed number of PIs represents our retention capability for these disk sizes, indicating the "water level" point up to which we can fill the disk while running at the maximum rate.
-
-Our goal was to run the cluster at maximum sustained load until exporting slowed and backpressure appeared. We treated that point as the Elasticsearch "waterline" — the threshold where exporting becomes the bottleneck for the cluster. Once we reached this point, we note the disks usage, stopped creating new PIs and counted how many had been archived in the historical indices. That count represents the retention capacity for the given ES disks under maximum sustained load.
+Our goal was to run the cluster at maximum sustained load until exporting slowed and backpressure appeared. We treated that point as the Elasticsearch "watermark" — the threshold where exporting becomes the bottleneck for the cluster. Once we reached this point, we note the disks usage, stopped creating new PIs and counted how many had been archived in the historical indices. That count represents the retention capacity for the given ES disks under maximum sustained load.
 
 ### Experiment
 
@@ -81,9 +81,15 @@ Given that backpressure can occur earlier than expected, we decided to lower the
 
 Moreover, when comparing these results to the [retention with version 8.7](https://docs.camunda.io/docs/8.7/components/best-practices/architecture/sizing-your-environment/#camunda-8-saas), we observed a significant improvement in retention. This enhancement is attributed to the harmonized indexes and the elimination of duplicate document storage. In version 8.7, for the base 1x cluster with identical disk sizes in ES, the retention was around 75,000 PIs in historical indices. In contrast, we achieved 223,000 and 255,000 in this experiment, representing a 218% increase or 3.18 times larger retention, based on the average of both numbers.
 
-It's important to note that in SaaS, this is not a hard cap on retention, as disk sizes are automatically increased on demand.
+Comparing the retention numbers of both versions we get: 
 
-Following these results, we updated the retention values in version 8.8. This was done conservatively, considering the high variability of process models. The intention is to provide a general representation of an average process, establishing standard metrics for performance comparison across Camunda versions.
+| Cluster size | 1x   | 2x   | 3x   | 4x   |        
+|--------------|------|------|------|------|        
+| Camunda 8.7  | 75k  | 150k | 225k | 300k |        
+| Camunda 8.8  | 239k | 478k | 717k | 956k |        
+
+Following these results, we updated the retention values in version 8.8. This was done conservatively (we rounded down to 200k for the base configuration), considering the high variability of process models. The intention is to provide a general representation of an average process, establishing standard metrics for performance comparison across Camunda versions.
+
 
 ## Participants
 
