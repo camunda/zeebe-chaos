@@ -38,7 +38,7 @@ The target configuration was:
 
 ### Experiment
 
-We first started new brokers using using:
+We first started new brokers using:
 
 ```
 kubectl scale statefulset <zeebe-statefulset> --replicas=6
