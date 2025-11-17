@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
-	github.com/testcontainers/testcontainers-go v0.34.0
+	github.com/testcontainers/testcontainers-go v0.40.0
 	golang.org/x/exp e25ba8c21ef6
 	golang.org/x/mod v0.26.0
 	google.golang.org/grpc v1.69.2
