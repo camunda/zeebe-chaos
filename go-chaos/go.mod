@@ -7,7 +7,7 @@ toolchain go1.23.4
 require (
 	github.com/camunda/zeebe/clients/go/v8 v8.5.25
 	github.com/rs/zerolog v1.33.0
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	golang.org/x/exp e25ba8c21ef6
