@@ -14,7 +14,7 @@ jobs:
     name: Build the documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -36,7 +36,7 @@ jobs:
       checks: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: merge
         name: Merge PR
         run: gh pr merge ${{ github.event.pull_request.number }} --merge
