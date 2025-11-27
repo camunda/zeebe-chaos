@@ -70,7 +70,7 @@ When increasing the CPU resources, adding one core, we were able to increase the
 
 ![88-one-task-3-cpu-latency](88-one-task-latency-3-cpu.png)
 
-The p50 latency has been decreased significantly, while the p99 is similar to before. In general, we are seeing only one pod being CPU throttled. Likely related to the fact that we not properly distribute our load across the gateways, see issue [9870](https://github.com/camunda/camunda/issues/9870).
+The p50 latency has been decreased significantly, while the p99 is similar to before. In general, we are seeing only one pod being CPU throttled. Likely related to the fact that we do not properly distribute our load across the gateways, see issue [9870](https://github.com/camunda/camunda/issues/9870).
 
 ### 8.7.x Results
 
