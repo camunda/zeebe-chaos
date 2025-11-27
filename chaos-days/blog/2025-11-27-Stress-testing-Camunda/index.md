@@ -101,7 +101,7 @@ Even the latency is comparable to first 8.8.x test, while the p99 is much higher
 
 ### Main
 
-Out of interest and for better comparison I also ran the same test on the main branch (which will become 8.9.x). Here the results are better to 8.8.x with 3 CPU cores. We are reaching ~230 PI/s with similar latency characteristics. Still, it is not as good as 8.7.x.
+Out of interest and for better comparison I also ran the same test on the main branch (which will become 8.9.x). Here the results are better than 8.8.x with 3 CPU cores. We are reaching ~230 PI/s with similar latency characteristics. Still, it is not as good as 8.7.x.
 
 ![main-one-task-results](main-one-task.png)
 
