@@ -124,6 +124,7 @@ The latency is lowest in 8.8.x with increased resources, followed by main and 8.
 | 8.8.x (3 CPU) | ~220              | ~**90**                           | ~**490**                          | 80% one pod    |
 | Main     | ~230              | ~180                          | ~497                          | 90+% two pods  |
 
+Likely reasons for the performance differences could be related to [architectural changes](https://camunda.com/blog/2025/03/streamlined-deployment-with-camunda-8-8/), like having identity part of the Camunda application, a new Camunda Exporter (doing all the work previously Importers have done), etc. Further investigation is needed to pinpoint the exact causes and potential optimizations.
 
 ## Next Steps
 
