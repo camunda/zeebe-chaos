@@ -205,11 +205,11 @@ Summarizing the further experiments, we can see that increasing the CPU resource
 
 | Version  | Throughput (PI/s) | p50 PI execution Latency (ms) | p99 PI execution Latency (ms) | CPU Throttling |
 |----------|-------------------|-------------------------------|-------------------------------|----------------|
-| 8.7.x    | ~**246**          | ~200                          | ~700                          | 80% one pod    |
+| 8.7.x    | ~246          | ~200                          | ~700                          | 80% one pod    |
 | 8.6.x    | ~220              | ~400                          | ~960                          | 80+% all pods  |
 | 8.8.x    | ~160              | ~370                          | ~700                          | 90+% all pods  |
-| 8.8.x (3 CPU) | ~220              | ~**90**                       | ~**490**                      | 80% one pod    |
+| 8.8.x (3 CPU) | ~220              | ~90                       | ~490                      | 80% one pod    |
 | Main     | ~230              | ~180                          | ~497                          | 90+% two pods  |
-| 8.8.x (3.5 CPU) | ~**248**          | ~65                           | ~429                          | ~40% two pods  |
-| 8.8.x (3.5 CPU + Client LB) | ~**248**          | ~64                           | ~350                          | 35% one pod    |    
-| 8.8.x (3.5 CPU + 512MB RocksDB) | ~**248**          | ~64                           | ~418                          | 35% two pod    |
+| 8.8.x (3.5 CPU) | ~248          | ~65                           | ~429                          | ~40% two pods  |
+| **8.8.x (3.5 CPU + Client LB)** | ~**248**          | ~**64**                           | ~**350**                          | **35% one pod**    |    
+| 8.8.x (3.5 CPU + 512MB RocksDB) | ~248          | ~64                           | ~418                          | 35% two pod    |
