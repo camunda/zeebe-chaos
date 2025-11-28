@@ -19,14 +19,17 @@ Due to our recent work in supporting [load tests for different versions](https:/
 
 **TL;DR;** We found that Camunda 8.7.x performs best under high load, followed by the main branch and 8.6.x. The latest version 8.8.x showed lower throughput, but with increased resources, it was able to improve performance. Latency was lowest (best) in 8.8.x with increased resources.
 
-> [Update: 28.11.2025] 
-> 
-> As noted, the architecture has changed in 8.8.x to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
-> 
-> We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
-> Client load balancing allowed us to better utilize
-> 
-> For more details, see the section "Further Experiments" below.
+:::info
+[Update: 28.11.2025] 
+
+As noted, the architecture has changed in 8.8.x to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
+ 
+We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
+Client load balancing allowed us to better utilize
+
+For more details, see the section "Further Experiments" below.
+
+:::
 
 <!--truncate-->
 
