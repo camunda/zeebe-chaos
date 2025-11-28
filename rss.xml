@@ -13,15 +13,16 @@
             <link>https://camunda.github.io/zeebe-chaos/2025/11/27/Stress-testing-Camunda</link>
             <guid>https://camunda.github.io/zeebe-chaos/2025/11/27/Stress-testing-Camunda</guid>
             <pubDate>Thu, 27 Nov 2025 00:00:00 GMT</pubDate>
-            <description><![CDATA[In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the system's performance and reliability.]]></description>
-            <content:encoded><![CDATA[<p>In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the system's performance and reliability.</p>
+            <description><![CDATA[In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the performance of processing and system reliability.]]></description>
+            <content:encoded><![CDATA[<p>In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the performance of processing and system reliability.</p>
 <p>Due to our recent work in supporting <a href="https://github.com/camunda/camunda/issues/38829" target="_blank" rel="noopener noreferrer">load tests for different versions</a>, we were able to compare how different Camunda versions handle stress.</p>
 <p><strong>TL;DR;</strong> We found that Camunda 8.7.x performs best under high load, followed by the main branch and 8.6.x. The latest version 8.8.x showed lower throughput, but with increased resources, it was able to improve performance. Latency was lowest (best) in 8.8.x with increased resources.</p>
 <blockquote>
 <p>[Update: 28.11.2025]</p>
-<p>As noted the architecture has changed in 8.8.x to a single Camunda application. Combining several components together like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, Identity. Thus, it should not surprise that the resource demands have changed.</p>
-<p>We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and enabling client load balancing. This allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency stayed factor 2 lower.</p>
-<p>For more details see below section "Further Experiments".</p>
+<p>As noted, the architecture has changed in 8.8.x to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.</p>
+<p>We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
+Client load balancing allowed us to better utilize</p>
+<p>For more details, see the section "Further Experiments" below.</p>
 </blockquote>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2025/11/27/Stress-testing-Camunda#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment">​</a></h2>
 <p>Weekly, we run <a href="https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#variations" target="_blank" rel="noopener noreferrer">endurance tests</a> to validate the stability of our systems. This time, we decided to push the limits further by increasing the load significantly and observing how Camunda handles the stress.</p>
