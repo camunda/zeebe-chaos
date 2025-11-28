@@ -17,17 +17,12 @@ In today's chaos experiment, we focused on stress-testing the Camunda 8 platform
 
 Due to our recent work in supporting [load tests for different versions](https://github.com/camunda/camunda/issues/38829), we were able to compare how different Camunda versions handle stress.
 
-**TL;DR;** We found that Camunda 8.8.x with adjusted resources (related to architecture streamlining) performs best under high load, followed by 8.7.x, the main branch, and 8.6.x. Latency was lowest (best) by a factor of 2 in 8.8.x with increased resources compared to 8.7.x.
+**TL;DR:** Overall, we saw that all versions of Camunda 8 are robust and can handle high loads effectively and reliably. In consideration of throughput and latency, with **similar** resource allocation among the brokers, 8.7.x outperforms other versions. If we consider our streamlined architecture (which now contains more components in a single application) and align the resources for 8.8.x, it can achieve similar throughput levels as 8.7.x, while maintaining significantly lower latency (a factor of 2). An overview of the results can be found in the [Results](#results) section below.
 
 :::info
-[Update: 28.11.2025] 
+[Update: 28.11.2025]
 
-As noted, the architecture in 8.8.x has changed to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
- 
-We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
-Client load balancing enabled us to utilize our resources more effectively.
-
-For more details, see the section "Further Experiments" below.
+After the initial analysis, we conducted further experiments with 8.8 to understand why the measured processing performance was lower compared to 8.7.x. The blog post (including TL;DR) has been updated with the new findings in the section [Further Experiments](#further-Experiments) below.
 
 :::
 
@@ -150,17 +145,23 @@ An everyday use case for Camunda is the implementation of straight-through proce
 
 ## Further Experiments
 
-> [Update: 28.11.2025]
-> 
+:::info
 
-We conducted further experiments with 8.8 to understand, why the performance is lower compared to 8.7.x.
+[Update: 28.11.2025]
+
+We conducted further experiments with 8.8 to understand why the performance is lower compared to 8.7.x.
+
+:::
+
+As noted, the architecture in 8.8.x has changed to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
+
+We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
+Client load balancing enabled us to utilize our resources more effectively.
 
 
 ### CPU Resources increase
 
 In previous experiment we increased the CPU resources from 2 to 3 cores. To understand whether this has an impact on performance, we ran an experiment where we increased the CPU resources to 3.5 cores.
-
-As noted the architecture has changed in 8.8.x to a single Camunda application. Combining several components together like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, Identity. Thus it should not suprise that the resource demands have changed.
 
 ![88-one-task-512mb-rocksdb](88-one-task-more-35-cpu.png)
 
@@ -172,7 +173,7 @@ The latency of 8.8 is much better than in 8.7.x.
 
 ### RocksDB memory settings
 
-As we have mentioned above, we reduced the RocksDB memory settings in 8.8.x to 64 MB per partition (instead of previously 512MB). Therefore, we ran an experiment where we increased the RocksDB memory back to 512MB per partition. To understand whether this has an impact on performance.
+As we have mentioned [above](#87x-results), we reduced the RocksDB memory settings in 8.8.x to 64 MB per partition (instead of previously 512MB). Therefore, we ran an experiment where we increased the RocksDB memory back to 512MB per partition. To understand whether this has an impact on performance.
 
 ![88-one-task-512mb-rocksdb](88-one-task-more-rocksdb.png)
 ![88-one-task-512mb-rocksdb](88-one-task-more-rocksdb-latency.png)
