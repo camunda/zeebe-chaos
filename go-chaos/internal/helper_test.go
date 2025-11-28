@@ -144,3 +144,16 @@ func (c *K8Client) createSaaSNamespace(t *testing.T) {
 	_, err := c.Clientset.CoreV1().Namespaces().Create(context.TODO(), &namespace, metav1.CreateOptions{})
 	require.NoError(t, err)
 }
+
+// CreateServiceWithSelector creates a ClusterIP service with the given name, selector labels, and ports.
+func (c K8Client) CreateServiceWithSelector(t *testing.T, name string, selector map[string]string, ports []v1.ServicePort) {
+	if len(ports) == 0 {
+		ports = []v1.ServicePort{{Port: 26500}}
+	}
+	svc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: selector},
+		Spec:       v1.ServiceSpec{Selector: selector, Ports: ports, Type: v1.ServiceTypeClusterIP},
+	}
+	_, err := c.Clientset.CoreV1().Services(c.GetCurrentNamespace()).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+}
