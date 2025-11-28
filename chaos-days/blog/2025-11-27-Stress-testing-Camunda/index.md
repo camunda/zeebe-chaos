@@ -13,11 +13,11 @@ authors: zell
 
 # Chaos Day Summary
 
-In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the performance of processing and system reliability.
+In today's chaos experiment, we focused on stress-testing the Camunda 8 orchestration cluster under high-load conditions. We simulated a large number of concurrent process instances to evaluate the performance of processing and system reliability.
 
 Due to our recent work in supporting [load tests for different versions](https://github.com/camunda/camunda/issues/38829), we were able to compare how different Camunda versions handle stress.
 
-**TL;DR:** Overall, we saw that all versions of Camunda 8 are robust and can handle high loads effectively and reliably. In consideration of throughput and latency, with **similar** resource allocation among the brokers, 8.7.x outperforms other versions. If we consider our streamlined architecture (which now contains more components in a single application) and align the resources for 8.8.x, it can achieve similar throughput levels as 8.7.x, while maintaining significantly lower latency (a factor of 2). An overview of the results can be found in the [Results](#results) section below.
+**TL;DR:** Overall, we saw that all versions of the Camunda 8 orchestration cluster (with focus on the processing) are robust and can handle high loads effectively and reliably. In consideration of throughput and latency, with **similar** resource allocation among the brokers, 8.7.x outperforms other versions. If we consider our streamlined architecture (which now contains more components in a single application) and align the resources for 8.8.x, it can achieve similar throughput levels as 8.7.x, while maintaining significantly lower latency (a factor of 2). An overview of the results can be found in the [Results](#results) section below.
 
 :::info
 [Update: 28.11.2025]
@@ -185,7 +185,7 @@ We can see that the throughput stays, but the memory consumption is much higher 
 I realized that in previous experiments, we only had three worker applications deployed to process the service tasks. As I used a wrong configuration. My suspicion was that this limited the performance, so I scaled them to six. I did this for 8.8.x and 8.7.x to have a fair comparison.
 
 ![87-workers](87-workers.png)
-![88-more-workers](87-workers.png)
+![88-more-workers](88-more-worker.png)
 
 We can see that the job activation rate has increased, but the overall throughput stays the same. Thus having more workers does not help in this scenario.
 
