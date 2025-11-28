@@ -13,7 +13,7 @@ authors: zell
 
 # Chaos Day Summary
 
-In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the system's performance and reliability.
+In today's chaos experiment, we focused on stress-testing the Camunda 8 platform under high-load conditions. We simulated a large number of concurrent process instances to evaluate the performance of processing and system reliability.
 
 Due to our recent work in supporting [load tests for different versions](https://github.com/camunda/camunda/issues/38829), we were able to compare how different Camunda versions handle stress.
 
@@ -21,11 +21,12 @@ Due to our recent work in supporting [load tests for different versions](https:/
 
 > [Update: 28.11.2025] 
 > 
-> As noted the architecture has changed in 8.8.x to a single Camunda application. Combining several components together like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, Identity. Thus, it should not surprise that the resource demands have changed.
+> As noted, the architecture has changed in 8.8.x to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
 > 
-> We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and enabling client load balancing. This allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency stayed factor 2 lower.
+> We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
+> Client load balancing allowed us to better utilize
 > 
-> For more details see below section "Further Experiments".
+> For more details, see the section "Further Experiments" below.
 
 <!--truncate-->
 
