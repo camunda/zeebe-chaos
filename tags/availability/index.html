@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.6.3">
 <title data-rh="true">38 posts tagged with &quot;availability&quot; | Zeebe Chaos</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://camunda.github.io/zeebe-chaos/tags/availability"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" property="og:title" content="38 posts tagged with &quot;availability&quot; | Zeebe Chaos"><meta data-rh="true" name="docusaurus_tag" content="blog_tags_posts"><meta data-rh="true" name="docsearch:docusaurus_tag" content="blog_tags_posts"><link data-rh="true" rel="icon" href="/zeebe-chaos/img/zeebe-logo.png"><link data-rh="true" rel="canonical" href="https://camunda.github.io/zeebe-chaos/tags/availability"><link data-rh="true" rel="alternate" href="https://camunda.github.io/zeebe-chaos/tags/availability" hreflang="en"><link data-rh="true" rel="alternate" href="https://camunda.github.io/zeebe-chaos/tags/availability" hreflang="x-default"><link rel="alternate" type="application/rss+xml" href="/zeebe-chaos/rss.xml" title="Zeebe Chaos RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/zeebe-chaos/atom.xml" title="Zeebe Chaos Atom Feed"><link rel="stylesheet" href="/zeebe-chaos/assets/css/styles.8dcd4ed1.css">
-<script src="/zeebe-chaos/assets/js/runtime~main.761d389b.js" defer="defer"></script>
+<script src="/zeebe-chaos/assets/js/runtime~main.54889ef7.js" defer="defer"></script>
 <script src="/zeebe-chaos/assets/js/main.6c3ddaba.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -14,122 +14,7 @@ we discovered that REST API requests suffered from significantly higher latency 
 While adding more CPU cores alleviated the issue, this wasn’t a sustainable solution — it hinted at an inefficiency in how REST handled broker responses.
 See related <a href="https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up-REST-API-performance#request-handling-execution-logic" target="_blank" rel="noopener noreferrer">section</a> from the previous blog post.</p>
 <p>This blog post is about how we diagnosed the issue, what we found, and the fix we introduced in <a href="https://github.com/camunda/camunda/pull/36517" target="_blank" rel="noopener noreferrer">PR #36517</a>
-to close the performance gap.</p>
-<h2 class="anchor anchorWithStickyNavbar_LWe7" id="the-problem">The Problem<a href="#the-problem" class="hash-link" aria-label="Direct link to The Problem" title="Direct link to The Problem">​</a></h2>
-<p>A difference we spotted early between <strong>REST API</strong> and <strong>gRPC</strong> request handling was the usage of the <code>BrokerClient</code>:</p>
-<ul>
-<li><strong>gRPC:</strong> <code>BrokerClient</code> calls are wrapped with retries and handled directly in the request thread.</li>
-<li><strong>REST:</strong> requests are executed without retries, and responses are handled asynchronously using the common <code>ForkJoinPool</code>.</li>
-</ul>
-<p>On clusters with 2 CPUs, the JVM defaults to a single thread for the common <code>ForkJoinPool</code>.
-Our expectation was that this could cause contention: one thread might not be fast enough to process responses in time, leading to delays in the Gateway ↔ Broker request-response cycle.</p>
-<h2 class="anchor anchorWithStickyNavbar_LWe7" id="the-solution-journey">The Solution Journey<a href="#the-solution-journey" class="hash-link" aria-label="Direct link to The Solution Journey" title="Direct link to The Solution Journey">​</a></h2>
-<p>Solving this issue wasn’t a straight line — we tried a few approaches before landing on the final design.
-Each iteration gave us valuable insights about Java’s thread pool usage and its impact on REST API performance.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="1-first-attempt-synchronousqueue">1. First Attempt: SynchronousQueue<a href="#1-first-attempt-synchronousqueue" class="hash-link" aria-label="Direct link to 1. First Attempt: SynchronousQueue" title="Direct link to 1. First Attempt: SynchronousQueue">​</a></h3>
-<p>We began with a custom <code>ThreadPoolExecutor</code> that used a <code>SynchronousQueue</code> for task handoff:</p>
-<div class="language-java codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_biex"><pre tabindex="0" class="prism-code language-java codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">new ThreadPoolExecutor(</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    corePoolSize,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    maxPoolSize,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    keepAliveSeconds,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    TimeUnit.SECONDS,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    new SynchronousQueue&lt;&gt;(),</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    threadFactory,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    new ThreadPoolExecutor.CallerRunsPolicy());</span><br></span></code></pre><div class="buttonGroup__atx"><button type="button" aria-label="Copy code to clipboard" title="Copy" class="clean-btn"><span class="copyButtonIcons_eSgA" aria-hidden="true"><svg viewBox="0 0 24 24" class="copyButtonIcon_y97N"><path fill="currentColor" d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"></path></svg><svg viewBox="0 0 24 24" class="copyButtonSuccessIcon_LjdS"><path fill="currentColor" d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"></path></svg></span></button></div></div></div>
-<p>A <code>SynchronousQueue</code> has <strong>no capacity</strong> — each task submission must immediately find a free worker thread.
-If no thread is available, the caller blocks until one frees up.</p>
-<p>In practice, this meant concurrency was <strong>artificially limited</strong>: bursts of REST requests had to wait for a thread to become available, reducing parallelism.
-The results were modest:</p>
-<ul>
-<li><strong>Request rate:</strong> unchanged</li>
-<li><strong>Average latency:</strong> improved slightly (from ~120 ms → ~100 ms)</li>
-<li><strong>CPU throttling:</strong> dropped only marginally (100% → 90%)</li>
-</ul>
-<p>Before any changes introduced, results looked like this:
-<img decoding="async" loading="lazy" alt="syncqueue-req-before" src="/zeebe-chaos/assets/images/syncqueue-req-before-8d25531fa8c311440fa9c8e80e78d1e5.png" width="1052" height="1210" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="syncqueue-cpu-before" src="/zeebe-chaos/assets/images/syncqueue-cpu-before-221093fdaa3aa155857222a6feec4e88.png" width="2112" height="674" class="img_ev3q"></p>
-<p>Then we started benchmarking after introducing executor with <code>SynchronousQueue</code>:
-<img decoding="async" loading="lazy" alt="syncqueue-req-after" src="/zeebe-chaos/assets/images/syncqueue-req-after-172469b801a0b97b731b4b27ba44eedf.png" width="1050" height="1218" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="syncqueue-cpu-after" src="/zeebe-chaos/assets/images/syncqueue-cpu-after-b2902d1db04dba87750b03e9dae1673f.png" width="2098" height="684" class="img_ev3q"></p>
-<p>This hinted we were on the right track — a dedicated executor helped — but the queue strategy was too restrictive.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="2-experiment-arrayblockingqueue--abortpolicy">2. Experiment: ArrayBlockingQueue + AbortPolicy<a href="#2-experiment-arrayblockingqueue--abortpolicy" class="hash-link" aria-label="Direct link to 2. Experiment: ArrayBlockingQueue + AbortPolicy" title="Direct link to 2. Experiment: ArrayBlockingQueue + AbortPolicy">​</a></h3>
-<p>Next, we switched to an <code>ArrayBlockingQueue</code> with a capacity of 64.
-This allowed the pool to <strong>buffer short micro-bursts</strong> of requests instead of blocking immediately.
-At the same time, we replaced <code>CallerRunsPolicy</code> with <code>AbortPolicy</code>:</p>
-<div class="language-java codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_biex"><pre tabindex="0" class="prism-code language-java codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">new ThreadPoolExecutor.AbortPolicy();</span><br></span></code></pre><div class="buttonGroup__atx"><button type="button" aria-label="Copy code to clipboard" title="Copy" class="clean-btn"><span class="copyButtonIcons_eSgA" aria-hidden="true"><svg viewBox="0 0 24 24" class="copyButtonIcon_y97N"><path fill="currentColor" d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"></path></svg><svg viewBox="0 0 24 24" class="copyButtonSuccessIcon_LjdS"><path fill="currentColor" d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"></path></svg></span></button></div></div></div>
-<p>The idea was to <strong>fail fast</strong> on saturation: if the queue filled up and no thread was free, the executor would throw <code>RejectedExecutionException</code> immediately.
-This boosted the measured request rate, but at a cost:</p>
-<ul>
-<li>Many requests were simply rejected outright.</li>
-<li>Measuring true performance became tricky, since high throughput numbers hid the rejections.</li>
-<li>Operationally, this wasn’t acceptable — REST clients would constantly see errors under load.</li>
-</ul>
-<p>Because of this, we abandoned the fail-fast approach.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="3-final-decision-callerrunspolicy--higher-max-pool-size">3. Final Decision: CallerRunsPolicy + Higher Max Pool Size<a href="#3-final-decision-callerrunspolicy--higher-max-pool-size" class="hash-link" aria-label="Direct link to 3. Final Decision: CallerRunsPolicy + Higher Max Pool Size" title="Direct link to 3. Final Decision: CallerRunsPolicy + Higher Max Pool Size">​</a></h3>
-<p>Finally, we returned to <code>CallerRunsPolicy</code>.
-Instead of rejecting tasks, this policy makes the caller thread execute the task itself when the pool is saturated.
-This introduces <strong>natural backpressure</strong>: clients slow down automatically when the system is busy, without dropping requests.</p>
-<p>To give the executor more headroom, we also increased the maximum pool size from <code>availableProcessors * 2</code> to <code>availableProcessors * 8</code>.</p>
-<p>This combination made the breakthrough:</p>
-<ul>
-<li><strong>Request rate (REST):</strong> stabilized around 150 RPS with spikes up to 200 RPS</li>
-<li><strong>Average latency:</strong> dropped dramatically (from ~120 ms → ~25 ms)</li>
-<li><strong>CPU throttling:</strong> reduced significantly (100% → 30-40%)</li>
-</ul>
-<p>Here are the final results:
-<img decoding="async" loading="lazy" alt="final-decision-result-rest" src="/zeebe-chaos/assets/images/final-decision-result-rest-f324c1eef2158ab2f20dd5d688a4e89f.png" width="2338" height="1202" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="final-decision-result-cpu" src="/zeebe-chaos/assets/images/final-decision-result-cpu-c579720539ebcb00496de95c9120dc49.png" width="2332" height="672" class="img_ev3q"></p>
-<p>This design struck the right balance: elastic concurrency, backpressure, and resource efficiency.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="key-takeaways">Key Takeaways<a href="#key-takeaways" class="hash-link" aria-label="Direct link to Key Takeaways" title="Direct link to Key Takeaways">​</a></h3>
-<ol>
-<li><strong>SynchronousQueue limits concurrency</strong> — good for handoff semantics, but too restrictive for REST workloads.</li>
-<li><strong>Fail-fast rejection looks good in benchmarks but fails in production</strong> — clients can’t handle widespread request errors.</li>
-<li><strong>CallerRunsPolicy provides natural backpressure</strong> — throughput stabilizes without dropping requests, and latency improves.</li>
-<li><strong>CPU-aware max pool sizing matters</strong> — scaling pool size relative to cores unlocks performance gains.</li>
-</ol>
-<h2 class="anchor anchorWithStickyNavbar_LWe7" id="more-benchmarking">More Benchmarking<a href="#more-benchmarking" class="hash-link" aria-label="Direct link to More Benchmarking" title="Direct link to More Benchmarking">​</a></h2>
-<p>To validate that our executor change holds up across configurations, we ran extra tests on our benchmark cluster provisioned with 2 vCPUs per Camunda application.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="1-comparing-max-pool-size-4-8-16">1) Comparing Max Pool Size (×4, ×8, ×16)<a href="#1-comparing-max-pool-size-4-8-16" class="hash-link" aria-label="Direct link to 1) Comparing Max Pool Size (×4, ×8, ×16)" title="Direct link to 1) Comparing Max Pool Size (×4, ×8, ×16)">​</a></h3>
-<p>We ran the same workload while varying <code>maxPoolSize = availableProcessors × {4, 8, 16}</code>. Below are the observed tops from Grafana panels in the screenshots:</p>
-<p><code>maxPoolSizeMultiplier=4</code>
-<img decoding="async" loading="lazy" alt="max-pool-size-multiplier-4" src="/zeebe-chaos/assets/images/max-pool-size-multiplier-4-61b29561f085e4079b30f5de0552bab5.png" width="2316" height="1212" class="img_ev3q"></p>
-<p><code>maxPoolSizeMultiplier=8</code>
-<img decoding="async" loading="lazy" alt="max-pool-size-multiplier-8" src="/zeebe-chaos/assets/images/max-pool-size-multiplier-8-f324c1eef2158ab2f20dd5d688a4e89f.png" width="2338" height="1202" class="img_ev3q"></p>
-<p><code>maxPoolSizeMultiplier=16</code>
-<img decoding="async" loading="lazy" alt="max-pool-size-multiplier-16" src="/zeebe-chaos/assets/images/max-pool-size-multiplier-16-e1011e424e35c3178f468ef5bcc4656a.png" width="2332" height="1204" class="img_ev3q"></p>
-<table><thead><tr><th style="text-align:right">Multiplier</th><th style="text-align:right">Request Rate (proc-instances)</th><th style="text-align:right">Request Rate (completion)</th><th style="text-align:right">Avg Latency (proc-instances)</th><th style="text-align:right">Avg Latency (completion)</th></tr></thead><tbody><tr><td style="text-align:right">×4</td><td style="text-align:right">~51.6 req/s</td><td style="text-align:right">~42.3 req/s</td><td style="text-align:right">~40.2 ms</td><td style="text-align:right">~57.4 ms</td></tr><tr><td style="text-align:right">×8</td><td style="text-align:right">~144.4 req/s</td><td style="text-align:right">~144.7 req/s</td><td style="text-align:right">~21.4 ms</td><td style="text-align:right">~24.1 ms</td></tr><tr><td style="text-align:right">×16</td><td style="text-align:right">~22.7 req/s</td><td style="text-align:right">~19.5 req/s</td><td style="text-align:right">~38.4 ms</td><td style="text-align:right">~55.4 ms</td></tr></tbody></table>
-<p><strong>What this suggests (in our setup):</strong></p>
-<ul>
-<li><strong>×8</strong> is the clear <strong>sweet spot</strong>: highest sustained throughput with the lowest average latencies.</li>
-<li><strong>×4</strong> under-provisions the pool (lower RPS, higher latency).</li>
-<li><strong>×16</strong> shows <strong>diminishing/negative returns</strong> (likely scheduler contention or oversubscription): much lower RPS and latencies drifting back up.</li>
-</ul>
-<p><strong>Takeaway:</strong> In our setup, ×8 balances elasticity and scheduling overhead, delivering the best throughput–latency trade-off.</p>
-<h3 class="anchor anchorWithStickyNavbar_LWe7" id="3-comparing-queue-capacity-16-vs-64-vs-256">3) Comparing Queue Capacity (16 vs 64 vs 256)<a href="#3-comparing-queue-capacity-16-vs-64-vs-256" class="hash-link" aria-label="Direct link to 3) Comparing Queue Capacity (16 vs 64 vs 256)" title="Direct link to 3) Comparing Queue Capacity (16 vs 64 vs 256)">​</a></h3>
-<p>We varied the executor <strong>queue capacity</strong> and compared <strong>16</strong>, <strong>64</strong> (our current/default for this run), and <strong>256</strong> under the same workload.<br>
-<!-- -->Below are the observed tops from the Grafana panels for the two hot endpoints:</p>
-<ul>
-<li>POST /v2/process-instances</li>
-<li>POST /v2/jobs/{jobKey}/completion</li>
-</ul>
-<p><code>queueCapacity=16</code><br>
-<img decoding="async" loading="lazy" alt="queue-capacity-16" src="/zeebe-chaos/assets/images/queue-capacity-16-516379e4fce7362827be0d3ad957e7dc.png" width="2338" height="1208" class="img_ev3q"></p>
-<p><code>queueCapacity=64</code><br>
-<img decoding="async" loading="lazy" alt="queue-capacity-64" src="/zeebe-chaos/assets/images/queue-capacity-64-f324c1eef2158ab2f20dd5d688a4e89f.png" width="2338" height="1202" class="img_ev3q"></p>
-<p><code>queueCapacity=256</code><br>
-<img decoding="async" loading="lazy" alt="queue-capacity-256" src="/zeebe-chaos/assets/images/queue-capacity-256-19acdd7b6ca1df00ccaefb20fae5ce41.png" width="2338" height="1216" class="img_ev3q"></p>
-<h4 class="anchor anchorWithStickyNavbar_LWe7" id="measured-summary">Measured summary<a href="#measured-summary" class="hash-link" aria-label="Direct link to Measured summary" title="Direct link to Measured summary">​</a></h4>
-<table><thead><tr><th style="text-align:right">Queue Capacity</th><th style="text-align:right">Request Rate (proc-instances)</th><th style="text-align:right">Request Rate (completion)</th><th style="text-align:right">Avg Latency (proc-instances)</th><th style="text-align:right">Avg Latency (completion)</th></tr></thead><tbody><tr><td style="text-align:right">16</td><td style="text-align:right">~78.2 req/s</td><td style="text-align:right">~56.0 req/s</td><td style="text-align:right">~28.2 ms</td><td style="text-align:right">~40.8 ms</td></tr><tr><td style="text-align:right">64</td><td style="text-align:right">~144.4 req/s</td><td style="text-align:right">~144.7 req/s</td><td style="text-align:right">~21.4 ms</td><td style="text-align:right">~24.1 ms</td></tr><tr><td style="text-align:right">256</td><td style="text-align:right">~80.2 req/s</td><td style="text-align:right">~61.2 req/s</td><td style="text-align:right">~29.3 ms</td><td style="text-align:right">~43.0 ms</td></tr></tbody></table>
-<p><strong>What this suggests (in our setup):</strong></p>
-<ul>
-<li><strong>Queue = 64</strong> is the clear <strong>sweet spot</strong>: highest sustained throughput (~144 req/s on hot endpoints) with the lowest avg latencies (~21–24 ms). Likely large enough to absorb micro-bursts, but small enough to avoid long queue waits.</li>
-<li><strong>Queue = 16</strong> under-buffers: lower RPS (~78 / ~56 req/s) and higher latency (~28–41 ms). With <code>CallerRunsPolicy</code>, the queue fills quickly and the caller runs tasks often → frequent backpressure throttles producers.</li>
-<li><strong>Queue = 256</strong> shows <strong>diminishing/negative returns</strong> relative to 64: lower RPS (~80 / ~61 req/s) and higher latency (~29–43 ms). The big buffer hides saturation, adding queueing delay before execution without delivering extra useful work at the same CPU budget.</li>
-</ul>
-<h2 class="anchor anchorWithStickyNavbar_LWe7" id="conclusion">Conclusion<a href="#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion">​</a></h2>
-<p>Moving off the common <code>ForkJoinPool</code> to a dedicated, CPU-aware executor with bounded queueing and <code>CallerRunsPolicy</code> backpressure turned an overload problem into graceful degradation: fewer 5xxs, steadier RPS, and far lower tail latency under the same CPU budget.</p>
-<p><strong>Final takeaways</strong></p>
-<ul>
-<li><strong>Isolation beats sharing.</strong> A dedicated pool prevents noisy neighbors from the common <code>ForkJoinPool</code>.</li>
-<li><strong>Backpressure beats drops.</strong> <code>CallerRunsPolicy</code> slows producers when saturated, stabilizing the system without mass rejections.</li>
-<li><strong>Right-sized knobs matter.</strong> <code>maxPoolSize ≈ cores × 8</code> and <code>queueCapacity ≈ 64</code> hit the best throughput/latency balance in our runs; smaller queues over-throttle, larger queues hide saturation and add wait time.</li>
-<li><strong>Results are environment-specific.</strong> At higher core counts, the sweet spot may shift—re-benchmark when CPUs or workload mix change.</li>
-</ul>
-<p><strong>Note:</strong> Results are environment-specific; at higher core counts, the sweet spot may shift—re-benchmark when CPUs or workload mix change.
-In this experiment, we focused on CPU-bound scenarios.</p></div><footer class="row docusaurus-mt-lg"><div class="col"><b>Tags:</b><ul class="tags_jXut padding--none margin-left--sm"><li class="tag_QGVx"><a class="tag_zVej tagRegular_sFm0" href="/zeebe-chaos/tags/availability">availability</a></li></ul></div></footer></article><article class="margin-bottom--xl"><header><h2 class="title_f1Hy"><a href="/zeebe-chaos/2025/08/26/Resiliency-against-ELS-unavailability">Resiliency against ELS unavailability</a></h2><div class="container_mt6G margin-vert--md"><time datetime="2025-08-26T00:00:00.000Z">August 26, 2025</time> · <!-- -->9 min read</div><div class="margin-top--md margin-bottom--sm row"><div class="col col--12 authorCol_Hf19"><div class="avatar margin-bottom--sm"><a class="avatar__photo-link" href="/zeebe-chaos/authors/zell"><img class="avatar__photo authorImage_XqGP" src="https://github.com/ChrisKujawa.png" alt="Christopher Kujawa"></a><div class="avatar__intro authorDetails_lV9A"><div class="avatar__name"><a href="/zeebe-chaos/authors/zell"><span class="authorName_yefp">Christopher Kujawa</span></a></div><small class="authorTitle_nd0D" title="Chaos Engineer @ Zeebe">Chaos Engineer @ Zeebe</small><div class="authorSocials_rSDt"></div></div></div></div></div></header><div class="markdown"><p>Due to recent initiatives and architecture changes, we coupled us even more against the secondary storage (often Elasticsearch, but can also be OpenSearch or in the future RDBMS).</p>
+to close the performance gap.</p></div><footer class="row docusaurus-mt-lg"><div class="col col--9"><b>Tags:</b><ul class="tags_jXut padding--none margin-left--sm"><li class="tag_QGVx"><a class="tag_zVej tagRegular_sFm0" href="/zeebe-chaos/tags/availability">availability</a></li></ul></div><div class="col text--right col--3"><a aria-label="Read more about REST API: From ForkJoin to a Dedicated Thread Pool" href="/zeebe-chaos/2025/09/18/REST-API-From-ForkJoin-to-a-Dedicated-Thread-Pool"><b>Read more</b></a></div></footer></article><article class="margin-bottom--xl"><header><h2 class="title_f1Hy"><a href="/zeebe-chaos/2025/08/26/Resiliency-against-ELS-unavailability">Resiliency against ELS unavailability</a></h2><div class="container_mt6G margin-vert--md"><time datetime="2025-08-26T00:00:00.000Z">August 26, 2025</time> · <!-- -->9 min read</div><div class="margin-top--md margin-bottom--sm row"><div class="col col--12 authorCol_Hf19"><div class="avatar margin-bottom--sm"><a class="avatar__photo-link" href="/zeebe-chaos/authors/zell"><img class="avatar__photo authorImage_XqGP" src="https://github.com/ChrisKujawa.png" alt="Christopher Kujawa"></a><div class="avatar__intro authorDetails_lV9A"><div class="avatar__name"><a href="/zeebe-chaos/authors/zell"><span class="authorName_yefp">Christopher Kujawa</span></a></div><small class="authorTitle_nd0D" title="Chaos Engineer @ Zeebe">Chaos Engineer @ Zeebe</small><div class="authorSocials_rSDt"></div></div></div></div></div></header><div class="markdown"><p>Due to recent initiatives and architecture changes, we coupled us even more against the secondary storage (often Elasticsearch, but can also be OpenSearch or in the future RDBMS).</p>
 <p>We now have one single application to run Webapps, Gateway, Broker, Exporters, etc., together. Including the new Camunda Exporter exporting all necessary data to the secondary storage. On bootstrap we need to create an expected schema, so our components work as expected, allowing Operate and Tasklist Web apps to consume the data and the exporter to export correctly. Furthermore, we have a new query API (REST API) allowing the search for available data in the secondary storage.</p>
 <p>We have seen in previous experiments and load tests that unavailable ELS and not properly configured replicas can cause issues like the exporter not catching up or queries not succeeding. See related <a href="https://github.com/camunda/camunda/issues/35080" target="_blank" rel="noopener noreferrer">GitHub issue</a>.</p>
 <p>In todays chaos day, we want to play around with the replicas setting of the indices, which can be set in the Camunda Exporter (which is in charge of writing the data to the secondary storage).</p>
