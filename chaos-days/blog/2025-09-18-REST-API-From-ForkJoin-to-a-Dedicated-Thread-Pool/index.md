@@ -20,6 +20,8 @@ See related [section](https://camunda.github.io/zeebe-chaos/2025/07/02/Follow-up
 This blog post is about how we diagnosed the issue, what we found, and the fix we introduced in [PR #36517](https://github.com/camunda/camunda/pull/36517) 
 to close the performance gap.
 
+<!--truncate-->
+
 ## The Problem
 
 A difference we spotted early between **REST API** and **gRPC** request handling was the usage of the `BrokerClient`:

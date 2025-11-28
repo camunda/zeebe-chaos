@@ -16,6 +16,8 @@ With version 8.8, we introduced the ability to add new partitions to an existing
 * Several bugs were identified during testing.
 * After addressing these issues, scaling succeeded even when multiple nodes were restarted during the operation.
 
+<!--truncate-->
+
 ## Chaos experiment
 
 ### Expected

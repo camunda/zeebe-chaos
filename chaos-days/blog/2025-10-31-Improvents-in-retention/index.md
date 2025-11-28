@@ -26,6 +26,8 @@ The historical data refers to exported data from configured exporters, such as r
 The goal of this experiment is to compare the amount of 
 PIs that we can retain in historical data between Camunda 8.7 and 8.8 running with the same hardware.
 
+<!--truncate-->
+
 ## Chaos experiment
 
 ### Expected Outcomes
