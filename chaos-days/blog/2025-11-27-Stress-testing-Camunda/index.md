@@ -17,7 +17,7 @@ In today's chaos experiment, we focused on stress-testing the Camunda 8 platform
 
 Due to our recent work in supporting [load tests for different versions](https://github.com/camunda/camunda/issues/38829), we were able to compare how different Camunda versions handle stress.
 
-**TL;DR;** We found that Camunda 8.7.x performs best under high load, followed by the main branch and 8.6.x. The latest version 8.8.x showed lower throughput, but with increased resources, it was able to improve performance. Latency was lowest (best) in 8.8.x with increased resources.
+**TL;DR;** We found that Camunda 8.8.x with adjusted resources (related to architecture streamlining) performs best under high load, followed by 8.7.x, the main branch and 8.6.x. Latency was lowest (best) by factor 2 in 8.8.x with increased resources compared to 8.7.x.
 
 :::info
 [Update: 28.11.2025] 
