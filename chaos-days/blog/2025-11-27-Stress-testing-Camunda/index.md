@@ -19,6 +19,14 @@ Due to our recent work in supporting [load tests for different versions](https:/
 
 **TL;DR;** We found that Camunda 8.7.x performs best under high load, followed by the main branch and 8.6.x. The latest version 8.8.x showed lower throughput, but with increased resources, it was able to improve performance. Latency was lowest (best) in 8.8.x with increased resources.
 
+> [Update: 28.11.2025] 
+> 
+> As noted the architecture has changed in 8.8.x to a single Camunda application. Combining several components together like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, Identity. Thus, it should not surprise that the resource demands have changed.
+> 
+> We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and enabling client load balancing. This allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency stayed factor 2 lower.
+> 
+> For more details see below section "Further Experiments".
+
 <!--truncate-->
 
 ## Chaos Experiment
@@ -136,4 +144,68 @@ An everyday use case for Camunda is the implementation of straight-through proce
 ![ten_tasks](ten_tasks.png)
 
 
+## Further Experiments
 
+> [Update: 28.11.2025]
+> 
+
+We conducted further experiments with 8.8 to understand, why the performance is lower compared to 8.7.x.
+
+
+### CPU Resources increase
+
+In previous experiment we increased the CPU resources from 2 to 3 cores. To understand whether this has an impact on performance, we ran an experiment where we increased the CPU resources to 3.5 cores.
+
+As noted the architecture has changed in 8.8.x to a single Camunda application. Combining several components together like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, Identity. Thus it should not suprise that the resource demands have changed.
+
+![88-one-task-512mb-rocksdb](88-one-task-more-35-cpu.png)
+
+With the increased CPU resources, we are able to reach the same number of processed PI/s as in 8.7.x (~248 PI/s).
+
+![88-one-task-512mb-rocksdb](88-one-task-more-35-cpu-latency.png)
+
+The latency of 8.8 is much better than in 8.7.x.
+
+### RocksDB memory settings
+
+As we have mentioned above, we reduced the RocksDB memory settings in 8.8.x to 64 MB per partition (instead of previously 512MB). Therefore, we ran an experiment where we increased the RocksDB memory back to 512MB per partition. To understand whether this has an impact on performance.
+
+![88-one-task-512mb-rocksdb](88-one-task-more-rocksdb.png)
+![88-one-task-512mb-rocksdb](88-one-task-more-rocksdb-latency.png)
+
+We can see that the throughput stays, but the memory consumption is much higher (as expected).
+
+### More Workers
+
+I realized that in previous experiments, we only had three worker applications deployed to process the service tasks. As I used a wrong configuration. My suspicion was that this limited the performance, so I scaled them to six. I did this for 8.8.x and 8.7.x to have a fair comparison.
+
+![87-workers](87-workers.png)
+![88-more-workers](87-workers.png)
+
+We can see that the job activation rate has increased, but the overall throughput stays the same. Thus having more workers does not help in this scenario.
+
+
+### Client Load Balancing
+
+Out of curiosity, we wanted to validate the usage of [client load balancing](https://github.com/camunda/camunda/pull/38916) and the impact on the system resources and performance (as this would cause better distribution of the load). This is currently a custom feature (not yet implemented e2e).
+
+![88-one-task-35-cpu-client-load-balance](88-one-task-more-35-cpu-client-load-balance.png)
+
+This shows the best results so far. We are able to reach ~250 PI/s with low latency and great utilization of our resources. Limited CPU throttling on only one pod.
+
+![88-one-task-35-cpu-client-load-balance](88-one-task-more-35-cpu-client-load-balance-latency.png)
+
+### Results
+
+Summarizing the further experiments, we can see that increasing the CPU resources to 3.5 cores and enabling client load balancing significantly improved the performance of 8.8.x, allowing it to reach throughput levels comparable to 8.7.x while maintaining low latency.
+
+| Version  | Throughput (PI/s) | p50 PI execution Latency (ms) | p99 PI execution Latency (ms) | CPU Throttling |
+|----------|-------------------|-------------------------------|-------------------------------|----------------|
+| 8.7.x    | ~**246**          | ~200                          | ~700                          | 80% one pod    |
+| 8.6.x    | ~220              | ~400                          | ~960                          | 80+% all pods  |
+| 8.8.x    | ~160              | ~370                          | ~700                          | 90+% all pods  |
+| 8.8.x (3 CPU) | ~220              | ~**90**                       | ~**490**                      | 80% one pod    |
+| Main     | ~230              | ~180                          | ~497                          | 90+% two pods  |
+| 8.8.x (3.5 CPU) | ~**248**          | ~65                           | ~429                          | ~40% two pods  |
+| 8.8.x (3.5 CPU + Client LB) | ~**248**          | ~64                           | ~350                          | 35% one pod    |    
+| 8.8.x (3.5 CPU + 512MB RocksDB) | ~**248**          | ~64                           | ~418                          | 35% two pod    |
