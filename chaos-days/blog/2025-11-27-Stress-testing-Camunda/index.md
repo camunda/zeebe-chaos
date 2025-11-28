@@ -17,15 +17,15 @@ In today's chaos experiment, we focused on stress-testing the Camunda 8 platform
 
 Due to our recent work in supporting [load tests for different versions](https://github.com/camunda/camunda/issues/38829), we were able to compare how different Camunda versions handle stress.
 
-**TL;DR;** We found that Camunda 8.8.x with adjusted resources (related to architecture streamlining) performs best under high load, followed by 8.7.x, the main branch and 8.6.x. Latency was lowest (best) by factor 2 in 8.8.x with increased resources compared to 8.7.x.
+**TL;DR;** We found that Camunda 8.8.x with adjusted resources (related to architecture streamlining) performs best under high load, followed by 8.7.x, the main branch, and 8.6.x. Latency was lowest (best) by a factor of 2 in 8.8.x with increased resources compared to 8.7.x.
 
 :::info
 [Update: 28.11.2025] 
 
-As noted, the architecture has changed in 8.8.x to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
+As noted, the architecture in 8.8.x has changed to a single Camunda application. Combining several components, like Zeebe Broker, Zeebe Gateway, Operate Webapp + Importer, Tasklist Webapp + Importer, and Identity. Thus, it should not be surprising that resource demands have changed.
  
 We experimented further with 8.8.x by increasing the CPU resources to 3.5 cores and, for example, enabling client load balancing. Increasing our resources already allowed us to reach a throughput of ~250 PI/s, which is comparable to 8.7.x performance, while the latency remained a factor of 2 lower.
-Client load balancing allowed us to better utilize
+Client load balancing enabled us to utilize our resources more effectively.
 
 For more details, see the section "Further Experiments" below.
 
