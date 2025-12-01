@@ -22,7 +22,7 @@ Due to our recent work in supporting [load tests for different versions](https:/
 :::info
 [Update: 28.11.2025]
 
-After the initial analysis, we conducted further experiments with 8.8 to understand why the measured processing performance was lower compared to 8.7.x. The blog post (including TL;DR) has been updated with the new findings in the section [Further Experiments](#further-Experiments) below.
+After the initial analysis, we conducted further experiments with 8.8 to understand why the measured processing performance was lower compared to 8.7.x. The blog post (including TL;DR) has been updated with the new findings in the section [Further Experiments](#further-experiments) below.
 
 :::
 
