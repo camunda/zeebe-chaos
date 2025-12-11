@@ -56,13 +56,13 @@ For our customers running mission-critical processes, reliability testing provid
 
 Today, our reliability testing encompasses two main pillars: load tests and chaos engineering.
 
-### Variations of load tests
+### Variations of Load Tests
 
 We run different variants of load tests continuously:
 
-- **Release endurance Tests**: Every supported version undergoes continuous endurance testing with artificial workloads, updated with each patch release
-- **Weekly endurance Tests**: Based on our main branch, these tests run for four weeks to detect newly introduced instabilities or performance regressions
-- **Daily stress Tests**: Shorter tests that validate the latest changes in our main branch under high load conditions
+- **Release Endurance Tests**: Every supported version undergoes continuous endurance testing with artificial workloads, updated with each patch release
+- **Weekly Endurance Tests**: Based on our main branch, these tests run for four weeks to detect newly introduced instabilities or performance regressions
+- **Daily Stress Tests**: Shorter tests that validate the latest changes in our main branch under high load conditions
 
 Our workload varies from artificial load (simple process definitions with minimal logic) to typical and realistic, complex processes that mimic real-world usage patterns.
 
@@ -86,11 +86,11 @@ With the foundation we’ve established through years of focused reliability tes
 
 Some of our upcoming initiatives driven by this team include:
 
-* **Holistic coverage**: We're extending our reliability testing to cover all components of the Camunda 8 platform via a central reliability testing framework.
+* **Holistic Coverage**: We're extending our reliability testing to cover all components of the Camunda 8 platform via a central reliability testing framework.
 * **Chaos Engineering**: We're planning to introduce new chaos experiments that simulate more complex failure modes, including network partitions, data corruption, and cascading failures.
 * **Performance Optimization**: Beyond maintaining performance, we utilize our testing infrastructure to identify optimization opportunities and validate improvements.
 * **Enhanced Observability**: Building on our extensive [Grafana dashboards](https://github.com/camunda/camunda/tree/main/monitor/grafana), we continually improve our ability to detect and diagnose issues quickly.
-* **Establish Reliability practices**: We're formalizing reliability testing practices and guidelines that can be adopted across all engineering teams at Camunda.
+* **Establish Reliability Practices**: We're formalizing reliability testing practices and guidelines that can be adopted across all engineering teams at Camunda.
 * **Enablement**: With the resources we want to enable all of our more than 15 product teams at Camunda to understand, implement, and execute reliability testing principles in their work. Allowing them to build more reliable software from the start and scaling our efforts.
 
 ## Building Trust Through Transparency
