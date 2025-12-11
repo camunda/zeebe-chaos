@@ -4,10 +4,91 @@
         <title>Zeebe Chaos Blog</title>
         <link>https://camunda.github.io/zeebe-chaos/</link>
         <description>Zeebe Chaos Blog</description>
-        <lastBuildDate>Thu, 27 Nov 2025 00:00:00 GMT</lastBuildDate>
+        <lastBuildDate>Thu, 11 Dec 2025 00:00:00 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <language>en</language>
+        <item>
+            <title><![CDATA[Building Confidence at Scale: How Camunda Ensures Platform Reliability Through Continuous Testing]]></title>
+            <link>https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing</link>
+            <guid>https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing</guid>
+            <pubDate>Thu, 11 Dec 2025 00:00:00 GMT</pubDate>
+            <description><![CDATA[As businesses increasingly rely on process automation for their critical operations, the question of reliability becomes paramount. How can you trust that your automation platform will perform consistently under pressure, recover gracefully from failures, and maintain performance over time?]]></description>
+            <content:encoded><![CDATA[<p>As businesses increasingly rely on process automation for their critical operations, the question of reliability becomes paramount. How can you trust that your automation platform will perform consistently under pressure, recover gracefully from failures, and maintain performance over time?</p>
+<p>At Camunda, we've been asking ourselves these same questions for years, and today I want to share how our reliability testing practices have evolved to ensure our platform meets the demanding requirements of enterprise-scale deployments. I will also outline our plans to further invest in this crucial area.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="from-humble-beginnings-to-comprehensive-testing">From Humble Beginnings to Comprehensive Testing<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#from-humble-beginnings-to-comprehensive-testing" class="hash-link" aria-label="Direct link to From Humble Beginnings to Comprehensive Testing" title="Direct link to From Humble Beginnings to Comprehensive Testing" translate="no">​</a></h2>
+<p>Our reliability testing journey began in <a href="https://github.com/zeebe-io/zeebe-benchmark" target="_blank" rel="noopener noreferrer" class="">early 2019</a> with what we then called "benchmarks" – simple load tests to validate basic performance of our <a href="https://docs.camunda.io/docs/components/zeebe/zeebe-overview/" target="_blank" rel="noopener noreferrer" class="">Zeebe engine</a>.</p>
+<p>Over time, we recognized that running such benchmarks alone wasn't enough. We needed to ensure that Zeebe could handle real-world conditions, including failures and long-term operation. This realization led us to significantly expand our testing approach.</p>
+<p>We introduced endurance tests that run for weeks, simulating sustained load to uncover memory leaks and performance degradation. These tests helped us validate that Zeebe could maintain its performance characteristics over extended periods of time. Investing in these endurance tests paid off, as we identified and resolved several critical issues that only manifested under prolonged load. Additionally, it allows us to build up experience on what a healthy system looks like and what we need to investigate faulty systems. With this, we were able to create <a href="https://github.com/camunda/camunda/tree/main/monitor/grafana" target="_blank" rel="noopener noreferrer" class="">Grafana dashboards</a> that we can directly use to monitor our production systems and provide to our customers.</p>
+<p>We embraced <a href="https://principlesofchaos.org/" target="_blank" rel="noopener noreferrer" class="">chaos engineering</a> principles, developing a suite of chaos experiments to simulate failures in a controlled manner. We created <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">zbchaos</a>, an open-source fault injection tool tailored for Camunda, allowing us to automate and scale our chaos experiments. Automated chaos experiments now run daily against all supported versions of Camunda, covering a wide range of failure scenarios.</p>
+<p>Additionally, we run semi-regular manual "chaos days" where we design and execute new chaos experiments, documenting our findings in our <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">chaos engineering blog</a>.</p>
+<p>What started as a straightforward performance validation tool has evolved into a comprehensive framework that combines load testing, chaos engineering, and end-to-end testing. This evolution wasn't just about adding more tests. It reflected our growing understanding that reliability isn't a single metric but a multifaceted quality that emerges from systematic validation across different dimensions: performance under load, behavior during failures, and consistency over time.</p>
+<p>We combine all of the above under the umbrella of what we now call "reliability testing." We define reliability testing as a type of software testing and practice that validates system performance and reliability. It can thus be done over time and with injection failure scenarios (injecting chaos).</p>
+<p>If you are interested in more of the evolution of our reliability testing, I gave several Camunda Con Talks and wrote blog posts over the years that you might find interesting:</p>
+<ul>
+<li class=""><a href="https://page.camunda.com/recording-chaos-engineering-meets-zeebe" target="_blank" rel="noopener noreferrer" class="">Camunda Con 2020.2: Chaos Engineering Meets Zeebe</a></li>
+<li class=""><a href="https://vimeo.com/947050323/ce692173b3" target="_blank" rel="noopener noreferrer" class="">Camunda Con 2024: Drinking our own Champagne: Chaos Experiments with Zeebe against Zeebe</a></li>
+<li class=""><a href="https://medium.com/@zelldon91/drinking-our-champagne-chaos-experiments-with-zeebe-against-zeebe-57632dd2c280" target="_blank" rel="noopener noreferrer" class="">Drinking Our Champagne: Chaos Experiments with Zeebe against Zeebe</a></li>
+<li class=""><a href="https://medium.com/@zelldon91/zbchaos-a-new-fault-injection-tool-for-zeebe-cbda56c5ba8d" target="_blank" rel="noopener noreferrer" class="">Zbchaos — A new fault injection tool for Zeebe</a></li>
+<li class="">or see all the other <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">Chaos days</a> we have published</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="why-reliability-testing-matters">Why Reliability Testing Matters<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#why-reliability-testing-matters" class="hash-link" aria-label="Direct link to Why Reliability Testing Matters" title="Direct link to Why Reliability Testing Matters" translate="no">​</a></h3>
+<p>We prepare customers for enterprise-scale operations. For this, we need to be confident in building a product that is fault-tolerant, reliable, and that performs well even under turbulent conditions.</p>
+<p>For our customers running mission-critical processes, reliability testing provides several crucial benefits:</p>
+<ul>
+<li class=""><strong>Proactive Issue Detection</strong>: We identify problems before they impact production environments. Memory leaks, performance degradation, and distributed system failures that only manifest under specific conditions are caught early in our testing cycles.</li>
+<li class=""><strong>Confidence in Long-Term Operation</strong>: Our endurance tests validate that Camunda can run fault-free over extended periods, ensuring your automated processes won't degrade over time.</li>
+<li class=""><strong>Graceful Failure Handling</strong>: Through chaos engineering, we verify that the platform handles failures elegantly, maintaining data consistency and recovering automatically when possible.</li>
+<li class=""><strong>Performance Assurance</strong>: Continuous load testing ensures that Camunda meets performance expectations (e.g., number of Process Instances / second), even as new features are added and the codebase evolves.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="our-current-testing-arsenal">Our Current Testing Arsenal<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#our-current-testing-arsenal" class="hash-link" aria-label="Direct link to Our Current Testing Arsenal" title="Direct link to Our Current Testing Arsenal" translate="no">​</a></h2>
+<p>Today, our reliability testing encompasses two main pillars: load tests and chaos engineering.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="variations-of-load-tests">Variations of Load Tests<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#variations-of-load-tests" class="hash-link" aria-label="Direct link to Variations of Load Tests" title="Direct link to Variations of Load Tests" translate="no">​</a></h3>
+<p>We run different variants of load tests continuously:</p>
+<ul>
+<li class=""><strong>Release Endurance Tests</strong>: Every supported version undergoes continuous endurance testing with artificial workloads, updated with each patch release</li>
+<li class=""><strong>Weekly Endurance Tests</strong>: Based on our main branch, these tests run for four weeks to detect newly introduced instabilities or performance regressions</li>
+<li class=""><strong>Daily Stress Tests</strong>: Shorter tests that validate the latest changes in our main branch under high load conditions</li>
+</ul>
+<p>Our workload varies from artificial load (simple process definitions with minimal logic) to typical and realistic, complex processes that mimic real-world usage patterns.</p>
+<p>Examples of such processes are:</p>
+<p><img decoding="async" loading="lazy" alt="typical process" src="https://camunda.github.io/zeebe-chaos/assets/images/typical_process-fb5c31924e9918f164b36112566a0582.png" width="5823" height="576" class="img_ev3q"></p>
+<p><img decoding="async" loading="lazy" alt="complex process" src="https://camunda.github.io/zeebe-chaos/assets/images/complexProcess-f21a9eef181ba701a19aa40627b1f03c.png" width="5010" height="2010" class="img_ev3q"></p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-engineering">Chaos Engineering<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#chaos-engineering" class="hash-link" aria-label="Direct link to Chaos Engineering" title="Direct link to Chaos Engineering" translate="no">​</a></h3>
+<p>Since late 2019, we've embraced <a href="https://principlesofchaos.org/" target="_blank" rel="noopener noreferrer" class="">chaos engineering principles</a> to build confidence in our system's resilience. Our approach includes:</p>
+<ul>
+<li class=""><strong>Chaos Days</strong>: Regular events where we manually design and execute chaos experiments, documenting findings in our <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">chaos engineering blog</a></li>
+<li class=""><strong>Game Days</strong>: Regular events where we simulate an incident in our production SaaS environment to validate our incident response processes</li>
+<li class=""><strong>Automated Chaos Experiments</strong>: Daily execution of 16 different chaos scenarios across all supported versions using our <a href="https://camunda.com/blog/2022/09/zbchaos-a-new-fault-injection-tool-for-zeebe/" target="_blank" rel="noopener noreferrer" class="">zbchaos tool</a>. We <a href="https://camunda.com/blog/2023/08/automate-chaos-experiments/" target="_blank" rel="noopener noreferrer" class="">drink our own champagne</a> by using Camunda 8 to orchestrate our chaos experiments against Camunda.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="investing-in-the-future">Investing in the Future<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#investing-in-the-future" class="hash-link" aria-label="Direct link to Investing in the Future" title="Direct link to Investing in the Future" translate="no">​</a></h2>
+<p>With the foundation we’ve established through years of focused reliability testing on the Zeebe engine and its distributed architecture, we’re now expanding that maturity across the entire Camunda product. Our goal is to develop an even more robust and trustworthy product overall. To achieve this, we are consolidating the reliability testing efforts that have historically existed across individual components into a centralized team. This unified approach enables us to scale our testing capabilities more efficiently, ensure consistent best practices, and share insights across teams, ultimately strengthening the reliability of every part of the product.</p>
+<p>Some of our upcoming initiatives driven by this team include:</p>
+<ul>
+<li class=""><strong>Holistic Coverage</strong>: We're extending our reliability testing to cover all components of the Camunda 8 platform via a central reliability testing framework.</li>
+<li class=""><strong>Chaos Engineering</strong>: We're planning to introduce new chaos experiments that simulate more complex failure modes, including network partitions, data corruption, and cascading failures.</li>
+<li class=""><strong>Performance Optimization</strong>: Beyond maintaining performance, we utilize our testing infrastructure to identify optimization opportunities and validate improvements.</li>
+<li class=""><strong>Enhanced Observability</strong>: Building on our extensive <a href="https://github.com/camunda/camunda/tree/main/monitor/grafana" target="_blank" rel="noopener noreferrer" class="">Grafana dashboards</a>, we continually improve our ability to detect and diagnose issues quickly.</li>
+<li class=""><strong>Establish Reliability Practices</strong>: We're formalizing reliability testing practices and guidelines that can be adopted across all engineering teams at Camunda.</li>
+<li class=""><strong>Enablement</strong>: With the resources we want to enable all of our more than 15 product teams at Camunda to understand, implement, and execute reliability testing principles in their work. Allowing them to build more reliable software from the start and scaling our efforts.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="building-trust-through-transparency">Building Trust Through Transparency<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#building-trust-through-transparency" class="hash-link" aria-label="Direct link to Building Trust Through Transparency" title="Direct link to Building Trust Through Transparency" translate="no">​</a></h2>
+<p>Our commitment to reliability testing isn't just about internal quality assurance – it's about building trust with our customers and the broader community. That's why we:</p>
+<ul>
+<li class="">Publish our testing methodologies and results openly</li>
+<li class="">Share our learnings through <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">blog posts</a> and conference talks</li>
+<li class="">Provide tools like <a href="https://github.com/camunda/zeebe-chaos" target="_blank" rel="noopener noreferrer" class="">zbchaos</a> as open source for the community</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2025/12/11/Building-Confidence-at-Scale:-How-Camunda-Ensures-Platform-Reliability-Through-Continuous-Testing#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion" translate="no">​</a></h2>
+<p>Reliability testing at Camunda has evolved from simple benchmarks to a comprehensive practice that combines load testing, chaos engineering, and end-to-end validation. This evolution reflects our understanding that true reliability emerges from systematic testing across multiple dimensions.</p>
+<p>For our customers, this means confidence that Camunda will perform reliably under their most demanding workloads. For engineers interested in <a href="https://camunda.com/careers/" target="_blank" rel="noopener noreferrer" class="">joining our team</a>, it represents an opportunity to work with cutting-edge testing practices at scale.</p>
+<p>As we continue to invest in reliability testing, we remain committed to transparency and sharing our learnings with the community. After all, the reliability of process automation platforms isn't just a technical challenge – it's fundamental to the digital transformation of businesses worldwide.</p>
+<hr>
+<p><em>Interested in learning more about our reliability testing practices? Check out our <a href="https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md" target="_blank" rel="noopener noreferrer" class="">detailed documentation</a>, explore our <a href="https://camunda.github.io/zeebe-chaos/" target="_blank" rel="noopener noreferrer" class="">chaos engineering experiments</a>, or reach out to discuss how Camunda's reliability testing ensures your critical processes run smoothly.</em></p>]]></content:encoded>
+            <category>reliability</category>
+            <category>chaos</category>
+            <category>performance</category>
+        </item>
         <item>
             <title><![CDATA[Stress testing Camunda]]></title>
             <link>https://camunda.github.io/zeebe-chaos/2025/11/27/Stress-testing-Camunda</link>
@@ -2217,121 +2298,6 @@ experience).</em></p>]]></content:encoded>
 <li class=""><a href="https://camunda.github.io/zeebe-chaos/2023/12/06/Job-Push-resiliency" target="_blank" rel="noopener noreferrer" class="">Job stream fault tolerance</a></li>
 </ul>]]></content:encoded>
             <category>availability</category>
-        </item>
-        <item>
-            <title><![CDATA[Broker Scaling and Performance]]></title>
-            <link>https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance</link>
-            <guid>https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance</guid>
-            <pubDate>Wed, 20 Dec 2023 00:00:00 GMT</pubDate>
-            <description><![CDATA[With Zeebe now supporting the addition and removal of brokers to a running cluster, we wanted to test three things:]]></description>
-            <content:encoded><![CDATA[<p>With Zeebe now supporting the addition and removal of brokers to a running cluster, we wanted to test three things:</p>
-<ol>
-<li class="">Is there an impact on processing performance while scaling?</li>
-<li class="">Is scaling resilient to high processing load?</li>
-<li class="">Can scaling up improve processing performance?</li>
-</ol>
-<p><strong>TL;DR;</strong> Scaling up works even under high load and has low impact on processing performance. After scaling is complete, processing performance improves in both throughput and latency.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="impact-of-scaling-on-processing-performance">Impact of scaling on processing performance<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#impact-of-scaling-on-processing-performance" class="hash-link" aria-label="Direct link to Impact of scaling on processing performance" title="Direct link to Impact of scaling on processing performance" translate="no">​</a></h2>
-<p>Scaling up and down is an expensive operation where partition data is transferred between brokers, and leadership for partitions changes.
-We wanted to test how much impact this has on regular processing performance.</p>
-<p>To do this, we ran a benchmark with 3 brokers, 6 partitions and replication factor 3.</p>
-<p>The brokers are limited to 1.35 CPUs and 4GiB RAM each.
-They run with additional safety checks that are usually disabled in production and that slightly decrease the baseline processing performance.
-Each broker uses a small 32GiB SSD for storage, limiting them to a few thousand IOPS.</p>
-<p>The processing load was 150 processes per second, with a large payload of 32KiB each.
-Each process instance has a single service task:</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/one_task-f083f237e568d87cc17eef056cb45d73.png" width="999" height="276" class="img_ev3q"></p>
-<p>The processing load is generated by our own <a href="https://github.com/camunda/camunda/tree/9e723b21b0e408fc2b97fd7d3f6b092af8e62dbe/benchmarks" target="_blank" rel="noopener noreferrer" class="">benchmarking application</a>.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>When we scale up from 3 to 6 brokers, we expect a small impact on processing performance.
-Request latency may increase slightly, some requests may time out and some will be rejected due to backpressure.
-The overall throughput in terms of created and completed process instances as well as jobs may similarly decrease slightly.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>Following are screenshots of collected metrics.
-The blue annotation marks the time where scaling occurred.</p>
-<p>We see a short increase in process instance duration, meaning that some process instances were finished slightly slower than before.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/increased_process_duration-3bc31b565412bb200dd5004cf1a393f9.png" width="840" height="296" class="img_ev3q"></p>
-<p>The throughput in terms of created and completed process instances and jobs remained very stable.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/stable_throughput-92c3e8b4711794408ae03779025d148b.png" width="1665" height="296" class="img_ev3q"></p>
-<p>We see a small increase in requests timing out or getting rejected by backpressure.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/failed_requests-47e5e20dec7558d9bf262572e4bceef2.png" width="840" height="296" class="img_ev3q"></p>
-<p>Overall, this matches our expectation and shows that scaling up has a small impact on processing performance.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="scaling-under-load">Scaling under load<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#scaling-under-load" class="hash-link" aria-label="Direct link to Scaling under load" title="Direct link to Scaling under load" translate="no">​</a></h2>
-<p>Since scaling up is supposed to alleviate high processing load for brokers, it's important that it works even under high load.
-For this test, we increased the load on the same cluster setup as before to 210 instead of 150 process instances per second.
-This is roughly the maximum throughput that the 3 brokers with 6 partitions and replication factor 3 can handle.
-We can see this from the relatively high backpressure, as well as high process instance duration.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/high_load_backpressure-5c264822dfc52c8f31072e9a41e892e3.png" width="628" height="220" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/high_load_latency-75cc8b8a9b6ceb63a32d418e96a649f4.png" width="840" height="296" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected-1">Expected<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#expected-1" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>We expect that scaling up to 6 brokers will still complete successfully, even under high load.
-The time it takes until scaling is complete might be slightly higher.
-The impact on processing performance, both in terms of throughput and latency, may be slightly larger than in the previous experiment.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual-1">Actual<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#actual-1" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>The process instance duration did not increase, and even decreased slightly.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/high_load_scaling_latency-bda55e145412ae73d60bcefa7129ea4c.png" width="840" height="296" class="img_ev3q"></p>
-<p>Similarly, the throughput in terms of created and completed process instances and jobs remained relatively stable.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/high_load_scaling_throughput-d1da75d1c6483a9801c0cb46c85dd112.png" width="1687" height="296" class="img_ev3q"></p>
-<p>The number of failed requests increased slightly, but still well within an acceptable range.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/high_load_scaling_failed_requests-74619f4fae76f750b3dd1a7e548ae5a9.png" width="840" height="296" class="img_ev3q"></p>
-<p>The scaling operation took 5 minutes, a good portion of which is waiting for the new brokers to get scheduled and start up.</p>
-<p>Overall, this matches our expectation and shows that scaling can complete fast and with low impact on processing performance, even under high load.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="scaling-up-to-improve-performance">Scaling up to improve performance<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#scaling-up-to-improve-performance" class="hash-link" aria-label="Direct link to Scaling up to improve performance" title="Direct link to Scaling up to improve performance" translate="no">​</a></h2>
-<p>The most obvious goal of scaling brokers is to unlock additional processing performance.
-While vertical scaling is also a great option, this can hit limits imposed by your infrastructure provider.
-For example, some machine types may offer great CPU performance but are severely limited in IOPS.
-Additionally, vertical scaling is often more expensive than horizontal scaling.
-It also comes with increased risk when a single machine fails because the remaining machines may already run at their limits and will then struggle to handle the additional load during failover.</p>
-<p>To show how broker scaling can improve processing performance, we reused the same cluster setup as before.
-We have 3 brokers, 6 partitions and replication factor 3.</p>
-<p>The brokers are limited to 1.35 CPUs and 4GiB RAM each.
-They run with additional safety checks that are usually disabled in production and that slightly decrease the baseline processing performance.
-Each broker uses a small 32GiB SSD for storage, limiting them to a few thousand IOPS.</p>
-<p>We changed the processing load slightly to simulate a more realistic scenario.
-The new process model consists of 10 tasks with two timers in-between, each delaying the process instance by 1 minute.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/ten_tasks-97eff1de6db0dbb79ae9681cedd14a93.png" width="5823" height="576" class="img_ev3q"></p>
-<p>The processing load is generated by our own <a href="https://github.com/camunda/camunda/tree/9e723b21b0e408fc2b97fd7d3f6b092af8e62dbe/benchmarks" target="_blank" rel="noopener noreferrer" class="">benchmarking application</a>, initially starting 40 process instances per second.</p>
-<p>This results in 400 jobs created and completed per second.</p>
-<p>This stresses the 3 brokers and we see backpressure on all partitions.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_backpressure-ff99c218bd0d2169e80612db06918bee.png" width="628" height="220" class="img_ev3q"></p>
-<p>We also see a few jobs timing out, indicating that the cluster is unable to handle this load consistency:
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_timeouts-184ec92cae00e964d1cb981d81c9094c.png" width="840" height="220" class="img_ev3q"></p>
-<p>We also see that many jobs are active for much longer than 1 second, even though the workers only delay completion by 50ms.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_job_lifetime-aa635408ad750e58f3c4d5aba42cfb71.png" width="840" height="296" class="img_ev3q"></p>
-<p>As hinted at before, much of this performance limit can be attributed to the limited IOPS of the small SSDs.
-We see this in a very high commit and write latency, while the IOPS remain stable, right at the limit of what the SSDs can handle.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_iops-ef1bfdab00c42f7e496bb8361b82837f.png" width="840" height="296" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_commit_latency-1618c887bba63eaf893d2073070c58a6.png" width="840" height="258" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_initial_write_latency-fdfbc2b5a7814ded4ce935a4432c27b2.png" width="840" height="258" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected-2">Expected<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#expected-2" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>When we scale up to 6 brokers, and thus distribute the partitions such that each broker is only leader for 1 instead of 2 partitions, we expect that processing performance improves.</p>
-<p>As these things usually go, we don't expect a doubling in performance but aiming for a 1.5x improvement seems reasonable.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual-2">Actual<a href="https://camunda.github.io/zeebe-chaos/2023/12/20/Broker-scaling-performance#actual-2" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>Shortly after scaling up and after partition leadership has balanced, we see a significant improvement in backpressure.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_backpressure-8ea0858dc7e2dbd99c1d9072ad4e9d9e.png" width="628" height="220" class="img_ev3q"></p>
-<p>The job lifetime decreases dramatically, with most jobs now taking &lt; 50ms from creation until completion.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_job_lifetime-1484937ab54af54c7c9c62e4d3f40bed.png" width="840" height="296" class="img_ev3q"></p>
-<p>Overall processing latency improves similarly.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_processing_latency-0dc8cc62dc0d3416af386c2f7f3b8a7a.png" width="1688" height="258" class="img_ev3q"></p>
-<p>Much of this improvement can be attributed to the reduced IOPS.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_iops-9d4cfe0e830dc5b2172dba4cf77c772b.png" width="840" height="296" class="img_ev3q"></p>
-<p>Commit and write latency improves accordingly.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_commit_latency-3038b133286dfe6303ae585152b74ddf.png" width="840" height="258" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_write_latency-83d3d31f30acf064ee5c31792718e02c.png" width="840" height="258" class="img_ev3q"></p>
-<p>Another source for improved performance is reduced CPU load.
-With 3 brokers being leader for 2 partitions each, they were hitting their CPU limits and got throttled by the underlying infrastructure.
-With 6 brokers, each only being leader for 1 partition, the CPU load is reduced and brokers are no longer throttled.
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_after_cpu-27360ba363b21f8be99ae11009830041.png" width="840" height="296" class="img_ev3q"></p>
-<p>While this is already a success, we can push things further now.
-We are able to increase the load from 40 to 65 process instances per second, resulting in 650 jobs created and completed per second.
-This is a 1.6x improvement over the initial load while achieving similar backpressure.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_increased_load_backpressure-50539a70042461e4c0f57395ab9a2981.png" width="628" height="220" class="img_ev3q"></p>
-<p>Job lifetime and overall processing latency is still better than before scaling up, even though load increased by 1.6x
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_increased_load_job_lifetime-357a5db1cfce78fb1788dc3bd8dd83c5.png" width="840" height="296" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/perf_increased_load_processing_latency-629f9fc40962d34a30a3a51c2b62c7ba.png" width="1688" height="258" class="img_ev3q"></p>
-<p>Overall, this shows that scaling up can improve processing performance significantly, especially when the initial cluster setup is resource limited and vertical scaling is not possible.</p>]]></content:encoded>
-            <category>availability</category>
-            <category>performance</category>
         </item>
     </channel>
 </rss>
