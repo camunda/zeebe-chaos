@@ -351,8 +351,35 @@ func forceFailover(flags *Flags) error {
 
 	port, closePortForward := k8Client.MustGatewayPortForward(0, 9600)
 	defer closePortForward()
-	currentTopology, err := QueryTopology(port)
-	ensureNoError(err)
+
+	// Wait until we see 4 brokers in the topology
+	timeout := time.Minute * 5
+	interval := time.Second * 5
+	iterations := int(timeout / interval)
+	var currentTopology *CurrentTopology
+
+	for i := 0; i < iterations; i++ {
+		topology, err := QueryTopology(port)
+		if err != nil {
+			if i == iterations-1 {
+				panic(err)
+			}
+			time.Sleep(interval)
+			continue
+		}
+
+		if len(topology.Brokers) == flags.brokers {
+			currentTopology = topology
+			break
+		}
+
+		time.Sleep(interval)
+	}
+
+	if currentTopology == nil {
+		return fmt.Errorf("timeout waiting for %d brokers in topology", flags.brokers)
+	}
+
 	if currentTopology.PendingChange != nil {
 		return fmt.Errorf("cluster is already scaling")
 	}
@@ -362,7 +389,6 @@ func forceFailover(flags *Flags) error {
 	changeResponse, err := sendScaleRequest(port, brokersToRemove, 0, true, -1)
 	ensureNoError(err)
 
-	timeout := time.Minute * 5
 	err = waitForChange(port, changeResponse.ChangeId, timeout)
 	ensureNoError(err)
 
