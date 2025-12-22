@@ -17,12 +17,12 @@ package internal
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/utils/ptr"
@@ -67,6 +67,19 @@ func (c K8Client) extractPodNames(list *v1.PodList) ([]string, error) {
 	}
 
 	return names, nil
+}
+
+func (c K8Client) GetGatewayServices() (*v1.ServiceList, error) {
+	listOptions := metav1.ListOptions{
+		LabelSelector: c.getGatewayLabels(),
+	}
+
+	list, err := c.Clientset.CoreV1().Services(c.GetCurrentNamespace()).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, err
 }
 
 func (c K8Client) GetGatewayPods() (*v1.PodList, error) {
@@ -163,13 +176,17 @@ func (c K8Client) AwaitReadinessWithTimeout(timeout time.Duration, tickTime time
 	for {
 		select {
 		case <-timedOut:
-			return errors.New(fmt.Sprintf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout))
+			return fmt.Errorf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout)
 		case <-ticker:
 			brokersAreRunning, err := c.checkIfBrokersAreRunning()
 			if err != nil {
 				LogVerbose("Failed to check broker status. Will retry. %v", err)
 			}
-			gatewaysAreRunning, err := c.checkIfGatewaysAreRunning()
+			// gateways are not running in self-managed
+			gatewaysAreRunning := true
+			if c.SaaSEnv {
+				gatewaysAreRunning, err = c.checkIfGatewaysAreRunning()
+			}
 			if err != nil {
 				LogVerbose("Failed to check gateway status. Will retry. %v", err)
 			}
@@ -188,7 +205,7 @@ func (c K8Client) checkIfBrokersAreRunning() (bool, error) {
 	}
 
 	if len(pods.Items) <= 0 {
-		return false, errors.New(fmt.Sprintf("Expected to find brokers in namespace %s, but none found.", c.GetCurrentNamespace()))
+		return false, fmt.Errorf("Expected to find brokers in namespace %s, but none found.", c.GetCurrentNamespace())
 	}
 
 	allRunning := true
@@ -224,7 +241,7 @@ func (c K8Client) AwaitPodReadiness(podName string, timeout time.Duration) error
 	for {
 		select {
 		case <-timedOut:
-			return errors.New(fmt.Sprintf("Pod %s is not ready with in given timeout %v", podName, timeout))
+			return fmt.Errorf("Pod %s is not ready with in given timeout %v", podName, timeout)
 		case <-ticker:
 			// check status of pod on every tick (1 second)
 			pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
@@ -243,7 +260,7 @@ func (c K8Client) RestartPod(podName string) error {
 	return c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 }
 
-// MustGatewayPortForward creates a port forwarding to a zeebe gateway with the given port.
+// MustGatewayPortForward creates a port forwarding to a zeebe gateway service with the given port.
 // Panics when port forwarding fails.
 // localPort can be 0 to let the OS choose a random, free port.
 // Returns the exposed local port and a function to close the port forwarding.
@@ -251,29 +268,14 @@ func (c K8Client) RestartPod(podName string) error {
 // https://github.com/gruntwork-io/terratest/blob/master/modules/k8s/tunnel.go#L187-L196
 // https://github.com/kubernetes/client-go/issues/51#issuecomment-436200428
 func (c K8Client) MustGatewayPortForward(localPort int, remotePort int) (int, func()) {
-	names, err := c.GetGatewayPodNames()
+	podName, svcName, svcSelector, targetContainerPort := c.mustResolveGatewayServiceTarget(remotePort)
+	portForwardCreateURL := c.createPortForwardUrlForPod(podName)
+	portForwarder, err := c.createPortForwarder(localPort, targetContainerPort, portForwardCreateURL)
 	if err != nil {
 		panic(err)
 	}
-
-	if len(names) <= 0 {
-		panic(errors.New(fmt.Sprintf("Expected to find Zeebe gateway in namespace %s, but none found.", c.GetCurrentNamespace())))
-	}
-
-	portForwardCreateURL := c.createPortForwardUrl(names)
-	portForwarder, err := c.createPortForwarder(localPort, remotePort, portForwardCreateURL)
-	if err != nil {
-		panic(err)
-	}
-
-	// Open the tunnel in a goroutine so that it is available in the background. Report errors to the main goroutine via
-	// a new channel.
 	errChan := make(chan error)
-	go func() {
-		errChan <- portForwarder.ForwardPorts()
-	}()
-
-	// Wait for an error or the tunnel to be ready
+	go func() { errChan <- portForwarder.ForwardPorts() }()
 	select {
 	case err = <-errChan:
 		LogVerbose("\nError starting port forwarding tunnel: %s", err)
@@ -284,11 +286,92 @@ func (c K8Client) MustGatewayPortForward(localPort int, remotePort int) (int, fu
 			panic(err)
 		}
 		exposedLocalPort := ports[0].Local
-		LogVerbose("Successfully created port forwarding tunnel from %d (local) to %d (remote)", exposedLocalPort, remotePort)
-		return int(exposedLocalPort), func() {
-			portForwarder.Close()
+		LogVerbose("Successfully created port forwarding tunnel from %d (local) to %d (container) (service %d) via pod %s (service %s selector %s)", exposedLocalPort, targetContainerPort, remotePort, podName, svcName, svcSelector)
+		return int(exposedLocalPort), func() { portForwarder.Close() }
+	}
+}
+
+// mustResolveGatewayServiceTarget resolves and validates the gateway service, returning chosen pod name,
+// service name, selector string, and target container port. It panics on any failure, mirroring Must* semantics.
+func (c K8Client) mustResolveGatewayServiceTarget(remotePort int) (podName, serviceName, selector string, targetContainerPort int) {
+	if remotePort <= 0 {
+		panic(fmt.Errorf("invalid remote port: %d", remotePort))
+	}
+	services, err := c.GetGatewayServices()
+	if err != nil {
+		panic(fmt.Errorf("failed to list gateway services in namespace %s: %w", c.GetCurrentNamespace(), err))
+	}
+	if services == nil || len(services.Items) == 0 {
+		panic(fmt.Errorf("no gateway services found in namespace %s", c.GetCurrentNamespace()))
+	}
+	if len(services.Items) > 1 {
+		panic(fmt.Errorf("more than one (%d) gateway service found in namespace %s; expected exactly one", len(services.Items), c.GetCurrentNamespace()))
+	}
+	svc := services.Items[0]
+	pods, selector, err := c.listRunningPodsForService(svc)
+	if err != nil {
+		panic(err)
+	}
+	targetContainerPort = remotePort
+	for _, sp := range svc.Spec.Ports {
+		if int(sp.Port) == remotePort {
+			if sp.TargetPort.IntValue() != 0 {
+				targetContainerPort = sp.TargetPort.IntValue()
+			} else if sp.TargetPort.String() != "" {
+				targetContainerPort = c.resolveNamedPortFromAnyPod(svc, sp.TargetPort.String(), remotePort)
+			}
+			break
 		}
 	}
+	chosen := pods[rand.Intn(len(pods))]
+	return chosen.Name, svc.Name, selector, targetContainerPort
+}
+
+// resolveNamedPortFromAnyPod resolves a named target port from any pod selected by the service. If it cannot be
+// resolved it falls back to the provided fallback (usually the service port value passed by the caller).
+func (c K8Client) resolveNamedPortFromAnyPod(svc v1.Service, name string, fallback int) int {
+	pods, _, err := c.listRunningPodsForService(svc)
+	if err != nil || len(pods) == 0 {
+		LogVerbose("Unable to resolve named port %s for service %s: %v", name, svc.Name, err)
+		return fallback
+	}
+	// search all pods until found
+	for _, pod := range pods {
+		for _, ctn := range pod.Spec.Containers {
+			for _, p := range ctn.Ports {
+				if p.Name == name {
+					return int(p.ContainerPort)
+				}
+			}
+		}
+	}
+	LogVerbose("Named port %s not found in any pod for service %s; falling back to %d", name, svc.Name, fallback)
+	return fallback
+}
+
+func joinMapKV(selector map[string]string) string {
+	parts := make([]string, 0, len(selector))
+	for k, v := range selector {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(parts, ",")
+}
+
+// listRunningPodsForService lists all running pods matched by the service selector and returns the slice and the selector string.
+func (c K8Client) listRunningPodsForService(svc v1.Service) ([]v1.Pod, string, error) {
+	if len(svc.Spec.Selector) == 0 {
+		return nil, "", fmt.Errorf("service %s has no selector", svc.Name)
+	}
+	selector := joinMapKV(svc.Spec.Selector)
+	listOptions := metav1.ListOptions{LabelSelector: selector, FieldSelector: "status.phase=Running"}
+	podList, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, selector, err
+	}
+	if len(podList.Items) == 0 {
+		return nil, selector, fmt.Errorf("no running pods found for service %s (selector: %s)", svc.Name, selector)
+	}
+	return podList.Items, selector, nil
 }
 
 // Create the k8 port forwarder, with the given port and k8 client
@@ -319,17 +402,18 @@ func (c K8Client) createPortForwarder(localPort int, remotePort int, portForward
 }
 
 // createPortForwardUrl constructs the Url to which is used to create the port forwarding
-func (c K8Client) createPortForwardUrl(names []string) *url.URL {
-	gatewayName := names[rand.Intn(len(names))]
-	LogVerbose("Port forward to %s", gatewayName)
+// (deprecated) createPortForwardUrl removed; use createPortForwardUrlForPod directly.
+
+// createPortForwardUrlForPod constructs the URL used to create a port forward for a specific pod
+func (c K8Client) createPortForwardUrlForPod(podName string) *url.URL {
+	LogVerbose("Port forward to pod %s", podName)
 	restClient := c.Clientset.CoreV1().RESTClient()
-	portForwardCreateURL := restClient.Post().
+	return restClient.Post().
 		Resource("pods").
 		Namespace(c.GetCurrentNamespace()).
-		Name(gatewayName).
+		Name(podName).
 		SubResource("portforward").
 		URL()
-	return portForwardCreateURL
 }
 
 func (c K8Client) ExecuteCommandViaDebugContainer(podName string, containerName string, debugImage string, cmd []string) error {
