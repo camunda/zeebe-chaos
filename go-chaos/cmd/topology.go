@@ -53,7 +53,7 @@ func AddTopologyCmd(rootCmd *cobra.Command, flags *Flags) {
 
 			builder := strings.Builder{}
 			writeTopologyToOutput(&builder, response)
-			internal.LogInfo(builder.String())
+			internal.LogInfo("%s", builder.String())
 		},
 	}
 	rootCmd.AddCommand(topologyCmd)
