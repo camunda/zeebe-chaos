@@ -117,7 +117,7 @@ func HandleZbChaosJob(client worker.JobClient, job entities.Job, commandRunner C
 	dockerImageSplit := strings.Split(jobVariables.ZeebeImage, ":")
 	if len(dockerImageSplit) <= 1 {
 		errorMsg := fmt.Sprintf("%s. Error on running command. [key: %d, variables: %v].", "Expected to read a dockerImage and split on ':', but read '"+jobVariables.ZeebeImage+"'", job.Key, job.Variables)
-		internal.LogInfo(errorMsg)
+		internal.LogInfo("%s", errorMsg)
 		_, _ = client.NewFailJobCommand().JobKey(job.Key).Retries(job.Retries - 1).ErrorMessage(errorMsg).Send(ctx)
 		return
 	}
