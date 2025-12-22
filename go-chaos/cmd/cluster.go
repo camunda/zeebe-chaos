@@ -74,6 +74,8 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	scaleCommand.MarkFlagsOneRequired("brokers", "partitionCount", "replicationFactor")
 	forceFailoverCommand.Flags().Int32Var(&flags.regions, "regions", 1, "The number of regions in the cluster")
 	forceFailoverCommand.Flags().Int32Var(&flags.regionId, "regionId", 0, "The id of the region to failover to")
+	forceFailoverCommand.Flags().IntVar(&flags.brokers, "brokers", -1, "The number of brokers")
+	forceFailoverCommand.MarkFlagRequired("brokers")
 	forceFailoverCommand.MarkFlagRequired("regions")
 	forceFailoverCommand.MarkFlagRequired("regionId")
 }
