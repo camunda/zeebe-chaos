@@ -8,7 +8,7 @@ on:
         default: 'zbchaos-v1.X.0'
 
 env:
-  GO_VERSION: 1.24
+  GO_VERSION: 1.25
 
 jobs:
  go-release:
