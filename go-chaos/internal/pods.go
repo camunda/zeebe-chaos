@@ -71,7 +71,7 @@ func (c K8Client) extractPodNames(list *v1.PodList) ([]string, error) {
 
 func (c K8Client) GetGatewayServices() (*v1.ServiceList, error) {
 	listOptions := metav1.ListOptions{
-		LabelSelector: c.getGatewayLabels(),
+		LabelSelector: c.getGatewayServiceLabels(),
 	}
 
 	list, err := c.Clientset.CoreV1().Services(c.GetCurrentNamespace()).List(context.TODO(), listOptions)
