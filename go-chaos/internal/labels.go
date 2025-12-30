@@ -82,9 +82,24 @@ func getSaasGatewayLabels() string {
 	return labels.Set(labelSelector.MatchLabels).String()
 }
 
+func getSaasGatewayServiceLabels() string {
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{"app.kubernetes.io/app": "zeebe-gateway"},
+	}
+	return labels.Set(labelSelector.MatchLabels).String()
+}
+
 func (c K8Client) getGatewayLabels() string {
 	if c.SaaSEnv {
 		return getSaasGatewayLabels()
+	} else {
+		return getSelfManagedGatewayLabels()
+	}
+}
+
+func (c K8Client) getGatewayServiceLabels() string {
+	if c.SaaSEnv {
+		return getSaasGatewayServiceLabels()
 	} else {
 		return getSelfManagedGatewayLabels()
 	}
