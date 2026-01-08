@@ -17,6 +17,8 @@ As businesses increasingly rely on process automation for their critical operati
 
 At Camunda, we've been asking ourselves these same questions for years, and today I want to share how our reliability testing practices have evolved to ensure our platform meets the demanding requirements of enterprise-scale deployments. I will also outline our plans to further invest in this crucial area.
 
+<!--truncate-->
+
 ## From Humble Beginnings to Comprehensive Testing
 
 Our reliability testing journey began in [early 2019](https://github.com/zeebe-io/zeebe-benchmark) with what we then called "benchmarks" – simple load tests to validate basic performance of our [Zeebe engine](https://docs.camunda.io/docs/components/zeebe/zeebe-overview/).

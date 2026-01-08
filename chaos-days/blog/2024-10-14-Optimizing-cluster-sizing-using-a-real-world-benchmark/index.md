@@ -30,6 +30,8 @@ When we scale this base configuration linearly we see that the performance
 increases almost linearly as well, while maintaining low 
 backpressure and low latency.
 
+<!--truncate-->
+
 ## Chaos Experiment
 
 ### Expected
