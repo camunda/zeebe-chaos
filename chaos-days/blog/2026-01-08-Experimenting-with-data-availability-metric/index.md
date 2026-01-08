@@ -12,15 +12,15 @@ authors:
 ---
 
 # Chaos Day Summary
-Happy new year everyone :tada:! Time for some chaos experiments again :smiley:.
+Happy New Year, everyone :tada:! Time for some chaos experiments again :smiley:.
 
-In today's chaos day, I was joined by [Pranjal](https://github.com/pranjalg13) our newest addition to the reliability testing team at Camunda (welcome :tada:)
+In today's chaos day, I was joined by [Pranjal](https://github.com/pranjalg13), our newest addition to the reliability testing team at Camunda (welcome :tada:)
 
 We planned to experiment with the new data availability metric, which we have recently added to our load testing infrastructure, for more details see related [PR](https://github.com/camunda/camunda/pull/42553). In short, we measure the time from creating a process instance until it is actually available to the user via the API. This allows us to reason how long it also takes for Operate to show new data.
 
 The goal for today was to gain a better understanding of how the system behaves under higher loads and how this affects data availability. The focus was set here on the orchestration cluster, meaning data availability for Operate and Tasklist.
 
-**TL;DR;** We have observed that increasing the process instance creation rate leads to higher data availability times. While experimenting with different workloads we discovered that the [typical load test](https://github.com/camunda/camunda/issues/42244) is still not working well. During investigating the platform behaviors we discovered a recently introduced [regression](https://github.com/camunda/camunda/issues/43713) causing to limit our general max throughput, and identified [suboptimal error handling in the Gateway](https://github.com/camunda/camunda/issues/43715) causing request retries, which can exacerbate load issues.
+**TL;DR:** We have observed that increasing the process instance creation rate results in higher data availability times. While experimenting with different workloads, we discovered that the [typical load test](https://github.com/camunda/camunda/issues/42244) is still not working well. During our investigation of the platform behaviors, we found a recently introduced [regression](https://github.com/camunda/camunda/issues/43713) that is limiting our general maximum throughput. We also identified [suboptimal error handling in the Gateway](https://github.com/camunda/camunda/issues/43715), which causes request retries and can exacerbate load issues.
 
 <!--truncate-->
 
