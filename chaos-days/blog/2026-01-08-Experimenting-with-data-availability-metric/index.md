@@ -22,6 +22,8 @@ The goal for today was to gain a better understanding of how the system behaves 
 
 **TL;DR:** We have observed that increasing the process instance creation rate results in higher data availability times. While experimenting with different workloads, we discovered that the [typical load test](https://github.com/camunda/camunda/issues/42244) is still not working well. During our investigation of the platform behaviors, we found a recently introduced [regression](https://github.com/camunda/camunda/issues/43713) that is limiting our general maximum throughput. We also identified [suboptimal error handling in the Gateway](https://github.com/camunda/camunda/issues/43715), which causes request retries and can exacerbate load issues.
 
+![comparison-latency.png](comparison-latency.png)
+
 <!--truncate-->
 
 ## Chaos Experiment
