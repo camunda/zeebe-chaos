@@ -42,7 +42,7 @@ In general, what we expected is that the data is available within acceptable tim
 * If we increase the load (process instance creation rate) the data availability might increase a bit, but should stay within acceptable limits
   * Important is here what is acceptable? Below 5 seconds?
   * Everything higher than 5 seconds will likely cause friction for users and the usage, because at some point, users will notice that data is not available right away and start to wonder what is going on, refresh the page, etc. (making it worse).
-* Expectation: no matter the process mode,l we should see similar data availability behavior
+* Expectation: no matter the process model, we should see similar data availability behavior
   * caveat that longer process instances might have slightly different behavior because of more data being written, but in general, should be similar
 
 ### Actual
