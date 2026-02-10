@@ -2,7 +2,7 @@ module github.com/camunda/zeebe-chaos/go-chaos
 
 go 1.25.0
 
-toolchain go1.25.7
+toolchain go1.26.0
 
 require (
 	github.com/camunda/zeebe/clients/go/v8 v8.5.25
