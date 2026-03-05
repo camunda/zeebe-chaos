@@ -31,7 +31,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
     - name: Setup BuildKit
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
     - id: 'auth'
       name: 'Authenticate to Google Cloud'
       uses: 'google-github-actions/auth@v3'
