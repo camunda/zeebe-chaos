@@ -28,9 +28,9 @@ I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.c
 
 ## Chaos Experiment
 
-As mentioned earlier, we ran this time the complete Orchestration Cluster, with Optimize included, Authentication enabled (Keycloak, Identity).
+As mentioned earlier, we ran the complete Orchestration Cluster this time, with Optimize included and Authentication enabled (Keycloak, Identity).
 
-For reference, the setup is documented here. In short, we ran the following components:
+For reference, the setup is documented [here](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#setup). In short, we ran the following components:
 
 * Optimize deployment (importer,webapp)
 * Keycloak 
