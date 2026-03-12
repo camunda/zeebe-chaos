@@ -18,7 +18,7 @@ While we tested last year already resiliency of our System against ES restarts, 
 
 This time we wanted to see how the system behaves with OC + ES Exporter + Optimize is enabled in addition.
 
-I was joined by Jon and Pranjal the newest team members of the reliability testing team.
+I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.com/pranjalg13) the newest members of the reliability testing team.
 
 **TL;DR;** While we found out that short ES unavailabiliies do not impact the processing performance, depending on the configuration it can impact the data availability. For longer outages, this would then also impact Camunda processing. To mitigate this proplem, necessary configurations are not properly exposed, and need to be fixed in the Helm Chart.
 
@@ -46,6 +46,44 @@ When restarting one Elasticsearch Node, we expected no impact for the Customer, 
 ### Actual
 
 While starting up the cluster, we experienced a longer delay, it seems that Camunda applications are now more tightly coupled to ES. This means ES needs to be available, so Camunda can start the first time.
+
+```sh
+$ kgpo -w
+NAME                                            READY   STATUS       RESTARTS      AGE
+c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   0/1     Running      0             101s
+c8-chaos-full-test-identity-5f85fc588b-b7cxq    0/1     Running      0             101s
+c8-chaos-full-test-keycloak-0                   1/1     Running      0             101s
+c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:Error   2 (21s ago)   28s
+c8-chaos-full-test-optimize-bc8f64d8b-lwwnb     0/1     Init:Error   3 (57s ago)   101s
+c8-chaos-full-test-postgresql-0                 1/1     Running      0             101s
+camunda-0                                       0/1     Running      0             101s
+camunda-1                                       0/1     Running      0             101s
+camunda-2                                       0/1     Running      0             101s
+elastic-0                                       0/1     Running      0             101s
+elastic-1                                       0/1     Running      0             100s
+elastic-2                                       0/1     Running      0             100s
+prom-els-exporter-65484b6684-56hx2              1/1     Running      0             95s
+starter-8458c4b895-wt2zf                        1/1     Running      0             98s
+worker-c994df6c7-bbc9x                          1/1     Running      0             98s
+worker-c994df6c7-jsddj                          1/1     Running      0             98s
+worker-c994df6c7-wjmlv                          1/1     Running      0             98s
+.....
+.....     ES starts first
+.....
+elastic-0                                       1/1     Running      0             106s
+elastic-1                                       1/1     Running      0             106s
+c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:CrashLoopBackOff   2 (12s ago)   37s
+elastic-2                                       1/1     Running                 0             112s
+c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:0/1                3 (26s ago)   51s
+c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     PodInitializing         0             58s
+c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Running                 0             59s
+camunda-2                                       1/1     Running                 0             2m24s
+camunda-1                                       1/1     Running                 0             2m25s
+c8-chaos-full-test-identity-5f85fc588b-b7cxq    1/1     Running                 0             2m28s
+camunda-0                                       1/1     Running                 0             2m31s
+c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   1/1     Running                 0             2m32s
+```
+
 
 > Note:
 >
@@ -99,6 +137,7 @@ Example configuration for the Elasticsearch Exporter can be found [here](https:/
 
 ## Found Weaknesses / Learnings
 
+- Bootstrapping Camunda now depends on ES - which makes bootstrapping take longer (compared to previous architecture in 8.7)
 - When ES indicies are not set up properly, then multi-node ES Cluster doesn't help. Unavailability of an ES Node will impact Camunda
 - Per default the Helm Charts are not configuring the replicas for ES Exporter indices
 - In the Helm Chart it is hard to configure it. We must use the `extraConfiguration`
