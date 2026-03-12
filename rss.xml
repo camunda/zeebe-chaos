@@ -4,10 +4,76 @@
         <title>Zeebe Chaos Blog</title>
         <link>https://camunda.github.io/zeebe-chaos/</link>
         <description>Zeebe Chaos Blog</description>
-        <lastBuildDate>Thu, 08 Jan 2026 00:00:00 GMT</lastBuildDate>
+        <lastBuildDate>Thu, 12 Mar 2026 00:00:00 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <language>en</language>
+        <item>
+            <title><![CDATA[Elastic restart impact on Camunda]]></title>
+            <link>https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda</link>
+            <guid>https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda</guid>
+            <pubDate>Thu, 12 Mar 2026 00:00:00 GMT</pubDate>
+            <description><![CDATA[In today's Chaos Day, we explored the impact of Elasticsearch availability on Camunda 8.9+ (testing against main).]]></description>
+            <content:encoded><![CDATA[<p>In today's Chaos Day, we explored the impact of Elasticsearch availability on Camunda 8.9+ (testing against main).</p>
+<p>While we already tested last year the resiliency of our System against ES restarts (see <a class="" href="https://camunda.github.io/zeebe-chaos/2025/08/26/Resiliency-against-ELS-unavailability">previous post</a>, we have run the OC cluster only. Additionally, certain configurations have been improved (default replica configurations, etc.).</p>
+<p>This time, we wanted to see how the system behaves with OC + ES Exporter + Optimize enabled.</p>
+<p>I was joined by <a href="https://github.com/multani" target="_blank" rel="noopener noreferrer" class="">Jon</a> and <a href="https://github.com/pranjalg13" target="_blank" rel="noopener noreferrer" class="">Pranjal</a>, the newest members of the reliability testing team.</p>
+<p><strong>TL;DR;</strong> While we found that short ES unavailability does not affect processing performance, depending on the configuration, it can affect data availability. For longer outages, this would then also impact Camunda processing. To mitigate this problem, corresponding exporters should be configured, but the necessary configurations are not properly exposed and need to be fixed in the Helm Chart.</p>
+<p><img decoding="async" loading="lazy" alt="data-avail" src="https://camunda.github.io/zeebe-chaos/assets/images/data-avail-281dd44997d54b25a510e98c887e5715.png" width="1582" height="346" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
+<p>As mentioned earlier, we ran the complete Orchestration Cluster this time, with Optimize included and Authentication enabled (Keycloak, Identity).</p>
+<p>For reference, the setup is documented <a href="https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#setup" target="_blank" rel="noopener noreferrer" class="">here</a>. In short, we ran the following components:</p>
+<ul>
+<li class="">Optimize deployment (importer,webapp)</li>
+<li class="">Keycloak</li>
+<li class="">Managed Identity</li>
+<li class="">PostgreSQL (for Identity and Keycloak)</li>
+<li class="">Camunda Cluster (3 Nodes)</li>
+<li class="">Elasticsearch Cluster (3 Nodes)</li>
+<li class="">Starter and Worker (load test deployment)</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
+<p>When restarting one Elasticsearch Node, we expected no impact on the Cluster, at least in terms of processing.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
+<p>While starting up the cluster, we experienced a longer delay; it seems that Camunda applications are now more tightly coupled to ES (since 8.8). This means ES needs to be available, so Camunda can start the first time.</p>
+<div class="language-sh codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-sh codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">$ kgpo -w</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">NAME                                            READY   STATUS       RESTARTS      AGE</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-identity-5f85fc588b-b7cxq    0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-keycloak-0                   1/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:Error   2 (21s ago)   28s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-lwwnb     0/1     Init:Error   3 (57s ago)   101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-postgresql-0                 1/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-0                                       0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-1                                       0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-2                                       0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-0                                       0/1     Running      0             101s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-1                                       0/1     Running      0             100s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-2                                       0/1     Running      0             100s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">prom-els-exporter-65484b6684-56hx2              1/1     Running      0             95s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">starter-8458c4b895-wt2zf                        1/1     Running      0             98s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">worker-c994df6c7-bbc9x                          1/1     Running      0             98s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">worker-c994df6c7-jsddj                          1/1     Running      0             98s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">worker-c994df6c7-wjmlv                          1/1     Running      0             98s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">.....</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">.....     ES starts first</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">.....</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-0                                       1/1     Running      0             106s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-1                                       1/1     Running      0             106s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:CrashLoopBackOff   2 (12s ago)   37s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">elastic-2                                       1/1     Running                 0             112s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Init:0/1                3 (26s ago)   51s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     PodInitializing         0             58s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-optimize-bc8f64d8b-9hghx     0/1     Running                 0             59s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-2                                       1/1     Running                 0             2m24s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-1                                       1/1     Running                 0             2m25s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-identity-5f85fc588b-b7cxq    1/1     Running                 0             2m28s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">camunda-0                                       1/1     Running                 0             2m31s</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   1/1     Running                 0             2m32s</span><br></span></code></pre></div></div>
+<blockquote>
+<p>Note:</p>
+<p>This is something we might be able to improve in the future.</p>
+<p>The reason is that we bootstrap the <code>SchemaManager</code> (the component that is responsible for the ES/OS schema) and wait for its completion.
+This can only be completed when ES is up and running; the bootstrapping of additional components is delayed until the SchemaManager is complete.</p>
+</blockquote>
+<p>After a short period of time, all the components came up.</p>
+<p><img decoding="async" loading="lazy" alt="general" src="https://camunda.github.io/zeebe-chaos/assets/images/general-affa19a82798873b3f775b50b3f10232.png" width="1900" height="831" class="img_ev3q"></p>
+<p>When we deleted the <code>elastic-0</code> pod, we saw that the Exporting shortly dipped, but the processing was not generally impacted.</p>
+<p><img decoding="async" loading="lazy" alt="general-es-restart" src="https://camunda.github.io/zeebe-chaos/assets/images/general-es-restart-27844cad470d145d070d9fe352e838c0.png" width="1576" height="760" class="img_ev3q"></p>
+<p>Looking at the data availability metrics, which we measure in our load test applications, we saw that it was increasing from ~5s to ~30s (p99).</p>
+<p><img decoding="async" loading="lazy" alt="data-avail" src="https://camunda.github.io/zeebe-chaos/assets/images/data-avail-281dd44997d54b25a510e98c887e5715.png" width="1582" height="346" class="img_ev3q"></p>
+<p>Looking into this further, we can see that the Exporters had experienced a sort of backlog of unexported records during the time of ES unavailability.</p>
+<p><img decoding="async" loading="lazy" alt="exporter" src="https://camunda.github.io/zeebe-chaos/assets/images/exporter-not-exported-c74535c5e0df1d7b386aed1059be24c2.png" width="1591" height="753" class="img_ev3q"></p>
+<p>As we were thinking and discussing this, we were actually expecting that with three ES nodes, there would be no impact.</p>
+<p>Because of this, we investigated the ES logs further, and we saw exceptions of shards not available, and ES became RED.</p>
+<p><img decoding="async" loading="lazy" alt="es-no-shard" src="https://camunda.github.io/zeebe-chaos/assets/images/no-shard-exception-b780e5e959996a0346c7c4bdc491af27.png" width="1548" height="281" class="img_ev3q">
+<img decoding="async" loading="lazy" alt="es-red" src="https://camunda.github.io/zeebe-chaos/assets/images/es-red-a4521e1740741c188a787b04a0665374.png" width="1635" height="403" class="img_ev3q"></p>
+<p>Driven by these findings, we looked further into ES, as we expected some wrong configuration with the indices.</p>
+<p><img decoding="async" loading="lazy" alt="es-view" src="https://camunda.github.io/zeebe-chaos/assets/images/es-view-indices-b678f823e6fe5e7af61e0e2188bfb10b.png" width="1888" height="485" class="img_ev3q"></p>
+<p>Indeed, we were able to find out that the <code>zeebe-record</code> indices had no replication configured.</p>
+<p>This means when an Elasticsearch node goes down, the Elasticsearch Export will fail to flush. Normally, the exporters have a batch of around 1000 records, but eventually, they have to flush their data. If this fails, this will block further exporting.</p>
+<p>This will not only block the Elasticsearch Exporter, which is needed for Optimize, but also the new CamundaExporter, which is writing the Operate and Tasklist indices.</p>
+<p>This is why we see an increase in data availability during this time. If the availability takes longer than, what we have experienced ~2 minutes, then it might even cause more issues. Camunda supports a certain backlog until it starts to backpressure, and no longer accepts new incoming requests.</p>
+<p>The good news is that this can be mitigated by configuring the Elasticsearch Exporter and the replica properly. This obviously requires a cluster of multiple Elasticsearch nodes, and has an additional impact on the load of ES, so this needs to be properly load tested as well.</p>
+<p>Bad news, it seems not to be easy to configure with the current Helm Charts. Workaround is to use the <a href="https://github.com/camunda/camunda-platform-helm/blob/a1787cf072b8958c5bdb84781b587b5297b1d65f/charts/camunda-platform-8.9/values.yaml#L2987" target="_blank" rel="noopener noreferrer" class=""><code>extraConfiguration</code></a></p>
+<p>Example configuration for the Elasticsearch Exporter can be found <a href="https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/exporters/elasticsearch-exporter/#example" target="_blank" rel="noopener noreferrer" class="">here</a>. The <code>index.numberOfReplicas</code> configuration is not documented, but exposed <a href="https://github.com/camunda/camunda/blob/main/zeebe/exporters/elasticsearch-exporter/src/main/java/io/camunda/zeebe/exporter/ElasticsearchExporterConfiguration.java#L256" target="_blank" rel="noopener noreferrer" class="">here</a></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="found-weaknesses--learnings">Found Weaknesses / Learnings<a href="https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda#found-weaknesses--learnings" class="hash-link" aria-label="Direct link to Found Weaknesses / Learnings" title="Direct link to Found Weaknesses / Learnings" translate="no">​</a></h2>
+<ul>
+<li class="">Bootstrapping Camunda now depends on ES, which makes bootstrapping take longer (compared to the previous architecture in 8.7)</li>
+<li class="">When ES indices are not set up properly, then a multi-node ES Cluster doesn't help. Unavailability of an ES Node will impact Camunda</li>
+<li class="">By default, the Helm Charts do not configure the replicas for ES Exporter indices</li>
+<li class="">In the Helm Chart, it is hard to configure. We must use the <code>extraConfiguration</code></li>
+<li class="">The <code>index.numberOfReplicas</code> configuration is not documented, but exposed <a href="https://github.com/camunda/camunda/blob/main/zeebe/exporters/elasticsearch-exporter/src/main/java/io/camunda/zeebe/exporter/ElasticsearchExporterConfiguration.java#L256" target="_blank" rel="noopener noreferrer" class="">here</a></li>
+</ul>]]></content:encoded>
+            <category>availability</category>
+        </item>
         <item>
             <title><![CDATA[Experimenting with data availability metric]]></title>
             <link>https://camunda.github.io/zeebe-chaos/2026/01/08/Experimenting-with-data-availability-metric</link>
@@ -2160,101 +2226,6 @@ This will drop back to 0 once we remove the artificial degrading of the exporter
 <p>Finally, on the panel that shows the processing per partition, we also confirm the expectation that since one of the exporters was not affected by the artificial degrading of the exporter, some additional traffic gets re-routed to this partition, after the throttling gets applied.
 On the affected partitions we see the processing decreasing slightly in line with the exporting on the same partitions.</p>
 <p>Overall the observations match our expectations and show that write rate throttling succeeds and keeps exporting backlog limited.</p>]]></content:encoded>
-            <category>availability</category>
-        </item>
-        <item>
-            <title><![CDATA[Using flow control to handle uncontrolled process loops]]></title>
-            <link>https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops</link>
-            <guid>https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops</guid>
-            <pubDate>Thu, 25 Jul 2024 00:00:00 GMT</pubDate>
-            <description><![CDATA[Zeebe 8.6 introduces a new unified flow control mechanism that is able to limit user commands (by default it tries to achieve 200ms response times) and rate limit writes of new records in general (disabled by default).]]></description>
-            <content:encoded><![CDATA[<p>Zeebe 8.6 introduces a new unified flow control mechanism that is able to limit user commands (by default it tries to achieve 200ms response times) and rate limit writes of new records in general (disabled by default).</p>
-<p>Limiting the write rate is a new feature that can be used to prevent building up an excessive exporting backlog.</p>
-<p>In these experiments we will test what happens with the deployment of endless
-loops that result in high processing load, and how we can use the new
-flow control to keep the cluster stable.</p>
-<p><strong>TL;DR;</strong></p>
-<p>Enabling the write rate limiting can help mitigate the effects caused by
-process instances that contain uncontrolled loops by preventing building up an
-excessive exporting backlog.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="mitigating-the-performance-impacts-of-deployed-loops">Mitigating the performance impacts of deployed loops:<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#mitigating-the-performance-impacts-of-deployed-loops" class="hash-link" aria-label="Direct link to Mitigating the performance impacts of deployed loops:" title="Direct link to Mitigating the performance impacts of deployed loops:" translate="no">​</a></h2>
-<p>When an uncontrolled loop is accidentally deployed this tends to use of
-most of the
-processing resources of the partitions where instances are running.</p>
-<p>Such instances completely occupies its partition, starves other instances and results in slow response times.</p>
-<p>Usually, these problems should be addressed before other issues arise, such as full disk due to a large backlog of not exported records (max exporting speed tends to be slower than max processing speed).</p>
-<p>Using the write rate limiter, we can slow down the processing speed and
-give us more time to address the issue, while at the same time enabling us to reduce or maintain the backlog size and reduce risks of side effects.</p>
-<p>To reduce the rate write limit we will use the unified control endpoint and configure write limit to be significantly lower than the processing speed.</p>
-<p>To fetch the current configuration we can port forward to one of the zeebe pods and use the command:</p>
-<div class="language-Shell language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">GET /actuator/flowControl</span><br></span></code></pre></div></div>
-<p><img decoding="async" loading="lazy" alt="original-configuration" src="https://camunda.github.io/zeebe-chaos/assets/images/original-configuration-568ece5f5f513848f06d772b821f7ba6.png" width="586" height="532" class="img_ev3q"></p>
-<p>To configure the write rate limit we use the same endpoint:</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">POST /actuator/flowControl</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">{</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">   "write": {</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">        "enabled": true,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">        "limit": 3000,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  }</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">}</span><br></span></code></pre></div></div>
-<p>For this experiment we will test the impact of write rate limits both in
-single loops and dual loops.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="single-loop-processing">Single loop processing:<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#single-loop-processing" class="hash-link" aria-label="Direct link to Single loop processing:" title="Direct link to Single loop processing:" translate="no">​</a></h2>
-<p><img decoding="async" loading="lazy" alt="single-loop" src="https://camunda.github.io/zeebe-chaos/assets/images/single-loop-2c6d288753c26789a55ac011536dcf6a.png" width="1090" height="634" class="img_ev3q"></p>
-<p>This single-loop process will hoard the processing resources and never complete but will append to the processing queue only the next step in the process.</p>
-<p>This means that the number of records not processed will only grow if many other processes or requests are arriving at the same time, at a faster rate than the cluster can process.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected-results">Expected results:<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#expected-results" class="hash-link" aria-label="Direct link to Expected results:" title="Direct link to Expected results:" translate="no">​</a></h3>
-<p>When deploying a process instance with a single loop we should see the
-processing rate in the partition increases significantly.</p>
-<p>This can lead to processing speed to surpass the exporting speed, which
-results in increase in the backlog of exported records.</p>
-<p>Using the rate write limits to restrict the processing speed enables us to
-reduce the backlog size and give more time for the user to fix the
-underlying issues with the cluster.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>By deploying a single loop model we can see that the processing and writing
-increases in the same partition and stabilizes around 5 000, later at
-around 17:55 we apply the write rate limit of 3 000, and the processing
-gets limited accordingly.</p>
-<p>This leads to some of the requests being
-redirected to
-the other partitions which cause the processing in these to increase.</p>
-<p><img decoding="async" loading="lazy" alt="single-loop-processing-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/single-loop-processing-per-partition-5a64caa8af538a2e888591a0d00f7ab1.png" width="1999" height="290" class="img_ev3q"></p>
-<p>When observing the backpressure, we can draw the same conclusions as from
-the processing per partition graph, after the model gets deployed, we see an
-increase in the backpressure to around 7% in the partition where the loop
-instance was deployed.</p>
-<p>Once the limit gets set at around 17:55 the backpressure in this partition
-increases even more, to around 22% with the backpressure in the other partitions also increasing significantly.</p>
-<p>This follows the expected results since with the limiting processing, the after partition will reject even more commands, which get redirected to the remaining partitions which also cause their load to increase and therefore their backpressure as well.</p>
-<p><img decoding="async" loading="lazy" alt="single-loop-backpressure" src="https://camunda.github.io/zeebe-chaos/assets/images/single-loop-backpressure-3a91001378b847e1184ccb2e1e36d13a.png" width="1972" height="456" class="img_ev3q"></p>
-<p>Observing the exporting per partition panel we can see that the exporting also increases in the affected partition, and this gets reduced after the limit gets imposed.</p>
-<p><img decoding="async" loading="lazy" alt="single-loop-exporting-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/single-loop-exporting-per-partition-c72cfee7a14b98c2a7e45945c63f2e99.png" width="1999" height="293" class="img_ev3q"></p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="dual-loop-processing">Dual loop processing:<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#dual-loop-processing" class="hash-link" aria-label="Direct link to Dual loop processing:" title="Direct link to Dual loop processing:" translate="no">​</a></h2>
-<p><img decoding="async" loading="lazy" alt="double-loop" src="https://camunda.github.io/zeebe-chaos/assets/images/dual-loop-629f9c9afa1f36b5bab529656d32cf42.png" width="976" height="612" class="img_ev3q"></p>
-<p>On the other hand, this dual loop process during its run will always create more records than can be processed since it doubles in the last step.</p>
-<p>This will create a steady increase in records not processed even if no other processes or requests are competing for processing time.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h2>
-<p>When deploying a process instance with a dual loop we should expect to see
-a rapid increase in the processing speed and also in the number of records
-not processed.</p>
-<p>In this case, restricting the processing speed should not decrease the
-backlog of processed records since on each run of the loop more records are
-created than
-processed.</p>
-<p>However, it should help us at least in reducing the pace of the increase in
-the backlog and therefore give us more time to address the
-underlying problem.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual-1">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-uncontrolled-process-loops#actual-1" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h2>
-<p>After deploying the dual loop we can see that the processing quickly jumps to its peak, at around 18:11 we configure the write rate limit at 3000.</p>
-<p>Unlike the previous experience here we can observe that the processing speed in the other partitions was already increasing before the configuration gets applied.</p>
-<p><img decoding="async" loading="lazy" alt="dual-loop-processing-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/dual-loop-processing-per-partition-89041e42051a2123a5c442c197ad08fe.png" width="1999" height="288" class="img_ev3q"></p>
-<p><img decoding="async" loading="lazy" alt="dual-loop-exporting-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/dual-loop-exporting-per-partition-65937890949ec823d82338a744ad7ffe.png" width="1999" height="295" class="img_ev3q"></p>
-<p>Observing the backpressure we get the answer as to why the processing in the other partitions was already increasing before the configuration gets applied.</p>
-<p>The backpressure had already reached at 100% which means that the dual loop process by itself hoarded completely the processing resources of the partition.</p>
-<p><img decoding="async" loading="lazy" alt="dual-loop-backpressure" src="https://camunda.github.io/zeebe-chaos/assets/images/dual-loop-backpressure-824800471f8562faea35e72be8d9be05.png" width="1966" height="462" class="img_ev3q"></p>
-<p>Observing the number of records not processed we conclude as expected that
-limiting the write rate cannot stop the records backlog from continuing to increase, but we can see that the slope of the curve is smaller after configuring the limit.</p>
-<p><img decoding="async" loading="lazy" alt="dual-loop-records-not-exported" src="https://camunda.github.io/zeebe-chaos/assets/images/dual-loop-number-of-records-not-processed-7e4a14070299c6842e16c7496e6b99cd.png" width="1106" height="462" class="img_ev3q"></p>
-<p>Overall the results match our expectations that the flow control configuration can be leveraged to give us more control of the cluster, which in the case of acting on deployed loop instances can give us more tools to address these issues.</p>
-<p><em>Footnote:
-(As of the latest release, it is no longer possible to deploy processes that
-contain a straight-through processing loops such as the ones used in this
-experience).</em></p>]]></content:encoded>
             <category>availability</category>
         </item>
     </channel>
