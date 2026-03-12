@@ -42,11 +42,11 @@ For reference, the setup is documented [here](https://github.com/camunda/camunda
 
 ### Expected
 
-When restarting one Elasticsearch Node, we expected no impact on the Customer, at least regarding processing.
+When restarting one Elasticsearch Node, we expected no impact on the Cluster, at least in terms of processing.
 
 ### Actual
 
-While starting up the cluster, we experienced a longer delay; it seems that Camunda applications are now more tightly coupled to ES. This means ES needs to be available, so Camunda can start the first time.
+While starting up the cluster, we experienced a longer delay; it seems that Camunda applications are now more tightly coupled to ES (since 8.8). This means ES needs to be available, so Camunda can start the first time.
 
 ```sh
 $ kgpo -w
@@ -88,10 +88,10 @@ c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   1/1     Running                 
 
 > Note:
 >
-> This is something we might be able to improve in the future. 
-> The reason is that we bootstrap the SchemaManager (the component that is responsible for the ES/OS schema) and wait for its completion.
-> This can only be completed when ES is up and running; the bootstrap of further components is delayed until the SchemaManager is done.
-
+> This is something we might be able to improve in the future.
+> 
+> The reason is that we bootstrap the `SchemaManager` (the component that is responsible for the ES/OS schema) and wait for its completion.
+This can only be completed when ES is up and running; the bootstrapping of additional components is delayed until the SchemaManager is complete.
 
 After a short period of time, all the components came up.
 
