@@ -12,15 +12,15 @@ authors: zell
 
 # Chaos Day Summary
 
-In todays Chaos day we explored the impact of Elasticsearch availabilty on Camunda 8.9+ (testing against main).
+In today's Chaos Day, we explored the impact of Elasticsearch availability on Camunda 8.9+ (testing against main).
 
-While we tested last year already resiliency of our System against ES restarts, see [previous post](../2025-08-26-Resiliency-against-ELS-unavailability/index.md), we have run OC cluster only. Additionally, certain configurations have been improved (default replica configurations, etc.). 
+While we already tested last year the resiliency of our System against ES restarts (see [previous post](../2025-08-26-Resiliency-against-ELS-unavailability/index.md), we have run the OC cluster only. Additionally, certain configurations have been improved (default replica configurations, etc.). 
 
-This time we wanted to see how the system behaves with OC + ES Exporter + Optimize is enabled in addition.
+This time, we wanted to see how the system behaves with OC + ES Exporter + Optimize enabled.
 
-I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.com/pranjalg13) the newest members of the reliability testing team.
+I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.com/pranjalg13), the newest members of the reliability testing team.
 
-**TL;DR;** While we found out that short ES unavailabiliies do not impact the processing performance, depending on the configuration it can impact the data availability. For longer outages, this would then also impact Camunda processing. To mitigate this proplem, necessary configurations are not properly exposed, and need to be fixed in the Helm Chart.
+**TL;DR;** While we found that short ES unavailability does not affect processing performance, depending on the configuration, it can affect data availability. For longer outages, this would then also impact Camunda processing. To mitigate this problem, corresponding exporters should be configured, but the necessary configurations are not properly exposed and need to be fixed in the Helm Chart.
 
 
 <!--truncate-->
@@ -29,7 +29,7 @@ I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.c
 
 As mentioned earlier, we ran this time the complete Orchestration Cluster, with Optimize included, Authentication enabled (Keycloak, Identity).
 
-For reference the setup is documented here, in short we ran the following components:
+For reference, the setup is documented here. In short, we ran the following components:
 
 * Optimize deployment (importer,webapp)
 * Keycloak 
@@ -41,11 +41,11 @@ For reference the setup is documented here, in short we ran the following compon
 
 ### Expected
 
-When restarting one Elasticsearch Node, we expected no impact for the Customer, at least in regards to processing.
+When restarting one Elasticsearch Node, we expected no impact on the Customer, at least regarding processing.
 
 ### Actual
 
-While starting up the cluster, we experienced a longer delay, it seems that Camunda applications are now more tightly coupled to ES. This means ES needs to be available, so Camunda can start the first time.
+While starting up the cluster, we experienced a longer delay; it seems that Camunda applications are now more tightly coupled to ES. This means ES needs to be available, so Camunda can start the first time.
 
 ```sh
 $ kgpo -w
@@ -88,16 +88,16 @@ c8-chaos-full-test-connectors-c7bd56bdd-fj2lc   1/1     Running                 
 > Note:
 >
 > This is something we might be able to improve in the future. 
-> The reason is that we bootstrap the SchemaManager (component which is responsible for the ES/OS schema) and wait for its completion.
-> This can only complete when ES is up and running, the bootstrap of further components is delayed until the SchemaManager is done.
+> The reason is that we bootstrap the SchemaManager (the component that is responsible for the ES/OS schema) and wait for its completion.
+> This can only be completed when ES is up and running; the bootstrap of further components is delayed until the SchemaManager is done.
 
 
-After a short period of time all the components came up.
+After a short period of time, all the components came up.
 
 ![general](general.png)
 
 
-When we deleted the `elastic-0` pod, we saw that the Exporting shortly dipped, but the processing was in general not impacted.
+When we deleted the `elastic-0` pod, we saw that the Exporting shortly dipped, but the processing was not generally impacted.
 
 ![general-es-restart](general-es-restart.png)
 
@@ -105,42 +105,42 @@ Looking at the data availability metrics, which we measure in our load test appl
 
 ![data-avail](data-avail.png)
 
-Looking into this further, we can see that the Exporters had experienced a sort of backlog of not exported records, during the time of ES unavailability.
+Looking into this further, we can see that the Exporters had experienced a sort of backlog of unexported records during the time of ES unavailability.
 
 ![exporter](exporter-not-exported.png)
 
-As we were thinking and discussing this, we were actually expecting with three ES nodes to have no impact. 
+As we were thinking and discussing this, we were actually expecting that with three ES nodes, there would be no impact. 
 
-Because of this we investigated the ES logs furhter, we saw exceptions of shards not available and ES become RED.
+Because of this, we investigated the ES logs further, and we saw exceptions of shards not available, and ES became RED.
 
 ![es-no-shard](no-shard-exception.png)
 ![es-red](es-red.png)
 
-Driven by these findings we looked further, into ES, as we expected some wrong configuration with the indices.
+Driven by these findings, we looked further into ES, as we expected some wrong configuration with the indices.
 
 ![es-view](es-view-indices.png)
 
 Indeed, we were able to find out that the `zeebe-record` indices had no replication configured. 
 
-This means when an elasticsearch node goes down, the Elasticsearch Export will fail to flush. Normally the exporters have a batch of around 1000 records, but eventually they have to flush their data. If this fails, this will block further exporting.
+This means when an Elasticsearch node goes down, the Elasticsearch Export will fail to flush. Normally, the exporters have a batch of around 1000 records, but eventually, they have to flush their data. If this fails, this will block further exporting.
 
-This will not only block the Elasticsearch Exporter, which is needed for Optimize, but also the new CamundaExporter which is writing the Operate and Tasklist indices. 
+This will not only block the Elasticsearch Exporter, which is needed for Optimize, but also the new CamundaExporter, which is writing the Operate and Tasklist indices. 
 
 This is why we see an increase in data availability during this time. If the availability takes longer than, what we have experienced ~2 minutes, then it might even cause more issues. Camunda supports a certain backlog until it starts to backpressure, and no longer accepts new incoming requests.
 
-Good news is, that this can be mitigated by configuring the Elasticsearch Exporter, and the replica properly. This obviosluy requires a cluster of multiple Elasticsearch nodes, and has an additional impact on the load of ES, so this need to be properly load tested as well.
+The good news is that this can be mitigated by configuring the Elasticsearch Exporter and the replica properly. This obviously requires a cluster of multiple Elasticsearch nodes, and has an additional impact on the load of ES, so this needs to be properly load tested as well.
 
-Bad news, it seems to be not easy to configure with the current Helm Charts. Workaround is to use the [`extraConfiguration`](/home/cqjawa/go/src/github.com/zeebe-io/zeebe-chaos/chaos-days/blog/2026-03-12-Elastic-restart-impact-on-Camunda/index.md)
+Bad news, it seems not to be easy to configure with the current Helm Charts. Workaround is to use the [`extraConfiguration`](/home/cqjawa/go/src/github.com/zeebe-io/zeebe-chaos/chaos-days/blog/2026-03-12-Elastic-restart-impact-on-Camunda/index.md)
 
 Example configuration for the Elasticsearch Exporter can be found [here](https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/exporters/elasticsearch-exporter/#example). The `index.numberOfReplicas` configuration is not documented, but exposed [here](https://github.com/camunda/camunda/blob/main/zeebe/exporters/elasticsearch-exporter/src/main/java/io/camunda/zeebe/exporter/ElasticsearchExporterConfiguration.java#L256)
 
 
 ## Found Weaknesses / Learnings
 
-- Bootstrapping Camunda now depends on ES - which makes bootstrapping take longer (compared to previous architecture in 8.7)
-- When ES indicies are not set up properly, then multi-node ES Cluster doesn't help. Unavailability of an ES Node will impact Camunda
-- Per default the Helm Charts are not configuring the replicas for ES Exporter indices
-- In the Helm Chart it is hard to configure it. We must use the `extraConfiguration`
+- Bootstrapping Camunda now depends on ES, which makes bootstrapping take longer (compared to the previous architecture in 8.7)
+- When ES indices are not set up properly, then a multi-node ES Cluster doesn't help. Unavailability of an ES Node will impact Camunda
+- By default, the Helm Charts do not configure the replicas for ES Exporter indices
+- In the Helm Chart, it is hard to configure. We must use the `extraConfiguration`
 - The `index.numberOfReplicas` configuration is not documented, but exposed [here](https://github.com/camunda/camunda/blob/main/zeebe/exporters/elasticsearch-exporter/src/main/java/io/camunda/zeebe/exporter/ElasticsearchExporterConfiguration.java#L256)
 
 
