@@ -22,6 +22,7 @@ I was joined by [Jon](https://github.com/multani) and [Pranjal](https://github.c
 
 **TL;DR;** While we found that short ES unavailability does not affect processing performance, depending on the configuration, it can affect data availability. For longer outages, this would then also impact Camunda processing. To mitigate this problem, corresponding exporters should be configured, but the necessary configurations are not properly exposed and need to be fixed in the Helm Chart.
 
+![data-avail](data-avail.png)
 
 <!--truncate-->
 
