@@ -130,7 +130,7 @@ This is why we see an increase in data availability during this time. If the ava
 
 The good news is that this can be mitigated by configuring the Elasticsearch Exporter and the replica properly. This obviously requires a cluster of multiple Elasticsearch nodes, and has an additional impact on the load of ES, so this needs to be properly load tested as well.
 
-Bad news, it seems not to be easy to configure with the current Helm Charts. Workaround is to use the [`extraConfiguration`](/home/cqjawa/go/src/github.com/zeebe-io/zeebe-chaos/chaos-days/blog/2026-03-12-Elastic-restart-impact-on-Camunda/index.md)
+Bad news, it seems not to be easy to configure with the current Helm Charts. Workaround is to use the [`extraConfiguration`](https://github.com/camunda/camunda-platform-helm/blob/a1787cf072b8958c5bdb84781b587b5297b1d65f/charts/camunda-platform-8.9/values.yaml#L2987)
 
 Example configuration for the Elasticsearch Exporter can be found [here](https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/exporters/elasticsearch-exporter/#example). The `index.numberOfReplicas` configuration is not documented, but exposed [here](https://github.com/camunda/camunda/blob/main/zeebe/exporters/elasticsearch-exporter/src/main/java/io/camunda/zeebe/exporter/ElasticsearchExporterConfiguration.java#L256)
 
