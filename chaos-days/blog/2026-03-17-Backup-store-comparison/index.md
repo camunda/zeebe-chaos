@@ -12,7 +12,7 @@ authors: panos
 
 # Chaos Experiment Summary
 
-With the introduction of the RDBMS support in Camunda 8.9, we needed a reliable and consistent mechanism to back up Zeebe’s primary storage. To address this, we introduced scheduled backups, which allow operators to configure a backup interval with the same processing guarantees the engine already provides, since backups are also supported by the logstream itself.
+With RDBMS support added in Camunda 8.9, we needed a reliable way to back up Zeebe's primary storage. We introduced scheduled backups that allow operators to configure backup intervals. Since backup operations are processed through Zeebe's logstream like other operations, they benefit from the same consistency guarantees that the engine provides.
 
 Since our goal is to achieve the highest possible RPO (Recovery Point Objective) without sacrificing processing throughput, we’ve made several improvements across the supported backup stores. This experiment measures where we currently stand in practice.
 
@@ -38,6 +38,14 @@ The benchmark scenario is fairly simple:
 - Three workers completing service tasks with a configured delay of 500 ms, also injecting large variables into the process instance scope
 
 We inject large variables to increase Zeebe’s runtime state, which increases the RocksDB snapshot size and therefore the overall required backup size.
+
+Primary storage backup size is influenced by two factors:
+
+- The size of the cluster's runtime state, represented in RocksDB snapshots
+- The amount of log segments still present in Zeebe's data directory
+
+For RDBMS installations, we highly recommend enabling continuous backups. When continuous backups are enabled, log segment compaction is bound by the latest backed up position. If backups run infrequently on a high-throughput cluster, more segments accumulate between backup runs, increasing the amount of data to upload. To estimate a cluster's segment storage, multiply the `atomix_segment_count` metric by `128` (the default segment size in MB).
+
 
 ### Experiment
 
@@ -87,15 +95,15 @@ Maximizing your RPO means having backups available as close to the failure point
 
 Runtime state size is only one of the factors affecting backup completion time and provides a good starting reference point. During our experiments, throughput interference was minimal—dare I say barely noticeable.
 
-As a rule of thumb, the backup schedule's interval should be higher than tge backup completion latency. Multiple in-flight backups can potentially hinder cluster performance. The provided Grafana dashboards make it straightforward to track these metrics and configure scheduled backups accordingly.
+As a rule of thumb, the backup schedule's interval should be higher than the backup completion latency. Multiple in-flight backups can potentially hinder cluster performance. The provided Grafana dashboards make it straightforward to track these metrics and configure scheduled backups accordingly.
 
 ### Future work
 
 During these experiments, we also investigated:
-- Utilizing connection-based GZIP compression for backup contents
+- Utilizing transparent GZIP compression for backup contents
 - Pre-compressing backup contents
 
-These approaches yielded improvements in backup completion latency, but added overhead on the processing side and slightly reduced overall throughput. These were draft investigatory implementations for future reference.
+These approaches yielded improvements in backup completion latency, but added overhead on the processing side, slightly reducing overall throughput. These were draft investigatory implementations for future reference.
 
 An improvement that would most likely have the largest impact in taking a backups is performing proper RocksDB incremental snapshots, since that would minimize the amount of data
 required per backup. However, this approach come with it's own problems to tackle, not being that straightforward either.
