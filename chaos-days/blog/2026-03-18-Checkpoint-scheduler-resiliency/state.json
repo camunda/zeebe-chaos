@@ -1,0 +1,104 @@
+{
+  "checkpointStates": [
+    {
+      "checkpointId": 1773840131794,
+      "checkpointType": "MARKER",
+      "partitionId": 1,
+      "checkpointPosition": 2695,
+      "checkpointTimestamp": "2026-03-18T13:22:11.794+0000"
+    },
+    {
+      "checkpointId": 1773840131794,
+      "checkpointType": "MARKER",
+      "partitionId": 2,
+      "checkpointPosition": 1695,
+      "checkpointTimestamp": "2026-03-18T13:22:11.781+0000"
+    },
+    {
+      "checkpointId": 1773840131794,
+      "checkpointType": "MARKER",
+      "partitionId": 3,
+      "checkpointPosition": 1695,
+      "checkpointTimestamp": "2026-03-18T13:22:11.793+0000"
+    }
+  ],
+  "backupStates": [
+    {
+      "checkpointId": 1773840011037,
+      "checkpointType": "SCHEDULED_BACKUP",
+      "partitionId": 1,
+      "checkpointPosition": 2465,
+      "firstLogPosition": 1,
+      "checkpointTimestamp": "2026-03-18T13:20:12.894+0000"
+    },
+    {
+      "checkpointId": 1773840011037,
+      "checkpointType": "SCHEDULED_BACKUP",
+      "partitionId": 2,
+      "checkpointPosition": 1465,
+      "firstLogPosition": 1,
+      "checkpointTimestamp": "2026-03-18T13:20:13.001+0000"
+    },
+    {
+      "checkpointId": 1773840011037,
+      "checkpointType": "SCHEDULED_BACKUP",
+      "partitionId": 3,
+      "checkpointPosition": 1461,
+      "firstLogPosition": 1,
+      "checkpointTimestamp": "2026-03-18T13:20:12.329+0000"
+    }
+  ],
+  "ranges": [
+    {
+      "partitionId": 1,
+      "start": {
+        "checkpointId": 1773839828707,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 1963,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:17:10.873+0000"
+      },
+      "end": {
+        "checkpointId": 1773840011037,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 2465,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:20:12.894+0000"
+      }
+    },
+    {
+      "partitionId": 2,
+      "start": {
+        "checkpointId": 1773839828707,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 1095,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:17:10.852+0000"
+      },
+      "end": {
+        "checkpointId": 1773840011037,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 1465,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:20:13.001+0000"
+      }
+    },
+    {
+      "partitionId": 3,
+      "start": {
+        "checkpointId": 1773839828707,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 1095,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:17:10.907+0000"
+      },
+      "end": {
+        "checkpointId": 1773840011037,
+        "checkpointType": "SCHEDULED_BACKUP",
+        "checkpointPosition": 1461,
+        "firstLogPosition": 1,
+        "checkpointTimestamp": "2026-03-18T13:20:12.329+0000"
+      }
+    }
+  ]
+}
