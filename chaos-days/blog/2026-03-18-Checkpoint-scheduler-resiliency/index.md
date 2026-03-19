@@ -89,11 +89,11 @@ You may notice that these logs are present on all brokers; this is intentional, 
 
 Also, the first backup has already been taken. As there was no previous backup present, an immediate one is captured. With that in mind, if a cluster sustains a prolonged unhealthy state for more than the configured backup interval, the next backup will be immediately taken once the cluster reaches a healthy state.
 
-And also [Grafana's dashboard](https://github.com/camunda/camunda/blob/7a24435ba60e341db9095d381ce510fa6794db5f/monitor/grafana/zeebe.json) related to the scheduler will start displaying proper data:
+[Our Grafana dashboard](https://github.com/camunda/camunda/blob/7a24435ba60e341db9095d381ce510fa6794db5f/monitor/grafana/zeebe.json) will start displaying scheduler data:
 
 ![startup-metrics](startup-metrics.png)
 
-After the first 3 minutes pass, according to the backup interval, we should have a backup available:
+After the first 3 minutes pass, according to the backup interval, we should have a second backup available:
 
 ![first-backup-metrics](first-backup-metrics.png)
 
