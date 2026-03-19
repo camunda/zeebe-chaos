@@ -2,11 +2,78 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://camunda.github.io/zeebe-chaos/</id>
     <title>Zeebe Chaos Blog</title>
-    <updated>2026-03-12T00:00:00.000Z</updated>
+    <updated>2026-03-17T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://camunda.github.io/zeebe-chaos/"/>
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
+    <entry>
+        <title type="html"><![CDATA[Comparing backup stores for scheduled backups]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison"/>
+        <updated>2026-03-17T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[With RDBMS support added in Camunda 8.9, we needed a reliable way to back up Zeebe's primary storage. We introduced scheduled backups that allow operators to configure backup intervals. Since backup operations are processed through Zeebe's logstream like other operations, they benefit from the same consistency guarantees that the engine provides.]]></summary>
+        <content type="html"><![CDATA[<p>With RDBMS support added in Camunda 8.9, we needed a reliable way to back up Zeebe's primary storage. We introduced scheduled backups that allow operators to configure backup intervals. Since backup operations are processed through Zeebe's logstream like other operations, they benefit from the same consistency guarantees that the engine provides.</p>
+<p>Since our goal is to achieve the highest possible RPO (Recovery Point Objective) without sacrificing processing throughput, we’ve made several improvements across the supported backup stores. This experiment measures where we currently stand in practice.</p>
+<p>Within the bounds of this experiment, we compare backup-store performance across the three major cloud providers: Google Cloud Storage (GCS), AWS S3, and Azure Blob Storage.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos experiment<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos experiment" title="Direct link to Chaos experiment" translate="no">​</a></h2>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected-outcomes">Expected outcomes<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#expected-outcomes" class="hash-link" aria-label="Direct link to Expected outcomes" title="Direct link to Expected outcomes" translate="no">​</a></h3>
+<p>The expectations of this experiment are to:</p>
+<ul>
+<li class="">Assess how well scheduled backups meet our RPO requirements under sustained high load.</li>
+<li class="">Provide a rule of thumb for configuring the scheduler’s backup interval based on cluster usage and runtime state size.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="setup">Setup<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#setup" class="hash-link" aria-label="Direct link to Setup" title="Direct link to Setup" translate="no">​</a></h3>
+<p>The experiment uses a max-throughput benchmark from our <a href="https://github.com/camunda/camunda-load-tests-helm" target="_blank" rel="noopener noreferrer" class="">Camunda load tests project</a>, running on its own Kubernetes cluster.</p>
+<p>The cluster uses a standard setup of 3 Zeebe brokers with 3 partitions and a replication factor of 3. Zeebe brokers are provisioned with 2 GiB of memory and 3 CPUs, similar to what a <a href="https://docs.camunda.io/docs/components/best-practices/architecture/sizing-your-environment/#camunda-8-saas" target="_blank" rel="noopener noreferrer" class="">base 1x cluster</a> is.</p>
+<p>The benchmark scenario is fairly simple:</p>
+<ul>
+<li class="">A single service-task process definition</li>
+<li class="">An external client creating new process instances at a rate of 300 PIs/sec, including large variables</li>
+<li class="">Three workers completing service tasks with a configured delay of 500 ms, also injecting large variables into the process instance scope</li>
+</ul>
+<p>We inject large variables to increase Zeebe’s runtime state, which increases the RocksDB snapshot size and therefore the overall required backup size.</p>
+<p>Primary storage backup size is influenced by two factors:</p>
+<ul>
+<li class="">The size of the cluster's runtime state, represented in RocksDB snapshots</li>
+<li class="">The amount of log segments still present in Zeebe's data directory</li>
+</ul>
+<p>For RDBMS installations, we highly recommend enabling continuous backups. When continuous backups are enabled, log segment compaction is bound by the latest backed up position. If backups run infrequently on a high-throughput cluster, more segments accumulate between backup runs, increasing the amount of data to upload. To estimate a cluster's segment storage, multiply the <code>atomix_segment_count</code> metric by <code>128</code> (the default segment size in MB).</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="experiment">Experiment<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#experiment" class="hash-link" aria-label="Direct link to Experiment" title="Direct link to Experiment" translate="no">​</a></h3>
+<p>To introduce scheduled backups, we configured the Zeebe brokers as follows:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">CAMUNDA_DATA_PRIMARYSTORAGE_BACKUP_CONTINUOUS=true</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">CAMUNDA_DATA_PRIMARYSTORAGE_BACKUP_CHECKPOINTINTERVAL=PT30S</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">CAMUNDA_DATA_PRIMARYSTORAGE_BACKUP_SCHEDULE=PT2M</span><br></span></code></pre></div></div>
+<p>See <a href="https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/configuration/broker-config/#camundadataprimary-storagebackup" target="_blank" rel="noopener noreferrer" class="">the documentation</a> for configuration option definitions. In short, we take a full Zeebe backup every 2 minutes and inject marker checkpoints into the log stream every 30 seconds.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="measurement">Measurement<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#measurement" class="hash-link" aria-label="Direct link to Measurement" title="Direct link to Measurement" translate="no">​</a></h4>
+<p>We sampled results using the provided <a href="https://github.com/camunda/camunda/blob/7a24435ba60e341db9095d381ce510fa6794db5f/monitor/grafana/zeebe.json" target="_blank" rel="noopener noreferrer" class="">Grafana dashboard</a>.</p>
+<ul>
+<li class=""><strong>Backup size:</strong> Approximated via RocksDB live data size per partition (metric: <em>zeebe_rocksdb_live_estimate_live_data_size</em>).</li>
+<li class=""><strong>Backup duration:</strong> Captured via the dashboard panel <em>Take Backup Latency</em>. The expression's window was calibrated to 10 minutes (instead of 1 hour) to better capture latency in our setup. With backups taken every two minutes, the latency averages a window of roughly 5 backup executions</li>
+</ul>
+<p>_Throughout the experiment, we aimed to maintain &gt;80% cluster load while sustaining ~300 process instances per second.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="results">Results<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#results" class="hash-link" aria-label="Direct link to Results" title="Direct link to Results" translate="no">​</a></h3>
+<p>Results were collected over an average of three benchmark runs for each backup store.</p>
+<table><thead><tr><th style="text-align:right">Size</th><th style="text-align:right">Google Cloud Storage</th><th style="text-align:right">AWS S3</th><th style="text-align:right">Azure Blob Storage</th></tr></thead><tbody><tr><td style="text-align:right">450MB</td><td style="text-align:right">8s</td><td style="text-align:right">8s</td><td style="text-align:right">24s</td></tr><tr><td style="text-align:right">660MB</td><td style="text-align:right">10s</td><td style="text-align:right">10s</td><td style="text-align:right">26s</td></tr><tr><td style="text-align:right">800MB</td><td style="text-align:right">13s</td><td style="text-align:right">11s</td><td style="text-align:right">28s</td></tr><tr><td style="text-align:right">1GB</td><td style="text-align:right">15s</td><td style="text-align:right">13s</td><td style="text-align:right">30s</td></tr><tr><td style="text-align:right">1.7GB</td><td style="text-align:right">18s</td><td style="text-align:right">18s</td><td style="text-align:right">35s</td></tr><tr><td style="text-align:right">2GB</td><td style="text-align:right">21s</td><td style="text-align:right">19s</td><td style="text-align:right">40s</td></tr><tr><td style="text-align:right">3GB</td><td style="text-align:right">25s</td><td style="text-align:right">25s</td><td style="text-align:right">50s</td></tr><tr><td style="text-align:right">4GB</td><td style="text-align:right">30s</td><td style="text-align:right">30s</td><td style="text-align:right">78s</td></tr></tbody></table>
+<p>Based on the collected data points, all backup stores behave roughly linearly with respect to runtime state size, which makes it straightforward to extrapolate expected backup latency.</p>
+<p><img decoding="async" loading="lazy" alt="snapshot-comparison" src="https://camunda.github.io/zeebe-chaos/assets/images/snapshot-comparison-e57df9660643261acbfbee4711cbc3f2.png" width="1091" height="595" class="img_ev3q"></p>
+<p>Zeebe actors distinguish between CPU-bound and I/O-bound tasks, with CPU-bound tasks taking precedence. Because our scenario sustains high CPU utilization, backup completion time is impacted. Capturing the same runtime state sizes without load can reduce backup time by up to ~50%.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion" translate="no">​</a></h2>
+<p>Maximizing your RPO means having backups available as close to the failure point as possible. With scheduled backups, this becomes more feasible while being backed up by the engine’s processing guarantees.</p>
+<p>Runtime state size is only one of the factors affecting backup completion time and provides a good starting reference point. During our experiments, throughput interference was minimal—dare I say barely noticeable.</p>
+<p>As a rule of thumb, the backup schedule's interval should be higher than the backup completion latency. Multiple in-flight backups can potentially hinder cluster performance. The provided Grafana dashboards make it straightforward to track these metrics and configure scheduled backups accordingly.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="future-work">Future work<a href="https://camunda.github.io/zeebe-chaos/2026/03/17/Backup-store-comparison#future-work" class="hash-link" aria-label="Direct link to Future work" title="Direct link to Future work" translate="no">​</a></h3>
+<p>During these experiments, we also investigated:</p>
+<ul>
+<li class="">Utilizing transparent GZIP compression for backup contents</li>
+<li class="">Pre-compressing backup contents</li>
+</ul>
+<p>These approaches yielded improvements in backup completion latency, but added overhead on the processing side, slightly reducing overall throughput. These were draft investigatory implementations for future reference.</p>
+<p>An improvement that would most likely have the largest impact in taking a backups is performing proper RocksDB incremental snapshots, since that would minimize the amount of data
+required per backup. However, this approach come with it's own problems to tackle, not being that straightforward either.</p>]]></content>
+        <author>
+            <name>Panagiotis Goutis</name>
+            <uri>https://github.com/panagiotisgts</uri>
+        </author>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Elastic restart impact on Camunda]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda</id>
@@ -2236,75 +2303,5 @@ All defaults from the helm charts are used, if not other specified. The most imp
             <uri>https://github.com/ChrisKujawa</uri>
         </author>
         <category label="performance" term="performance"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Using flow control to handle bottleneck on exporting]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting"/>
-        <updated>2024-07-25T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[Zeebe 8.6 introduces a new unified flow control mechanism that is able to limit user commands (by default it tries to achieve 200ms response times) and rate limit writes of new records in general (disabled by default).]]></summary>
-        <content type="html"><![CDATA[<p>Zeebe 8.6 introduces a new unified flow control mechanism that is able to limit user commands (by default it tries to achieve 200ms response times) and rate limit writes of new records in general (disabled by default).
-Limiting the write rate is a new feature that can be used to prevent building up an excessive exporting backlog.
-There are two ways to limit the write rate, either by setting a static limit or by enabling throttling that dynamically adjust the write rate based on the exporting backlog and rate.
-In these experiments, we will test both ways of limiting the write rate and observe the effects on processing and exporting.</p>
-<p><strong>TL;DR;</strong>
-Both setting a static write rate limit and enabling throttling of the write rate can be used to prevent building up an excessive exporting backlog.
-For users, this will be seen as backpressure because processing speed is limited by the rate at which it can write processing results.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="static-write-limit">Static write limit<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#static-write-limit" class="hash-link" aria-label="Direct link to Static write limit" title="Direct link to Static write limit" translate="no">​</a></h2>
-<p>We will construct a cluster under normal utilization and then artificially degrade the exporting process.
-After this we will apply flow control settings to statically rate limit all writes.
-The limit will be set slightly lower than the observed exporting rate.</p>
-<p>For this we will use the flow control endpoint to temporarily configure the write rate limit.</p>
-<p>To fetch the current configuration we can port forward to one of the zeebe pods and use the command:</p>
-<div class="language-Shell language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">GET /actuator/flowControl</span><br></span></code></pre></div></div>
-<p><img decoding="async" loading="lazy" alt="original-configuration" src="https://camunda.github.io/zeebe-chaos/assets/images/original-configuration-568ece5f5f513848f06d772b821f7ba6.png" width="586" height="532" class="img_ev3q"></p>
-<p>To configure the write rate limit we use the same endpoint, for example:</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">POST /actuator/flowControl</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">{</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  "write": {</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    "enabled": true,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    "limit": 400</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  }</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">}</span><br></span></code></pre></div></div>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>When we start to degrade the exporting rate, we expect to see the exporting backlog to increase steadily.</p>
-<p>Once a static write rate limit below the degraded exporting rate is applied, we expect fewer rates and slower processing.
-The exporting backlog should decrease again until we eventually reach zero backlog again.
-Backpressure should increase because processing has slowed down and some requests will be rejected by the write rate limit.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>After we artificially degrade the exporter performance, we see a constant increase in records not exported since the processing is still happening at the same rate.</p>
-<p><img decoding="async" loading="lazy" alt="exporting-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/exporting-per-partition-post-degraded-exporting-45c6750dac85bf4a0a2b949833b6dfd0.png" width="1999" height="379" class="img_ev3q"></p>
-<p><img decoding="async" loading="lazy" alt="processing-per-partition" src="https://camunda.github.io/zeebe-chaos/assets/images/processing-per-partition-post-degraded-exporting-0e056df5c7a61f47f01c6a3cee5a3c41.png" width="1999" height="378" class="img_ev3q"></p>
-<p><img decoding="async" loading="lazy" alt="exporter-backlog" src="https://camunda.github.io/zeebe-chaos/assets/images/number-of-records-not-exported-post-degraded-exporting-6df4c3931c2367ce522bac8f9a3a7698.png" width="1362" height="534" class="img_ev3q"></p>
-<p>After applying a static rate limit of 400 to be slightly lower than the observed 500-600 of the exporting rate, we see that the processing speed changes accordingly.</p>
-<p><img decoding="async" loading="lazy" alt="processing-per-partition-post-rate-limit" src="https://camunda.github.io/zeebe-chaos/assets/images/processing-per-partition-post-rate-limit-3cf3e06b8171ca675e12333dce4385aa.png" width="1999" height="371" class="img_ev3q"></p>
-<p>As expected we also see this reflected in backpressure that sees the user commands being rejected in a much higher portion.</p>
-<p><img decoding="async" loading="lazy" alt="backpressure" src="https://camunda.github.io/zeebe-chaos/assets/images/backpressure-post-rate-limit-90eba93cb2dd681bfa3d67074ff83713.png" width="1532" height="460" class="img_ev3q"></p>
-<p>We also observe that the backlog of records not exported starts to decrease at the rate of the difference between exported and written records.</p>
-<p><img decoding="async" loading="lazy" alt="exporter-backlog-post-rate-limit" src="https://camunda.github.io/zeebe-chaos/assets/images/number-of-records-not-exported-post-rate-limit-0e96e608f6826f596b09a32806640ea3.png" width="1360" height="540" class="img_ev3q"></p>
-<p>These observations match our expectations and show that a static write rate limit can be used to prevent building up an excessive exporting backlog.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="dynamic-write-rate-throttling">Dynamic write rate throttling<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#dynamic-write-rate-throttling" class="hash-link" aria-label="Direct link to Dynamic write rate throttling" title="Direct link to Dynamic write rate throttling" translate="no">​</a></h2>
-<p>Choosing a static write rate limit is not a full solution because we can't predict the actual exporting rates.
-To address this, we can enable write rate throttling that will dynamically adjust the write rate based on the exporting backlog and rate.</p>
-<p>To enable write rate throttling we can use the flow control endpoint again, for example:</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">POST /actuator/flowControl</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">{</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  "write": {</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    "enabled": true,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    "limit": 2500,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    "throttling": {</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      "enabled": true,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      "acceptableBacklog": 100000,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      "minimumLimit": 100,</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      "resolution": "15s"</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    }</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  }</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">}</span><br></span></code></pre></div></div>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected-1">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#expected-1" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>Similar to the first experiment, we expect to see the exporting backlog increase when we artificially degrade the exporting performance.
-After enabling write rate throttling, we expect that the write rate is reduced significantly and eventually matches the exporting rate.
-The reduced write rate should show up as backpressure.
-Eventually, the exporting backlog settles at the configured acceptable backlog.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual-1">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting#actual-1" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>Re-running the same setup, but using the throttling of writes with an acceptable backlog at 100,000  of not exported records, and a limit higher than our processing speed (so has to not impact the experience), we get the following results:</p>
-<p><img decoding="async" loading="lazy" alt="number-of-records-not-exported-post-throttling" src="https://camunda.github.io/zeebe-chaos/assets/images/number-of-records-not-exported-post-throttling-89e888362474746d19c4047766c42cd0.png" width="1098" height="454" class="img_ev3q"></p>
-<p>The orange underline metric displays when the throttled write rate is applied.</p>
-<p><img decoding="async" loading="lazy" alt="exporting-per-partition-post-throttling" src="https://camunda.github.io/zeebe-chaos/assets/images/exporting-per-partition-post-throttling-725f5e30d24caaef42c564ce2a986dcd.png" width="1999" height="293" class="img_ev3q"></p>
-<p>From the panels of the “Exporting per Partition” and “Number of records not exported”, we can observe that during the re-run of the experience our artificially degrading of the exporters only affected Exporters 2 and 3.
-After we enable throttling, the backlog on these affected exporters starts to decrease as expected, later stabilizing on around 100,000 records.
-This will drop back to 0 once we remove the artificial degrading of the exporters.</p>
-<p><img decoding="async" loading="lazy" alt="backpressure-post-throttling" src="https://camunda.github.io/zeebe-chaos/assets/images/backpressure-post-throttling-77bb875c059269233e3d7b30c81ca1b9.png" width="1984" height="460" class="img_ev3q"></p>
-<p>In the backpressure, we observe that this increases mostly on the affected partitions 2 and 3, and once the number of records not exported reaches the acceptable level this lowers slightly and stabilizes.</p>
-<p><img decoding="async" loading="lazy" alt="processing-per-partition-post-throttling" src="https://camunda.github.io/zeebe-chaos/assets/images/processing-per-partition-post-throttling-9aa68235837dd795cbb5a10bd875f3b5.png" width="1999" height="290" class="img_ev3q"></p>
-<p>Finally, on the panel that shows the processing per partition, we also confirm the expectation that since one of the exporters was not affected by the artificial degrading of the exporter, some additional traffic gets re-routed to this partition, after the throttling gets applied.
-On the affected partitions we see the processing decreasing slightly in line with the exporting on the same partitions.</p>
-<p>Overall the observations match our expectations and show that write rate throttling succeeds and keeps exporting backlog limited.</p>]]></content>
-        <author>
-            <name>Rodrigo Lopes</name>
-            <uri>https://github.com/rodrigo-lourenco-lopes</uri>
-        </author>
-        <category label="availability" term="availability"/>
     </entry>
 </feed>
