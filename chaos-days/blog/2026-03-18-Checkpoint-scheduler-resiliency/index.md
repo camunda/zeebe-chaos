@@ -1,7 +1,7 @@
 ---
 layout: posts
 title: "Checkpoint scheduler resiliency"
-date: 2026-03-17
+date: 2026-03-18
 categories:
   - chaos_experiment
   - broker
@@ -19,16 +19,16 @@ This experiment validates the resiliency of the Checkpoint Scheduler services un
 
 ## Scheduler introduction
 
-To guarantee the continuity and correctness of primary storage continuous backups, it was required for a cluster-level service to be present responsible for performing backups at predefined intervals. For this reason, the _Checkpoint Scheduler_ was introduced, whose purpose is to be the timekeeper of checkpoint creation in the cluster, fanning out the creation of checkpoints to all partitions.
+To guarantee the continuity and correctness of primary storage backups, it was required to have a cluster-level service responsible for performing backups at predefined intervals. For this reason, we introduced the _Checkpoint Scheduler_, which serves as the timekeeper of checkpoint creation in the cluster, fanning out the creation of checkpoints to all partitions.
 
-The scheduler is always assigned to the broker with the lowest `id`, which is part of the replication cluster. Under normal operation, that would mean that the `broker-0` is the one with the service registered. The scheduler's interval, while preconfigured, is dynamic and will adapt to network issues in a best-effort manner to maintain the desired interval.
+The scheduler is always assigned to the broker with the lowest `id` that is part of the replication cluster. Under normal operation, that would mean that the `camunda-0` pod is the one with the service registered. The scheduler's interval, while preconfigured, is dynamic and will adapt to network issues in a best-effort manner to maintain the desired interval.
 
-Right now, it supports two types of checkpoints:
+Currently, it supports two types of checkpoints:
 - `MARKER`: Used as reference points for point-in-time restore operation
 - `SCHEDULED_BACKUP`: Trigger a primary storage backup
 
 
-Alongside the scheduler, the retention service will also be registered on the same node if a retention schedule is configured. This service is responsible for deleting backups outside the configured window to reduce storage costs. Furthermore, backups that are too old are not that useful in a disaster recovery scenario.
+Alongside the scheduler, a retention service is also registered on the same broker if a retention schedule is configured. This service is responsible for deleting backups outside the configured window to reduce storage costs. Furthermore, backups that are too old are not that useful in a disaster recovery scenario.
 
 The checkpoint scheduler and the retention mechanism can be configured via the available [options](https://docs.camunda.io/docs/next/self-managed/components/orchestration-cluster/zeebe/configuration/broker-config/#camundadataprimary-storagebackup).
 
@@ -65,7 +65,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: isolate-pod
-  namespace: c8-pg-scheduler-ft
+  namespace: <namespace>
 spec:
   podSelector:
     matchLabels:
@@ -155,7 +155,7 @@ curl localhost:9600/actuator/backupRuntime/state
 }
 ```
 
-#### Disconnecting broker-0
+#### Disconnecting camunda-0
 
 Executing `kubectl label pod camunda-0 isolated=true --overwrite` causes broker 0 to be disconnected from the cluster. For the scheduling service, this effectively means that it should be handed over to the `camunda-1` broker. Sure enough, the logs confirm this:
 
@@ -165,9 +165,9 @@ Executing `kubectl label pod camunda-0 isolated=true --overwrite` causes broker 
 
 We can clearly see in the logs that the next expected backup is scheduled in less than the configured 3 minutes. This is intentional; as mentioned before, the scheduler's interval is dynamically adapting to maintain the backup schedule.
 
-#### Disconnecting broker-1
+#### Disconnecting camunda-1
 
-Applying the `isolated` label on broker-1 causes the cluster to reach an unhealthy state, since it has now suffered 2 node losses. The remaining node, `camunda-2`, cannot form a cluster and is unable to proceed in the startup sequence to start initiating backups.
+Applying the `isolated` label on camunda-1 causes the cluster to reach an unhealthy state, since it has now suffered 2 node losses. The remaining node, `camunda-2`, cannot form a cluster and is unable to proceed in the startup sequence to start initiating backups.
 
 #### Rejoining brokers
 
@@ -203,17 +203,17 @@ Since our backups started at `15:17`, we expect to have backups available at the
 - 15:26
 - 15:29...
 
-Since retention was executed at `15:55`, the reported amount of backups pruned is on par with what's expected. Backups taken at `15:17`, `15:20`, and `15:23` all satisfy being 30 minutes before the retention mechanism execution.
+Since retention was executed at `15:55`, the reported count of backups pruned is on par with what's expected. Backups taken at `15:17`, `15:20`, and `15:23` all satisfy being 30 minutes before the retention mechanism execution.
 
 
 ## Conclusion
 
-In this experiment, we've proven that the checkpoint and backup scheduler can maintain the configured backup interval while surviving broker disconnects and topology changes. The service successfully demonstrated automatic failover, transferring from `camunda-0` to `camunda-1` when the primary broker was isolated, and seamlessly returning control when the original broker rejoined the cluster.
+In this experiment, we've validated that the checkpoint and backup scheduler can maintain the configured backup interval while surviving broker disconnects and topology changes. The service successfully demonstrated automatic failover, transferring from `camunda-0` to `camunda-1` when the primary broker was isolated, and seamlessly returning control when the original broker rejoined the cluster.
 
 Key findings include:
 
 1. **Automatic failover**: The scheduler service correctly reassigns to the next available broker with the lowest ID when the current scheduler node becomes unavailable
 2. **Dynamic interval adjustment**: The scheduler adapts its timing to compensate for disruptions, ensuring backups remain on schedule despite temporary delays
-3. **Retention reliability**: The retention mechanism functions properly, maintaining the configured rolling window and properly cleaning up _expired_ backups
+3. **Retention reliability**: The retention mechanism functions properly, maintaining the configured rolling window and properly cleaning up expired backups
 
-These results confirm that operators can rely on the checkpoint scheduler to maintain continuous backup operations even with cluster distruptions, guaranteeing the system's ability to properly maintain the configured schedule without manual intervention.
+These results confirm that operators can rely on the checkpoint scheduler to maintain continuous backup operations even with cluster-level disruptions, guaranteeing the system's ability to properly maintain the configured schedule without manual intervention.
