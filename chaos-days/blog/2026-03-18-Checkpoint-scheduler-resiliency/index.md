@@ -163,7 +163,7 @@ Executing `kubectl label pod camunda-0 isolated=true --overwrite` causes broker 
 
 ![handover-logs-pod](handover-logs-pod.png)
 
-We can clearly see in the logs that the next expected backup is scheduled in less than the configured 3 minutes. This is intentional; as mentioned before, the scheduler's interval is dynamically adapting to maintain the backup schedule.
+The logs clearly show that the next backup is scheduled in 46,301ms (approximately 46 seconds), which is significantly less than the configured 180,000ms (3-minute) interval. This behavior is intentional and demonstrates the scheduler's dynamic interval adjustment. Rather than waiting a full 3 minutes from the handover, the scheduler calculates the remaining time based on when the last backup completed. This approach ensures that backups remain on schedule even when the scheduler service transfers between brokers, preventing schedule drift that would occur if the interval were reset on each handover.
 
 #### Disconnecting camunda-1
 
