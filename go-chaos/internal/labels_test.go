@@ -16,9 +16,10 @@ package internal
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -58,10 +59,21 @@ func Test_shouldGetSelfManagedGatewayLabels(t *testing.T) {
 
 func Test_shouldGetSaasGatewayLabels(t *testing.T) {
 	// given
-	var expected = "app.kubernetes.io/app=zeebe-gateway,app.kubernetes.io/component=standalone-gateway"
+	var expected = "app.kubernetes.io/app in (zeebe-gateway,camunda),app.kubernetes.io/component in (standalone-gateway, camunda-gateway)"
 
 	// when
 	actual := getSaasGatewayLabels()
+
+	// then
+	assert.Equal(t, expected, actual, "Labels should be equal")
+}
+
+func Test_shouldGetSaasGatewayServiceLabels(t *testing.T) {
+	// given
+	var expected = "app.kubernetes.io/app in (zeebe-gateway,camunda-gateway)"
+
+	// when
+	actual := getSaasGatewayServiceLabels()
 
 	// then
 	assert.Equal(t, expected, actual, "Labels should be equal")
