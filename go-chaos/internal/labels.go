@@ -78,7 +78,7 @@ func getSaasGatewayLabels() string {
 }
 
 func getSaasGatewayServiceLabels() string {
-	return "app.kubernetes.io/app in (zeebe-gateway,camunda-gateway)"
+	return "app.kubernetes.io/app in (zeebe-gateway,camunda)"
 }
 
 func (c K8Client) getGatewayLabels() string {
