@@ -47,6 +47,8 @@ spec:
                 secretKeyRef:
                   name: testbench-secrets
                   key: contactPoint
+            - name: CHAOS_AUTOMATION_CLUSTER_AUDIENCE
+              value: "zeebe.camunda.io"
           envFrom:
             - secretRef:
                 name: zeebe-backup-store-s3

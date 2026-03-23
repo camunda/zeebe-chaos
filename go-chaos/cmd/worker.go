@@ -17,7 +17,6 @@ package cmd
 import (
 	"context"
 	"os"
-	"strings"
 
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
 	worker "github.com/camunda/zeebe-chaos/go-chaos/worker"
@@ -35,6 +34,7 @@ const ENV_AUTHORIZATION_SERVER_URL = "CHAOS_AUTOMATION_CLUSTER_AUTHORIZATION_SER
 const ENV_CLIENT_ID = "CHAOS_AUTOMATION_CLUSTER_CLIENT_ID"
 const ENV_CLIENT_SECRET = "CHAOS_AUTOMATION_CLUSTER_CLIENT_SECRET"
 const ENV_ADDRESS = "CHAOS_AUTOMATION_CLUSTER_ADDRESS"
+const ENV_AUDIENCE = "CHAOS_AUTOMATION_CLUSTER_AUDIENCE"
 
 func AddWorkerCmd(rootCmd *cobra.Command) {
 	var workerCommand = &cobra.Command{
@@ -53,7 +53,7 @@ func start_worker(cmd *cobra.Command, args []string) {
 	// into conflicts when using multiple zeebe clients, the env vars will always overwrite
 	// direct values
 	credsProvider, err := zbc.NewOAuthCredentialsProvider(&zbc.OAuthProviderConfig{
-		Audience:               strings.TrimSuffix(os.Getenv(ENV_ADDRESS), ":443"),
+		Audience:               os.Getenv(ENV_AUDIENCE),
 		AuthorizationServerURL: os.Getenv(ENV_AUTHORIZATION_SERVER_URL),
 		ClientID:               os.Getenv(ENV_CLIENT_ID),
 		ClientSecret:           os.Getenv(ENV_CLIENT_SECRET),
