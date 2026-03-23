@@ -40,10 +40,26 @@ func Test_ShouldReturnTrueForRunningGatewayDeployment(t *testing.T) {
 	assert.Equal(t, true, running)
 }
 
+func Test_ShouldReturnTrueForRunningSaaSGatewayDeploymentPre8dot9(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=zeebe-gateway,app.kubernetes.io/component=standalone-gateway")
+	require.NoError(t, err)
+	k8Client.createSaaSCRD(t)
+	k8Client.CreateDeploymentWithLabelsAndName(t, selector, "gateway")
+
+	// when
+	running, err := k8Client.checkIfGatewaysAreRunning()
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, true, running)
+}
+
 func Test_ShouldReturnTrueForRunningSaaSGatewayDeployment(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
-	selector, err := metav1.ParseToLabelSelector(getSaasGatewayLabels())
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=camunda,app.kubernetes.io/component=camunda-gateway")
 	require.NoError(t, err)
 	k8Client.createSaaSCRD(t)
 	k8Client.CreateDeploymentWithLabelsAndName(t, selector, "gateway")
@@ -84,10 +100,26 @@ func Test_ShouldReturnGatewayDeployment(t *testing.T) {
 	assert.Equal(t, "gateway", deployment.Name)
 }
 
+func Test_ShouldReturnSaaSGatewayDeploymentPre8dot9(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=zeebe-gateway,app.kubernetes.io/component=standalone-gateway")
+	require.NoError(t, err)
+	k8Client.createSaaSCRD(t)
+	k8Client.CreateDeploymentWithLabelsAndName(t, selector, "gateway")
+
+	// when
+	deployment, err := k8Client.getGatewayDeployment()
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, "gateway", deployment.Name)
+}
+
 func Test_ShouldReturnSaaSGatewayDeployment(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
-	selector, err := metav1.ParseToLabelSelector(getSaasGatewayLabels())
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=camunda,app.kubernetes.io/component=camunda-gateway")
 	require.NoError(t, err)
 	k8Client.createSaaSCRD(t)
 	k8Client.CreateDeploymentWithLabelsAndName(t, selector, "gateway")

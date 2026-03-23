@@ -174,13 +174,13 @@ func Test_GetSelfManagedGatewayPodNames(t *testing.T) {
 	assert.Equal(t, "gateway", names[0], "Expected to retrieve gateway")
 }
 
-func Test_GetSaasGatewayPodNames(t *testing.T) {
+func Test_GetSaasGatewayPodNamesPre8dot9(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
 
 	// gateway
-	selector, err := metav1.ParseToLabelSelector(getSaasGatewayLabels())
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=zeebe-gateway,app.kubernetes.io/component=standalone-gateway")
 	require.NoError(t, err)
 	k8Client.CreatePodWithLabelsAndName(t, selector, "gateway")
 
@@ -199,13 +199,63 @@ func Test_GetSaasGatewayPodNames(t *testing.T) {
 	assert.Equal(t, "gateway", names[0], "Expected to retrieve gateway")
 }
 
+func Test_GetSaasGatewayPodNames(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.createSaaSCRD(t)
+
+	// gateway
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=camunda,app.kubernetes.io/component=camunda-gateway")
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, selector, "gateway")
+
+	// broker
+	selector, err = metav1.ParseToLabelSelector(getSaasBrokerLabels())
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, selector, "broker")
+
+	// when
+	names, err := k8Client.GetGatewayPodNames()
+
+	// then
+	require.NoError(t, err)
+	require.NotNil(t, names)
+	require.NotEmpty(t, names)
+	assert.Equal(t, "gateway", names[0], "Expected to retrieve gateway")
+}
+
+func Test_GetSaaSGatewayPodPre8dot9(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.createSaaSCRD(t)
+
+	// gateway
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=zeebe-gateway,app.kubernetes.io/component=standalone-gateway")
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, selector, "gateway")
+
+	// broker
+	selector, err = metav1.ParseToLabelSelector(getSelfManagedBrokerLabels())
+	require.NoError(t, err)
+	k8Client.CreatePodWithLabelsAndName(t, selector, "broker")
+
+	// when
+	pods, err := k8Client.GetGatewayPods()
+
+	// then
+	require.NoError(t, err)
+	require.NotNil(t, pods)
+	require.NotEmpty(t, pods)
+	assert.Equal(t, "gateway", pods.Items[0].Name, "Expected to retrieve gateway")
+}
+
 func Test_GetSaaSGatewayPod(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
 
 	// gateway
-	selector, err := metav1.ParseToLabelSelector(getSaasGatewayLabels())
+	selector, err := metav1.ParseToLabelSelector("app.kubernetes.io/app=camunda,app.kubernetes.io/component=camunda-gateway")
 	require.NoError(t, err)
 	k8Client.CreatePodWithLabelsAndName(t, selector, "gateway")
 
