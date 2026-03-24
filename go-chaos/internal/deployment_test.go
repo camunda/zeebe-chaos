@@ -25,6 +25,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func setupGatewayServiceTarget(t *testing.T, k8Client K8Client, serviceName string) {
+	selector := map[string]string{"app.kubernetes.io/component": "zeebe-gateway"}
+	if k8Client.SaaSEnv {
+		selector = map[string]string{"app.kubernetes.io/app": "camunda", "app.kubernetes.io/component": "camunda-gateway"}
+	}
+
+	k8Client.CreateServiceWithSelector(t, serviceName, selector, []v1.ServicePort{{Port: 26500}})
+
+	_, err := k8Client.Clientset.CoreV1().Pods(k8Client.GetCurrentNamespace()).Create(context.TODO(), &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: serviceName + "-pod", Labels: selector},
+		Status:     v1.PodStatus{Phase: v1.PodRunning},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+}
+
 func Test_ShouldReturnTrueForRunningGatewayDeployment(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
@@ -135,6 +150,7 @@ func Test_ShouldReturnSaaSGatewayDeployment(t *testing.T) {
 func Test_ShouldDeployWorkerDeployment(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeploymentDefault()
@@ -146,12 +162,13 @@ func Test_ShouldDeployWorkerDeployment(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://testNamespace-zeebe-gateway:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://sm-gateway-service:26500")
 }
 
 func Test_ShouldDeployWorkerDeploymentWithDifferentDockerImage(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeployment("testTag", 1, mockedCredentials())
@@ -163,13 +180,14 @@ func Test_ShouldDeployWorkerDeploymentWithDifferentDockerImage(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://testNamespace-zeebe-gateway:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://sm-gateway-service:26500")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "testTag")
 }
 
 func Test_ShouldNotReturnErrorWhenWorkersAlreadyDeployed(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
 	_ = k8Client.CreateWorkerDeploymentDefault()
 
 	// when
@@ -188,6 +206,7 @@ func Test_ShouldDeployWorkerInSaas(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
+	setupGatewayServiceTarget(t, k8Client, "saas-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeploymentDefault()
@@ -199,13 +218,14 @@ func Test_ShouldDeployWorkerInSaas(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://saas-gateway-service:26500")
 }
 
 func Test_ShouldDeployWorkerInSaasWithDifferentDockerImageTag(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
+	setupGatewayServiceTarget(t, k8Client, "saas-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeployment("testTag", 1, mockedCredentials())
@@ -217,7 +237,7 @@ func Test_ShouldDeployWorkerInSaasWithDifferentDockerImageTag(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://saas-gateway-service:26500")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "testTag")
 }
 
@@ -225,6 +245,7 @@ func Test_ShouldDeployWorkerWithDifferentPollingDelay(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
+	setupGatewayServiceTarget(t, k8Client, "saas-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeployment("testTag", 50, mockedCredentials())
@@ -242,6 +263,7 @@ func Test_ShouldDeployWorkerWithDefaults(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
+	setupGatewayServiceTarget(t, k8Client, "saas-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeploymentDefault()
@@ -253,7 +275,7 @@ func Test_ShouldDeployWorkerWithDefaults(t *testing.T) {
 
 	assert.Equal(t, 1, len(deploymentList.Items))
 	assert.Equal(t, "worker", deploymentList.Items[0].Name)
-	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://zeebe-service:26500")
+	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.brokerUrl=http://saas-gateway-service:26500")
 	assert.Equal(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Image, "gcr.io/zeebe-io/worker:zeebe")
 	assert.Contains(t, deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env[0].Value, "-Dapp.worker.pollingDelay=1ms")
 }
@@ -262,6 +284,7 @@ func Test_ShouldDeployWorkerWithTolerationsForSaaS(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
 	k8Client.createSaaSCRD(t)
+	setupGatewayServiceTarget(t, k8Client, "saas-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeploymentDefault()
@@ -284,6 +307,7 @@ func Test_ShouldDeployWorkerWithTolerationsForSaaS(t *testing.T) {
 func Test_ShouldDeployWorkerWithoutTolerationsForSM(t *testing.T) {
 	// given
 	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
 
 	// when
 	err := k8Client.CreateWorkerDeploymentDefault()

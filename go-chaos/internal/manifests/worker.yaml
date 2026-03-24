@@ -21,7 +21,7 @@ spec:
           env:
             - name: JDK_JAVA_OPTIONS
               value: >-
-                -Dapp.brokerUrl=http://zeebe-service:26500
+                -Dapp.brokerUrl=http://{{.ServiceName}}:26500
                 -Dapp.auth.type=OAUTH
                 -Dzeebe.client.requestTimeout=62000
                 -Dapp.worker.capacity=10
