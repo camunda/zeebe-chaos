@@ -57,6 +57,11 @@ func (c K8Client) CreateWorkerDeploymentDefault() error {
 }
 
 func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs int, credentials *ClientCredentials) error {
+	serviceName, err := c.resolveGatewayServiceName()
+	if err != nil {
+		return err
+	}
+
 	templateFile, err := k8Deployments.ReadFile("manifests/worker.yaml")
 	if err != nil {
 		return err
@@ -72,6 +77,7 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 		ImageTag:          dockerImageTag,
 		PollingDelay:      pollingDelayStr,
 		ClientCredentials: *credentials,
+		ServiceName:       serviceName,
 	}
 	err = tmpl.ExecuteTemplate(workerBuilder, "worker.yaml", replacements)
 	if err != nil {
@@ -89,13 +95,7 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 		return err
 	}
 
-	container := &deployment.Spec.Template.Spec.Containers[0]
-	if !c.SaaSEnv {
-		// We are in self-managed environment
-		// We have to update the service url such that our workers can connect
-		// We expect that the used helm release name is == to the namespace name
-		replaceJavaOptions(container, "zeebe-service:26500", fmt.Sprintf("%s-zeebe-gateway:26500", c.GetCurrentNamespace()))
-	} else {
+	if c.SaaSEnv {
 		// Required to schedule a pod on SaaS
 		// https://github.com/camunda-cloud/team-sre/blob/main/docs/gke_taints_tolerations.md
 		//
@@ -128,10 +128,22 @@ func (c K8Client) CreateWorkerDeployment(dockerImageTag string, pollingDelayMs i
 	return err
 }
 
+func (c K8Client) resolveGatewayServiceName() (_ string, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("failed to resolve gateway service target: %v", recovered)
+		}
+	}()
+
+	_, serviceName, _, _ := c.mustResolveGatewayServiceTarget(26500)
+	return serviceName, nil
+}
+
 type TemplateReplacements struct {
 	PollingDelay string
 	ImageTag     string
 	ClientCredentials
+	ServiceName string
 }
 
 // Replaces a given string for a substitution in the JAVA_OPTIONS env var
