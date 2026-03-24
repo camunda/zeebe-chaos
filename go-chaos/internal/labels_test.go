@@ -70,7 +70,7 @@ func Test_shouldGetSaasGatewayLabels(t *testing.T) {
 
 func Test_shouldGetSaasGatewayServiceLabels(t *testing.T) {
 	// given
-	var expected = "app.kubernetes.io/app in (zeebe-gateway,camunda-gateway)"
+	var expected = "app.kubernetes.io/app in (zeebe-gateway,camunda)"
 
 	// when
 	actual := getSaasGatewayServiceLabels()
