@@ -2,11 +2,138 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://camunda.github.io/zeebe-chaos/</id>
     <title>Zeebe Chaos Blog</title>
-    <updated>2026-03-18T00:00:00.000Z</updated>
+    <updated>2026-03-19T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://camunda.github.io/zeebe-chaos/"/>
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
+    <entry>
+        <title type="html"><![CDATA[RTO with varying backup schedules]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules"/>
+        <updated>2026-03-19T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[With the upcoming Camunda 8.9 release, we will support RDBMS as secondary storage as an alternative to Elasticsearch and OpenSearch.]]></summary>
+        <content type="html"><![CDATA[<p>With the upcoming Camunda 8.9 release, we will support RDBMS as secondary storage as an alternative to Elasticsearch and OpenSearch.
+Because there is no common API for taking backups of relational databases, we had to revise our approach to backup and restore significantly.
+We now support a <code>continuous</code> backup mode that allows users to take backups of secondary and primary storage independently from each other.
+Backups of primary storage will cover a contiguous time range, allowing us to restore from one or multiple primary storage backups to match the state in secondary storage.</p>
+<p>In this chaos day, we are testing our Recovery Time Objective (RTO), the time it takes to recover data from backups and become fully operational again, with varying backup schedules.
+When backups are taken less frequently, each backup covers a longer time window and therefore includes more accumulated log segments.
+We want to understand how this translates to RTO.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
+<p>We run the same Kubernetes cluster under the same load with different backup schedules, then perform a restore for each schedule.
+We measure the time it takes to restore the data and the time it takes to replay that data.
+By keeping everything constant except the schedule interval, we can isolate its effect on RTO.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="hypothesis">Hypothesis<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#hypothesis" class="hash-link" aria-label="Direct link to Hypothesis" title="Direct link to Hypothesis" translate="no">​</a></h3>
+<p>We expect RTO to increase roughly linearly with the backup schedule interval because:</p>
+<ol>
+<li class="">Backup sizes increases because Zeebe accumulates log segments proportional to processing throughput in the backup timeframe.</li>
+<li class="">After restore, the log needs to be replayed. This should also be proportional to processing throughput in the backup timeframe.</li>
+</ol>
+<p>Concretely, if a 5-minute schedule produces backups that take ~45 seconds to restore, a 30-minute schedule should produce backups that take roughly 6× longer to download, yielding an RTO in the range of ~4-5 minutes.</p>
+<p>We also expect the RocksDB snapshot portion of the backup to remain roughly constant across schedules (it depends on runtime state, not backup frequency), so the growth should come entirely from log segment size.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="setup">Setup<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#setup" class="hash-link" aria-label="Direct link to Setup" title="Direct link to Setup" translate="no">​</a></h3>
+<p>We use 5 GCS-backed clusters on GCP (<code>europe-west1</code>) with Postgres as secondary storage — one per backup schedule — so trials can run in parallel.</p>
+<p><strong>Cluster configuration:</strong></p>
+<ul>
+<li class="">3 Zeebe brokers (StatefulSet <code>camunda</code>), 3 partitions, replication factor 3</li>
+<li class="">Continuous backups enabled (<code>CAMUNDA_DATA_PRIMARYSTORAGE_BACKUP_CONTINUOUS=true</code>)</li>
+<li class="">Checkpoint interval: <code>PT30S</code> (constant across all trials)</li>
+<li class="">PostgreSQL as secondary storage</li>
+<li class="">PVCs sized at 64 GiB</li>
+</ul>
+<p><strong>Load:</strong></p>
+<ul>
+<li class="">A "typical" benchmark scenario (single service-task process)</li>
+<li class="">Starter: 50 PI/s</li>
+<li class="">6 Workers</li>
+</ul>
+<p><strong>Backup schedules under test:</strong></p>
+<table><thead><tr><th>Trial</th><th>Schedule interval</th><th>Expected backups in 1 hour</th><th>Checkpoint interval</th></tr></thead><tbody><tr><td>1</td><td><code>PT2M</code></td><td>~30</td><td><code>PT30S</code></td></tr><tr><td>2</td><td><code>PT5M</code></td><td>~12</td><td><code>PT30S</code></td></tr><tr><td>3</td><td><code>PT15M</code></td><td>~4</td><td><code>PT30S</code></td></tr><tr><td>4</td><td><code>PT30M</code></td><td>~2</td><td><code>PT30S</code></td></tr><tr><td>5</td><td><code>PT1H</code></td><td>~1</td><td><code>PT30S</code></td></tr></tbody></table>
+<p>For each trial, we simulate a full disaster recovery while the cluster is running under load: restore Postgres from a backup taken between two primary storage backups, then restore primary storage to match.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="per-trial-procedure">Per-trial procedure<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#per-trial-procedure" class="hash-link" aria-label="Direct link to Per-trial procedure" title="Direct link to Per-trial procedure" translate="no">​</a></h4>
+<p>For each backup schedule:</p>
+<ol>
+<li class="">
+<p>Configure the backup schedule and let the cluster run under load until the first backup completes.</p>
+</li>
+<li class="">
+<p>Take a Postgres backup (while the cluster is still running under load):</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">kubectl -n $NS exec postgres-postgresql-0 -- \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  env PGPASSWORD=camunda pg_dump -U camunda -Fc camunda &gt; pg-backup-trial-N.dump</span><br></span></code></pre></div></div>
+</li>
+<li class="">
+<p>Wait for the next scheduled backup to complete (one full interval). Verify via:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">curl -s http://localhost:9600/actuator/backupRuntime/state | jq .</span><br></span></code></pre></div></div>
+</li>
+<li class="">
+<p>Measure the latest backup size in GCS:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">gsutil du -sh gs://&lt;bucket&gt;/&lt;basepath&gt;/contents/&lt;partition&gt;/&lt;backup-id&gt;/</span><br></span></code></pre></div></div>
+</li>
+<li class="">
+<p>Simulate disaster — scale down brokers and delete volumes:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">kubectl -n $NS scale sts camunda --replicas=0</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">kubectl -n $NS delete pvc -l app.kubernetes.io/component=zeebe-broker</span><br></span></code></pre></div></div>
+</li>
+<li class="">
+<p>Restore Postgres from the backup:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">kubectl -n $NS exec -i postgres-postgresql-0 -- \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  env PGPASSWORD=camunda pg_restore -U camunda -d camunda --clean --if-exists \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  &lt; pg-backup-trial-N.dump</span><br></span></code></pre></div></div>
+<p>The <code>exporter_position</code> table now reflects how far each partition had exported at dump time.
+The restore app uses this to determine which primary storage backups to download.</p>
+</li>
+<li class="">
+<p>Deploy Kubernetes jobs which restore each broker's data disk.
+The init container uses the same <code>startup.sh</code>, config volume mounts, and environment variables as the main container, plus <code>ZEEBE_RESTORE=true</code>.</p>
+</li>
+<li class="">
+<p>Scale up brokers again</p>
+</li>
+<li class="">
+<p>Measure two things:</p>
+<ul>
+<li class=""><strong>Restore duration</strong>: time from "Starting to restore" to "Successfully restored broker" in the restore job logs.</li>
+<li class=""><strong>Replay duration</strong>: time from broker start ("Starting broker") to last "Processor finished replay" — one per partition leader.</li>
+</ul>
+</li>
+</ol>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="results">Results<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#results" class="hash-link" aria-label="Direct link to Results" title="Direct link to Results" translate="no">​</a></h3>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="restore-duration">Restore duration<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#restore-duration" class="hash-link" aria-label="Direct link to Restore duration" title="Direct link to Restore duration" translate="no">​</a></h4>
+<p>The restore init container downloads backups from GCS and assembles the data directory.</p>
+<table><thead><tr><th>Schedule</th><th>Backup size</th><th>Restore duration (range across pods)</th></tr></thead><tbody><tr><td>PT2M</td><td>2.7 GiB</td><td>42.5 – 44.0s</td></tr><tr><td>PT5M</td><td>2.3 GiB</td><td>38.5 – 42.4s</td></tr><tr><td>PT15M</td><td>5.8 GiB</td><td>105.8 – 114.7s</td></tr><tr><td>PT30M</td><td>10.9 GiB</td><td>126.8 – 128.9s</td></tr><tr><td>PT1H</td><td>21.7 GiB</td><td>234.9 – 247.8s</td></tr></tbody></table>
+<p>Restore duration scales roughly linearly with backup size: ~11s per GiB on GCS.</p>
+<p>The PT2M and PT5M results are notably similar. Looking at the restore logs, PT2M restored <strong>3 backups per partition</strong> while PT5M restored <strong>2</strong>. The extra backup in PT2M is an artifact of experiment timing: the disaster simulation took over 4 minutes, during which 2 additional PT2M backups were created. The restore app included these in its restore set, inflating the total data to 2.7 GiB — comparable to PT5M's 2.3 GiB. In a real scenario where the disaster happens between two consecutive backups, PT2M would only need 1–2 backups and its RTO would be lower.</p>
+<p>With faster reactions on the disaster, PT2M should yield lower RTO than PT5M because there's less data to download and replay.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="replay-duration">Replay duration<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#replay-duration" class="hash-link" aria-label="Direct link to Replay duration" title="Direct link to Replay duration" translate="no">​</a></h4>
+<p>After the restore init container completes, the broker starts and replays journal entries to rebuild in-memory state.
+We measure the time between the first broker starting and the last leader finishing replay.</p>
+<table><thead><tr><th>Schedule</th><th>Replay duration (slowest pod)</th></tr></thead><tbody><tr><td>PT2M</td><td>273s (~4.5 min)</td></tr><tr><td>PT5M</td><td>298s (~5 min)</td></tr><tr><td>PT15M</td><td>442s (~7.4 min)</td></tr><tr><td>PT30M</td><td>796s (~13.3 min)</td></tr><tr><td>PT1H</td><td>1234s (~20.6 min)</td></tr></tbody></table>
+<p>Replay dominates total RTO.
+While the restore init container takes 43s–248s, replay takes 273s–1234s — consistently 3–6× longer than the download phase.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="full-rto-breakdown">Full RTO breakdown<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#full-rto-breakdown" class="hash-link" aria-label="Direct link to Full RTO breakdown" title="Direct link to Full RTO breakdown" translate="no">​</a></h4>
+<table><thead><tr><th>Schedule</th><th>Backup size</th><th>Restore (download)</th><th>Replay</th><th>Total RTO (worst pod)</th></tr></thead><tbody><tr><td>PT2M</td><td>2.7 GiB</td><td>~44s</td><td>~273s</td><td><strong>~5.3 min</strong></td></tr><tr><td>PT5M</td><td>2.3 GiB</td><td>~42s</td><td>~298s</td><td><strong>~5.7 min</strong></td></tr><tr><td>PT15M</td><td>5.8 GiB</td><td>~115s</td><td>~442s</td><td><strong>~9.3 min</strong></td></tr><tr><td>PT30M</td><td>10.9 GiB</td><td>~129s</td><td>~796s</td><td><strong>~15.4 min</strong></td></tr><tr><td>PT1H</td><td>21.7 GiB</td><td>~248s</td><td>~1234s</td><td><strong>~24.7 min</strong></td></tr></tbody></table>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="analysis">Analysis<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#analysis" class="hash-link" aria-label="Direct link to Analysis" title="Direct link to Analysis" translate="no">​</a></h4>
+<p><img decoding="async" loading="lazy" alt="RTO breakdown by backup schedule interval" src="https://camunda.github.io/zeebe-chaos/assets/images/rto-breakdown-d6b7d2573c7efc33cfe918928ffaee0c.png" width="900" height="500" class="img_ev3q"></p>
+<p>The hypothesis that RTO grows linearly with backup interval is partially confirmed:</p>
+<ul>
+<li class=""><strong>Restore (download) duration</strong> scales linearly with backup size, which scales linearly with the interval. Doubling the interval roughly doubles the download time.</li>
+<li class=""><strong>Replay duration</strong> also grows with the interval, but accounts for the majority of total RTO. This is expected: more log segments means more entries to replay after assembly.</li>
+</ul>
+<p>Note that these clusters were running under sustained high load.
+Replay time is proportional to the number of records in the journal, which is directly tied to processing throughput.
+Clusters with lower load will accumulate fewer log entries per backup interval, resulting in proportionally shorter replay times and smaller backup sizes.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion" translate="no">​</a></h3>
+<p>RTO for continuous backup restore grows with the backup schedule interval, driven primarily by replay time rather than download time.</p>
+<p>For operators:</p>
+<ul>
+<li class=""><strong>Short intervals give fast recovery</strong>: Total RTO is under 6 minutes, with most time spent in replay rather than download. The marginal cost of very frequent backups is minimal.</li>
+<li class=""><strong>Long intervals compound RTO significantly</strong>: A PT1H schedule results in ~25 minutes of total RTO — roughly 5× longer than PT2M. For clusters where recovery time matters, prefer shorter intervals.</li>
+<li class=""><strong>RTO is dominated by Replay</strong>: Even with the largest backups (21.7 GiB), download takes only ~4 minutes on GCS. The replay phase takes 3–6× longer. Optimizing replay performance (faster disks, more CPU) would have a larger impact on RTO than optimizing download speed.</li>
+</ul>]]></content>
+        <author>
+            <name>Lena Schönburg</name>
+            <uri>https://github.com/lenaschoenburg</uri>
+        </author>
+        <category label="availability" term="availability"/>
+        <category label="rdbms" term="rdbms"/>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Checkpoint scheduler resiliency]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/03/18/Checkpoint-scheduler-resiliency</id>
@@ -2097,174 +2224,6 @@ resource that was increased in the new reduced cluster configuration.</p>]]></co
         <author>
             <name>Rodrigo Lopes</name>
             <uri>https://github.com/rodrigo-lourenco-lopes</uri>
-        </author>
-        <category label="performance" term="performance"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Improve Operate import latency]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency"/>
-        <updated>2024-08-19T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[In our last Chaos Day we experimented with Operate and different load (Zeebe throughput). We observed that a higher load caused a lower import latency in Operate. The conclusion was that it might be related to Zeebe's exporting configuration, which is affected by a higher load.]]></summary>
-        <content type="html"><![CDATA[<p><a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling">In our last Chaos Day</a> we experimented with Operate and different load (Zeebe throughput). We observed that a higher load caused a lower import latency in Operate. The conclusion was that it might be related to Zeebe's exporting configuration, which is affected by a higher load.</p>
-<p>In today's chaos day we want to verify how different export and import configurations can affect the importing latency.</p>
-<p><strong>TL;DR;</strong> We were able to decrease the import latency by ~35% (from 5.7 to 3.7 seconds), by simply reducing the <code>bulk.delay</code> configuration. This worked on low load and even higher load, without significant issues.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="background">Background<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#background" class="hash-link" aria-label="Direct link to Background" title="Direct link to Background" translate="no">​</a></h2>
-<p><em>In the following I want to briefly explain a bit more the background of how exporting and importing play together. If you are already aware feel free to jump to the <a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#chaos-experiment" class="">next section</a>.</em></p>
-<hr>
-<p>To understand how the importing of Operate is affected and works, we first have to take a look at Zeebe.</p>
-<p>Zeebe exports data to Elasticsearch via its Elasticsearch Exporter. The exporter collects data before sending it to Elasticsearch in bulk requests. The amount of data, which is collected in the exporter, is configurable and by default set to 1000 records per batch/bulk. Additionally, there is a memory limit which is taken into account that is set to 10 MB. When the bulk request is reaching that size, the request is sent as well. To cover cases of low load, there is a delay option, which is per default set to 5 seconds. This means, that every 5 seconds the bulk request is sent, even if it is not full.</p>
-<p>This explains also the results from <a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling">our last Chaos Day</a>, where the import latency was around 5 seconds on a lower load.</p>
-<p>In the following, we have written down the sequence of steps a command has to take, and its resulting events until it is visible to the user in Operate. This should allow to better understand how and by what the import latency is affected, and what we might want to tune and experiment further.</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">User Command is sent to Gateway </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">--&gt;Gateway sents Command to the right Broker</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">----&gt;Broker processes command and produces events</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">------&gt;Events are exported by Broker to ES (worst case: 5s flush) </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">--------&gt;ES refreshes after one second</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">----------&gt;Operate import processing/rewriting data</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">------------&gt;ES refreshes after one second</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">--------------&gt;Operate can query the data -&gt; User can see the data </span><br></span></code></pre></div></div>
-<p>About Elasticsearch and its default refresh configuration, etc. you can read <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/tune-for-indexing-speed.html#_unset_or_increase_the_refresh_interval" target="_blank" rel="noopener noreferrer" class="">here</a>.</p>
-<p>Based on this, we know we have the following minimum delay:</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">delay = 2 seconds (due to ES refresh)</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      + (5 seconds from exporter on low load)</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      + network delay </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      + processing delay </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      + Exporter and Operate data un/marshaling/processing</span><br></span></code></pre></div></div>
-<p>Today, we will experiment with the Elasticsearch exporter configurations to improve the import latency.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
-<p>As we have seen <a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling">in a previous chaos day</a> high load affects the importing latency positively. The thesis is that this is due to the export flush delay, which is mostly affecting the exporting on lower load.</p>
-<p>Today we want to prove the following:</p>
-<blockquote>
-<p><strong>Hypothesis</strong></p>
-<p>When we set the exporting/flush delay to a lower value (ex. 1 second), we are improving the import latency for lower load scenarios without affecting the system negatively.</p>
-</blockquote>
-<p>We can define the following <code>unknowns</code>, that we want to explore further as well:</p>
-<ul>
-<li class="">It is not clear how lower flush delay affects the system on higher loads.</li>
-<li class="">It is not clear how smaller values (under 1 second) for the flush delay affect the system, no matter of high or low load.</li>
-</ul>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<ol>
-<li class="">When we set the exporting/flush delay to a lower value (ex. 1 second), we are improving the import latency for lower load scenarios without affecting the system negatively.</li>
-<li class="">When we set the exporting/flush delay to a lower value (ex. 1 second), we are improving the import latency for higher load scenarios, <strong>but decreasing the import throughput</strong></li>
-<li class="">When we set the exporting/flush delay to a small value (under 1 second), we are affecting the import throughput negatively</li>
-</ol>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>As always, we set a base installation up to compare against. The load is moderate-to-low (15 PI/s). We can compare the data from the <a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling">last chaos day</a> here as well.</p>
-<details class="details_lb9f alert alert--info details_b_Ee" data-collapsed="true"><summary>Base: Helm install command</summary><div><div class="collapsibleContent_i85q"><pre><p>helm install $(releaseName) $(chartPath) --render-subchart-notes <br>
-<!-- -->--set global.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebe.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebe.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set starter.rate=5 <br>
-<!-- -->--set worker.replicas=1 <br>
-<!-- -->--set timer.replicas=1 <br>
-<!-- -->--set timer.rate=5 <br>
-<!-- -->--set publisher.replicas=1 <br>
-<!-- -->--set publisher.rate=5 <br>
-<!-- -->--set camunda-platform.operate.enabled=true <br>
-<!-- -->--set camunda-platform.operate.image.repository=gcr.io/zeebe-io/operate <br>
-<!-- -->--set camunda-platform.operate.image.tag=ck-operate-benchmark <br>
-<!-- -->--set camunda-platform.elasticsearch.master.persistence.size=128Gi <br>
-<!-- -->--set camunda-platform.zeebe.retention.minimumAge=1d \</p></pre></div></div></details>
-<p>We see similar results as on the <a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling#base">last Chaos day</a>.</p>
-<p><img decoding="async" loading="lazy" alt="base-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/base-latency-b7ca1d69a5c6419365516c262ccea9fa.png" width="949" height="340" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="base-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/base-throughput-55ff3e3256fa6ddc44ed107960c6a18d.png" width="948" height="262" class="img_ev3q"></p>
-<p>We are able to import around 360 records per second, while Zeebe exports 413. Be aware that some are ignored by Operate.
-A record has on average a delay of 5.69 seconds from being written by Zeebe to being imported by Operate (and written into the
-end Elasticsearch index).</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="first-experiment-lower-flush-delay">First experiment: Lower flush delay<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#first-experiment-lower-flush-delay" class="hash-link" aria-label="Direct link to First experiment: Lower flush delay" title="Direct link to First experiment: Lower flush delay" translate="no">​</a></h4>
-<blockquote>
-<p>When we set the exporting/flush delay to a lower value (ex. 1 second), we are improving the import latency for lower load scenarios without affecting the system negatively.</p>
-</blockquote>
-<p>To reduce the exporter flush delay we use the following configuration:</p>
-<div class="language-yaml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-yaml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token key atrule" style="color:#00a4db">exporters</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token key atrule" style="color:#00a4db">elasticsearch</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token key atrule" style="color:#00a4db">args</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      </span><span class="token key atrule" style="color:#00a4db">bulk</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">        </span><span class="token key atrule" style="color:#00a4db">delay</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">1</span><br></span></code></pre></div></div>
-<p>This can be set in our <a href="https://github.com/camunda/zeebe-benchmark-helm" target="_blank" rel="noopener noreferrer" class="">benchmark-helm</a> directly via: <code>--set zeebe.config.zeebe.broker.exporters.elasticsearch.args.bulk.delay=1</code></p>
-<details class="details_lb9f alert alert--info details_b_Ee" data-collapsed="true"><summary>Lower flush delay: Helm install command</summary><div><div class="collapsibleContent_i85q"><pre><p>helm install $(releaseName) $(chartPath) --render-subchart-notes <br>
-<!-- -->--set global.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebe.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebe.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set starter.rate=5 <br>
-<!-- -->--set worker.replicas=1 <br>
-<!-- -->--set timer.replicas=1 <br>
-<!-- -->--set timer.rate=5 <br>
-<!-- -->--set publisher.replicas=1 <br>
-<!-- -->--set publisher.rate=5 <br>
-<!-- -->--set camunda-platform.operate.enabled=true <br>
-<!-- -->--set camunda-platform.operate.image.repository=gcr.io/zeebe-io/operate <br>
-<!-- -->--set camunda-platform.operate.image.tag=ck-operate-benchmark <br>
-<!-- -->--set camunda-platform.elasticsearch.master.persistence.size=128Gi <br>
-<!-- -->--set camunda-platform.zeebe.retention.minimumAge=1d <br>
-<!-- -->--set zeebe.config.zeebe.broker.exporters.elasticsearch.args.bulk.delay=1</p></pre></div></div></details>
-<p><img decoding="async" loading="lazy" alt="lower-delay" src="https://camunda.github.io/zeebe-chaos/assets/images/lower-delay-base-d12d1ae908d186eaa1e7c53db1c25df3.png" width="942" height="350" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="lower-delay-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/lower-delay-base-load-throughput-2f84411bbd0df079f7c760b882b00f1f.png" width="931" height="264" class="img_ev3q"></p>
-<p>With setting the <code>bulk.delay</code> to one second, we were able to reduce the import latency by ~2 seconds, from 5.69 to 3.68 seconds.
-That is a 35% decrease, while other factors stay the same. We can observe that the throughput stays the same (while of course, the load is rather moderate-to-low).</p>
-<p>This proved our first hypothesis from above. <!-- -->✅</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="second-experiment-lower-delay-with-higher-load">Second Experiment: Lower delay with higher load<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#second-experiment-lower-delay-with-higher-load" class="hash-link" aria-label="Direct link to Second Experiment: Lower delay with higher load" title="Direct link to Second Experiment: Lower delay with higher load" translate="no">​</a></h4>
-<blockquote>
-<p>When we set the exporting/flush delay to a lower value (ex. 1 second), we are improving the import latency for higher load scenarios, <strong>but decreasing the import throughput</strong></p>
-</blockquote>
-<p>Similar to the first experiment we set the delay to one second, and increased the load in the same way as we did
-<a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling#high-load">here</a> before.</p>
-<details class="details_lb9f alert alert--info details_b_Ee" data-collapsed="true"><summary>Lower flush delay with high load: Helm install command</summary><div><div class="collapsibleContent_i85q"><pre><p>helm install $(releaseName) $(chartPath) --render-subchart-notes <br>
-<!-- -->--set global.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebe.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebe.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.repository=gcr.io/zeebe-io/zeebe <br>
-<!-- -->--set camunda-platform.zeebeGateway.image.tag=ck-operate-benchmark-1ad8f375 <br>
-<!-- -->--set starter.rate=50 <br>
-<!-- -->--set worker.replicas=1 <br>
-<!-- -->--set timer.replicas=1 <br>
-<!-- -->--set timer.rate=50 <br>
-<!-- -->--set publisher.replicas=1 <br>
-<!-- -->--set publisher.rate=50 <br>
-<!-- -->--set camunda-platform.operate.enabled=true <br>
-<!-- -->--set camunda-platform.operate.image.repository=gcr.io/zeebe-io/operate <br>
-<!-- -->--set camunda-platform.operate.image.tag=ck-operate-benchmark <br>
-<!-- -->--set camunda-platform.elasticsearch.master.persistence.size=128Gi <br>
-<!-- -->--set camunda-platform.zeebe.retention.minimumAge=1d <br>
-<!-- -->--set zeebe.config.zeebe.broker.exporters.elasticsearch.args.bulk.delay=1</p></pre></div></div></details>
-<p><img decoding="async" loading="lazy" alt="higher-load" src="https://camunda.github.io/zeebe-chaos/assets/images/lower-delay-high-load-latency-0e25d5853d6c133948c594bb1efb631b.png" width="1903" height="339" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="higher-load-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/lower-delay-high-load-throughput-30c09f7fe98dd22bd5f4199e48fd79bb.png" width="1895" height="252" class="img_ev3q"></p>
-<p>We can see that the latency has been increased a bit, versus the lower load benchmark, but it has improved compared to the
-benchmark <a class="" href="https://camunda.github.io/zeebe-chaos/2024/08/16/Operate-load-handling#high-load">the last chaos day</a>. :information: An interesting factor is that it seems that the throughput from Zeebe has changed as well, that in consequence increased the import throughput.</p>
-<p>Looking into it further, we can see that the job and process instance creation and completion have changed by ~13-18 percent. Before we had around 130 process instance completion per second.</p>
-<p><img decoding="async" loading="lazy" alt="backpressure-higher-load" src="https://camunda.github.io/zeebe-chaos/assets/images/backpressure-higher-load-7ea4904a9e4209bb0f55935db995a5a6.png" width="707" height="450" class="img_ev3q"></p>
-<p>In the recent benchmark, we almost reach our target load (150 PI/s) with 147 process instance completions per second.</p>
-<p><img decoding="async" loading="lazy" alt="backpressure-higher-load-lower-delay" src="https://camunda.github.io/zeebe-chaos/assets/images/backpressure-lower-delay-higher-load-690a52e13a2e7d988eb29d2cf103250f.png" width="709" height="454" class="img_ev3q"></p>
-<p>The reason seem to be the different backpressure. Backpressure has been decreased from ~20 % to 5-10%. This might be because our backpressure strategy has recently changed and now takes exporting into account. See also <a class="" href="https://camunda.github.io/zeebe-chaos/2024/07/25/Using-flow-control-to-handle-bottlenecked-exporting">related chaos day about this topic</a>.</p>
-<p><em><strong>Update</strong></em>:</p>
-<p>Looking into it further, the backpressure is not affected by the newest feature (as it was not enabled by default). This was discussed internally with the Zeebe team.</p>
-<p><img decoding="async" loading="lazy" alt="higher-load-less-throughput-commit-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/higher-load-less-throughput-commit-latency-9c60c6c92511ef060343e3628b6ff144.png" width="1906" height="519" class="img_ev3q"></p>
-<p>The slower benchmark, seem to have a degraded commit latency, which in consequence slows down the whole system. It is unclear right now, why this is.</p>
-<p>The faster benchmark, with the configured exporting, has a much better commit latency. It is unlikely that the exporter configuration affected this part of the system. We will have to retry the both benchmarks.</p>
-<p><img decoding="async" loading="lazy" alt="higher-load-higher-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/higher-load-higher-throughput-commit-latency-fe734971e6c84fd5fcc91f0be184c03b.png" width="1909" height="525" class="img_ev3q"></p>
-<p><em><strong>Update 20-08-2024</strong></em></p>
-<p>We run additional benchmarks to verify the behavior on high load. This time we haven't seen any differences in terms
-of processing performance in both benchmarks.</p>
-<p>The benchmark without the configuration, reaches similar numbers (146 PI/s), as the other before.</p>
-<p><img decoding="async" loading="lazy" alt="20-08-high-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/2024-08-20_high-load-throughput-9af777e2e4b2ca7f505630269e5dfc26.png" width="2539" height="383" class="img_ev3q"></p>
-<p>Benchmark with configuring the flush delay reaches comparable numbers.</p>
-<p><img decoding="async" loading="lazy" alt="20-08-high-throughput" src="https://camunda.github.io/zeebe-chaos/assets/images/2024-08-20_high-load-throughput-lower-delay-b7a3a17768405a0cf71ee848cb882bae.png" width="2539" height="376" class="img_ev3q"></p>
-<p>During running the benchmarks we run into another issue, for which we opened the following <a href="https://github.com/camunda/camunda/issues/21376" target="_blank" rel="noopener noreferrer" class="">issue #21376</a>.</p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="additional-finding">Additional finding<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#additional-finding" class="hash-link" aria-label="Direct link to Additional finding" title="Direct link to Additional finding" translate="no">​</a></h5>
-<p>An interesting additional finding has been done. When the Operate import fails or restarts (that can easily happen with preemptive nodes), then the importer backlog can be significant. This is especially an issue on higher constant load.</p>
-<p><img decoding="async" loading="lazy" alt="import-delay" src="https://camunda.github.io/zeebe-chaos/assets/images/import-delay-90beae953db149d42fff5c116f738a60.png" width="1908" height="446" class="img_ev3q"></p>
-<p>In our benchmark after the importer failed, it took ~20 minutes until the backlog was processed and the import latency was back to normal.</p>
-<p><img decoding="async" loading="lazy" alt="recover-import-delay" src="https://camunda.github.io/zeebe-chaos/assets/images/import-delay-recover-6be36a1bd65171855f7b87125cdea6b5.png" width="1906" height="349" class="img_ev3q"></p>
-<p>This shows that Operate, especially the importer is quite sensitive to restarts. This is likely to be changed and improved when
-Operates importing mechanism is moved into Zeebe, as a separate exporter see <a href="https://github.com/camunda/camunda/issues/16912" target="_blank" rel="noopener noreferrer" class="">related GH issue</a>.</p>
-<p>On a lower load, the impact of an importer restart is negligible, as we can see below.</p>
-<p><img decoding="async" loading="lazy" alt="no-impoact-low-load-restart" src="https://camunda.github.io/zeebe-chaos/assets/images/no-import-delay-restart-low-load-181ded52fb60f7d19889f6663b5454d0.png" width="1900" height="446" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="third-experiment">Third experiment<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#third-experiment" class="hash-link" aria-label="Direct link to Third experiment" title="Direct link to Third experiment" translate="no">​</a></h4>
-<blockquote>
-<p>When we set the exporting/flush delay to a small value (under 1 second), we are affecting the import throughput negatively</p>
-</blockquote>
-<p>We were not able to set the <code>bulk.delay</code> to a smaller value than 1 second, as the configuration only accepts longs. The values seem to be expected to be seconds. When setting it to zero, no improvement has been observed (versus one second).</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="potential-improvements">Potential improvements<a href="https://camunda.github.io/zeebe-chaos/2024/08/19/Operate-improve-import-latency#potential-improvements" class="hash-link" aria-label="Direct link to Potential improvements" title="Direct link to Potential improvements" translate="no">​</a></h2>
-<ul>
-<li class="">Allow to configure <code>bulk.delay</code> in non-second format (be able to specify the time/duration format)</li>
-<li class="">The <code>bulk.delay</code> configures a timer, which gets triggered with the given value. This means the flush can happen, even if flush was executed before causing flush with little buffers.</li>
-<li class="">Importing is highly affected by pod restarts, this can cause issues on higher load, due to a growing backlog. Making import idempotent, and scaling importers would help here.</li>
-<li class=""><a href="https://github.com/camunda/camunda/issues/21376" target="_blank" rel="noopener noreferrer" class="">Zeebe exporting latency can increase significantly without clear root cause #21376</a>.</li>
-</ul>]]></content>
-        <author>
-            <name>Christopher Kujawa</name>
-            <uri>https://github.com/ChrisKujawa</uri>
         </author>
         <category label="performance" term="performance"/>
     </entry>
