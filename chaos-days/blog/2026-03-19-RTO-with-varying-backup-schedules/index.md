@@ -20,7 +20,7 @@ Because there is no common API for taking backups of relational databases, we ha
 We now support a `continuous` backup mode that allows users to take backups of secondary and primary storage independently from each other.
 Backups of primary storage will cover a contiguous time range, allowing us to restore from one or multiple primary storage backups to match the state in secondary storage.
 
-In this chaos day, we are testing our Recovery Time Objective (RTO), the time it takes to restore from backups, with varying backup schedules.
+In this chaos day, we are testing our Recovery Time Objective (RTO), the time it takes to recover data from backups and become fully operational again, with varying backup schedules.
 When backups are taken less frequently, each backup covers a longer time window and therefore includes more accumulated log segments.
 We want to understand how this translates to RTO.
 
@@ -37,7 +37,7 @@ By keeping everything constant except the schedule interval, we can isolate its 
 We expect RTO to increase roughly linearly with the backup schedule interval because:
 
 1. Backup sizes increases because Zeebe accumulates log segments proportional to processing throughput in the backup timeframe.
-2. After restore, the log needs to be replayed. This should also be proportional to processing throughput in the backup timeframe. 
+2. After restore, the log needs to be replayed. This should also be proportional to processing throughput in the backup timeframe.
 
 Concretely, if a 5-minute schedule produces backups that take ~45 seconds to restore, a 30-minute schedule should produce backups that take roughly 6× longer to download, yielding an RTO in the range of ~4-5 minutes.
 
@@ -52,7 +52,7 @@ We use 5 GCS-backed clusters on GCP (`europe-west1`) with Postgres as secondary 
 - Continuous backups enabled (`CAMUNDA_DATA_PRIMARYSTORAGE_BACKUP_CONTINUOUS=true`)
 - Checkpoint interval: `PT30S` (constant across all trials)
 - PostgreSQL as secondary storage
-- PVCs sized at 256 GiB (to accommodate the 1-hour schedule's larger segments)
+- PVCs sized at 64 GiB
 
 **Load:**
 - A "typical" benchmark scenario (single service-task process)
@@ -93,7 +93,7 @@ For each backup schedule:
    gsutil du -sh gs://<bucket>/<basepath>/contents/<partition>/<backup-id>/
    ```
 
-5. Simulate disaster — scale down brokers and delete volumes (workload keeps running):
+5. Simulate disaster — scale down brokers and delete volumes:
    ```
    kubectl -n $NS scale sts camunda --replicas=0
    kubectl -n $NS delete pvc -l app.kubernetes.io/component=zeebe-broker
@@ -119,7 +119,7 @@ For each backup schedule:
 
 ### Results
 
-#### Restore duration 
+#### Restore duration
 The restore init container downloads backups from GCS and assembles the data directory.
 
 | Schedule | Backup size | Restore duration (range across pods) |
@@ -134,10 +134,12 @@ Restore duration scales roughly linearly with backup size: ~11s per GiB on GCS.
 
 The PT2M and PT5M results are notably similar. Looking at the restore logs, PT2M restored **3 backups per partition** while PT5M restored **2**. The extra backup in PT2M is an artifact of experiment timing: the disaster simulation took over 4 minutes, during which 2 additional PT2M backups were created. The restore app included these in its restore set, inflating the total data to 2.7 GiB — comparable to PT5M's 2.3 GiB. In a real scenario where the disaster happens between two consecutive backups, PT2M would only need 1–2 backups and its RTO would be lower.
 
-#### Replay duration (broker start → last "Processor finished replay")
+With faster reactions on the disaster, PT2M should yield lower RTO than PT5M because there's less data to download and replay.
+
+#### Replay duration
 
 After the restore init container completes, the broker starts and replays journal entries to rebuild in-memory state.
-Only leader partitions perform replay; follower partitions follow the leader.
+We measure the time between the first broker starting and the last leader finishing replay.
 
 | Schedule | Replay duration (slowest pod) |
 |----------|-------------------------------|
@@ -168,9 +170,6 @@ The hypothesis that RTO grows linearly with backup interval is partially confirm
 - **Restore (download) duration** scales linearly with backup size, which scales linearly with the interval. Doubling the interval roughly doubles the download time.
 - **Replay duration** also grows with the interval, but accounts for the majority of total RTO. This is expected: more log segments means more entries to replay after assembly.
 
-PT2M and PT5M produced similar total RTOs (~5–6 min), but this is partly an artifact: the PT2M trial's disaster simulation took long enough for extra backups to accumulate, inflating the restore set from the expected 1–2 backups to 3.
-When reacting faster to the disaster, PT2M should yield lower RTO than PT5M because there's less data to download and replay.
-
 Note that these clusters were running under sustained high load.
 Replay time is proportional to the number of records in the journal, which is directly tied to processing throughput.
 Clusters with lower load will accumulate fewer log entries per backup interval, resulting in proportionally shorter replay times and smaller backup sizes.
@@ -180,7 +179,6 @@ Clusters with lower load will accumulate fewer log entries per backup interval, 
 RTO for continuous backup restore grows with the backup schedule interval, driven primarily by replay time rather than download time.
 
 For operators:
-- **Short intervals (PT2M–PT5M) give fast recovery**: Total RTO is under 6 minutes, with most time spent in replay rather than download. The marginal cost of very frequent backups is minimal.
+- **Short intervals give fast recovery**: Total RTO is under 6 minutes, with most time spent in replay rather than download. The marginal cost of very frequent backups is minimal.
 - **Long intervals compound RTO significantly**: A PT1H schedule results in ~25 minutes of total RTO — roughly 5× longer than PT2M. For clusters where recovery time matters, prefer shorter intervals.
-- **Replay dominates download**: Even with the largest backups (21.7 GiB), download takes only ~4 minutes on GCS. The replay phase takes 3–6× longer. Optimizing replay performance (faster disks, more CPU) would have a larger impact on RTO than optimizing download speed.
-- **Shorter intervals should help further**: The PT2M trial's RTO was inflated by experiment timing (extra backups accumulated during the disaster simulation). In practice, PT2M backups cover less data each and should yield faster restores than PT5M.
+- **RTO is dominated by Replay**: Even with the largest backups (21.7 GiB), download takes only ~4 minutes on GCS. The replay phase takes 3–6× longer. Optimizing replay performance (faster disks, more CPU) would have a larger impact on RTO than optimizing download speed.
