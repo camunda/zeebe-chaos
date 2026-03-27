@@ -2,11 +2,189 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://camunda.github.io/zeebe-chaos/</id>
     <title>Zeebe Chaos Blog</title>
-    <updated>2026-03-19T00:00:00.000Z</updated>
+    <updated>2026-03-25T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://camunda.github.io/zeebe-chaos/"/>
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
+    <entry>
+        <title type="html"><![CDATA[C8 on ECS: Simulate loss of lease]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation"/>
+        <updated>2026-03-25T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.]]></summary>
+        <content type="html"><![CDATA[<p>With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.</p>
+<p>To make this work safely, the Camunda 8 ECS reference architecture introduces a dynamic NodeIdProvider backed by Amazon S3. Each ECS task:</p>
+<ul>
+<li class="">Competes for a lease stored in S3 that represents a specific logical broker node ID.</li>
+<li class="">When it acquires the lease, it becomes that broker and uses a dedicated directory on shared EFS for its data.</li>
+<li class="">Periodically renews the lease; if renewal fails or preconditions are violated, the task shts down immediately to avoid corrupting data or having two brokers think they own the same node.</li>
+</ul>
+<p>In this experiment we explore what happens when a broker loses its S3-backed NodeId lease and another broker acquires it. In this experiment we simulate that scenario by artificially overwriting the lease object in S3 to represent a new owner and then observe how the original holder reacts.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="goal">Goal<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#goal" class="hash-link" aria-label="Direct link to Goal" title="Direct link to Goal" translate="no">​</a></h2>
+<p>Hypothesis:<br>
+<!-- -->If the S3 lease for a node Id is lost by the task, the NodeIdProvider should:</p>
+<ul>
+<li class="">Detect the inconsistency via conditional writes,</li>
+<li class="">Refuse to renew the lease,</li>
+<li class="">Shut the broker down cleanly so that ECS can replace it with a fresh task that acquires a new, valid lease.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="setup">Setup<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#setup" class="hash-link" aria-label="Direct link to Setup" title="Direct link to Setup" translate="no">​</a></h2>
+<ul>
+<li class="">Camunda 8 (Zeebe) on AWS ECS Fargate</li>
+<li class="">3 brokers, 3 partitions</li>
+<li class="">Shared data on EFS</li>
+<li class="">NodeIdProvider using S3 leases:<!-- -->
+<ul>
+<li class="">One object per logical node (e.g. <code>2.json</code>)</li>
+<li class="">Metadata carries the task id, version, and acquirable flag</li>
+<li class="">Object body holds the lease payload (node id, version, known version mappings, timestamp)</li>
+</ul>
+</li>
+</ul>
+<p>Before the experiment, the S3 object for node 2 looked like this.</p>
+<p><strong>Metadata:</strong></p>
+<div class="language-json codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-json codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token property" style="color:#36acaa">"Metadata"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"taskid"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"0afffc8d-3807-46cb-9a2e-3f65f96d2acb"</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"version"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"2"</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"acquirable"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"true"</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">}</span><br></span></code></pre></div></div>
+<p><strong>Payload:</strong></p>
+<div class="language-json codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-json codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"taskId"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"0afffc8d-3807-46cb-9a2e-3f65f96d2acb"</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"timestamp"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">1774433501584</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"nodeInstance"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"> </span><span class="token property" style="color:#36acaa">"id"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">2</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"> </span><span class="token property" style="color:#36acaa">"version"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">2</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">}</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token property" style="color:#36acaa">"knownVersionMappings"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token property" style="color:#36acaa">"mappingsByNodeId"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      </span><span class="token property" style="color:#36acaa">"0"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">2</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      </span><span class="token property" style="color:#36acaa">"1"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">3</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">      </span><span class="token property" style="color:#36acaa">"2"</span><span class="token operator" style="color:#393A34">:</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">2</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">}</span><br></span></code></pre></div></div>
+<p>This represents broker node 2, version 2, with a lease that is currently acquirable.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="injecting-failure-overwriting-the-lease-in-s3">Injecting failure: overwriting the lease in S3<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#injecting-failure-overwriting-the-lease-in-s3" class="hash-link" aria-label="Direct link to Injecting failure: overwriting the lease in S3" title="Direct link to Injecting failure: overwriting the lease in S3" translate="no">​</a></h2>
+<p>To simulate the loss of the lease, we modified the timestamp and the taskId in the current <code>2.json</code> object and overwrote the object.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">aws s3api put-object \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  --bucket "dev-chaos-day-oc-bucket" \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  --key "2.json" \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  --body 2.json \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  --metadata "version=2,acquirable=true,taskId=abc"</span><br></span></code></pre></div></div>
+<p>From the broker’s point of view, the lease it thought it owned has now been rewritten by someone else. In a real cluster, this situation should not occur as long as the current holder keeps renewing its lease within the configured lease duration. The overwrite here is artificial and is meant to simulate a scenario where the current holder has stopped renewing, and another broker has legitimately acquired the lease in the meantime.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-we-observed-in-the-logs">What we observed in the logs<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#what-we-observed-in-the-logs" class="hash-link" aria-label="Direct link to What we observed in the logs" title="Direct link to What we observed in the logs" translate="no">​</a></h2>
+<p>Shortly after the override, the task assuming the role of node 2 started logging S3 errors during lease renewal:</p>
+<ul>
+<li class="">S3 precondition failure (HTTP 412) while trying to acquire/renew the lease:<!-- -->
+<ul>
+<li class=""><code>S3Exception: At least one of the pre-conditions you specified did not hold (Status Code: 412)</code></li>
+</ul>
+</li>
+<li class="">The NodeIdProvider logs clearly indicate:<!-- -->
+<ul>
+<li class="">“Failed to renew the lease: process is going to shut down immediately.”</li>
+<li class="">“NodeIdProvider terminating the process.”</li>
+</ul>
+</li>
+</ul>
+<p>Once the NodeIdProvider decides the lease can’t be renewed safely, the broker begins a controlled shutdown. From the outside, this looks like a broker failure triggered by lease validation logic, not by ECS itself.</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 11:20</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 10:20:41.663] [NodeIdProvider] WARN io.camunda.zeebe.dynamic.nodeid.RepositoryNodeIdProvider - Failed to renew the lease: process is going to shut down immediately. software.amazon.awssdk.services.s3.model.S3Exception: At least one of the pre-conditions you specified did not hold ...</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 11:20</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 10:20:41.663] [NodeIdProvider] WARN io.camunda.zeebe.broker.NodeIdProviderConfiguration - NodeIdProvider terminating the process</span><br></span></code></pre></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="replacement-task-and-new-lease">Replacement task and new lease<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#replacement-task-and-new-lease" class="hash-link" aria-label="Direct link to Replacement task and new lease" title="Direct link to Replacement task and new lease" translate="no">​</a></h2>
+<p>ECS notices that the service is now below the desired task count and starts a replacement task for the orchestration cluster:</p>
+<ol>
+<li class="">
+<p>The old task transitions to stopped.</p>
+</li>
+<li class="">
+<p>A new ECS task is started for the same service.</p>
+</li>
+<li class="">
+<p>On startup, the new task:</p>
+<ul>
+<li class="">Acquires a new S3 lease for node 2 with version 3:<!-- -->
+<ul>
+<li class="">New <code>taskid</code> in metadata (the new ECS task id),</li>
+<li class=""><code>"version": "3"</code>,</li>
+<li class=""><code>"acquirable": "true"</code>.</li>
+</ul>
+</li>
+<li class="">Initializes a new data directory:<!-- -->
+<ul>
+<li class=""><code>/usr/local/camunda/data/node-2/v3</code> is created by copying from <code>/usr/local/camunda/data/node-2/v2</code>.</li>
+</ul>
+</li>
+<li class="">Starts rest of the services and joins the cluster.</li>
+</ul>
+</li>
+</ol>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 11:24</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 10:24:12.031] [main] INFO io.camunda.zeebe.dynamic.nodeid.fs.VersionedNodeIdBasedDataDirectoryProvider - Initializing data directory /usr/local/camunda/data/node-2/v3 by copying from /usr/local/camunda/data/node-2/v2</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 11:24</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 10:24:11.480] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.RepositoryNodeIdProvider - Acquired lease w/ nodeId=NodeInstance[id=2, version=Version[version=3]]. Initialized[metadata=Metadata[task=Optional[6670d8e5-ec20-4c03-9d99-6993f48b6617], version=Version[version=3], acquirable=true], lease=Lease[taskId=6670d8e5-ec20-4c03-9d99-6993f48b6617, timestamp=1774434266329, nodeInstance=NodeInstance[id=2, version=Version[version=3]], knownVersionMappings=VersionMappings[mappingsByNodeId={2=Version[version=3]}]], eTag="98e0408dfd5c07143686697207d411df"]</span><br></span></code></pre></div></div>
+<p>The resulting S3 object now represents node 2, version 3, with a fresh lease owned by the new task.</p>
+<p>In ECS:</p>
+<ul>
+<li class="">The Tasks view shows three running tasks, all Healthy again.</li>
+<li class="">From the cluster’s perspective, we’re back to a stable, 3-broker topology.</li>
+</ul>
+<p><img decoding="async" loading="lazy" alt="Healthy Service" src="https://camunda.github.io/zeebe-chaos/assets/images/1-healthy-01afde103102aa59518d7773cdbca12a.png" width="1920" height="590" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="takeaways">Takeaways<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#takeaways" class="hash-link" aria-label="Direct link to Takeaways" title="Direct link to Takeaways" translate="no">​</a></h2>
+<p>Overall, this experiment shows that when a broker loses its lease and another broker acquires it, the combination of NodeIdProvider safety checks and ECS rescheduling steers the system toward a safe recovery path rather than silent data corruption.</p>]]></content>
+        <author>
+            <name>Deepthi Akkoorath</name>
+            <uri>https://github.com/deepthidevaki</uri>
+        </author>
+        <author>
+            <name>Rodrigo Lopes</name>
+            <uri>https://github.com/rodrigo-lourenco-lopes</uri>
+        </author>
+        <category label="ecs" term="ecs"/>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[C8 on ECS: Restart Tasks]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker"/>
+        <updated>2026-03-25T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.]]></summary>
+        <content type="html"><![CDATA[<p>With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.</p>
+<p>To make this work safely, the Camunda 8 ECS reference architecture introduces a dynamic NodeIdProvider backed by Amazon S3. Each ECS task:</p>
+<ul>
+<li class="">Competes for a lease stored in S3 that represents a specific logical broker node ID.</li>
+<li class="">When it acquires the lease, it becomes that broker and uses a dedicated directory on shared EFS for its data.</li>
+<li class="">Periodically renews the lease; if renewal fails or preconditions are violated, the task shts down immediately to avoid corrupting data or having two brokers think they own the same node.</li>
+</ul>
+<p>The experiments in this post tests how well this S3-backed lease mechanism behaves under specfic failure scenarios where a task is killed and replaced by a new one.</p>
+<h1>Experiment</h1>
+<p>Our first chaos experiment on ECS was simple: what happens to a Camunda 8 cluster on AWS ECS when we kill a single broker task by hand?</p>
+<p>The cluster was running Camunda 8 (Zeebe) on AWS ECS with 3 brokers and 3 partitions. Before we started the experiment, the dashboards showed a healthy topology, stable processing and exporting rates. The AWS console confirmed three running, healthy tasks for the orchestration cluster service.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="baseline-healthy-3-broker-cluster">Baseline: healthy 3-broker cluster<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#baseline-healthy-3-broker-cluster" class="hash-link" aria-label="Direct link to Baseline: healthy 3-broker cluster" title="Direct link to Baseline: healthy 3-broker cluster" translate="no">​</a></h2>
+<p>At steady state:</p>
+<ul>
+<li class=""><strong>Cluster topology</strong>: 3 brokers, each participating in the 3 partitions as leader or follower.</li>
+<li class=""><strong>Health</strong>: All partitions reported as healthy, with no restarts.</li>
+<li class=""><strong>Throughput</strong>: Processing and exporting metrics were flat and stable.</li>
+<li class=""><strong>ECS</strong>: Service view showed 3/3 tasks running and healthy.</li>
+</ul>
+<p><img decoding="async" loading="lazy" alt="Dashboard showing healthy brokers" src="https://camunda.github.io/zeebe-chaos/assets/images/1-healthy-dashboard-baf70b3660dab59d4cd79ca03a6158d6.png" width="1602" height="683" class="img_ev3q"></p>
+<p><img decoding="async" loading="lazy" alt="AWS console showing healthy tasks" src="https://camunda.github.io/zeebe-chaos/assets/images/2-healthy-service-2b6929389d10fa879038fa277dc683f1.png" width="1717" height="638" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="injecting-failure-stopping-one-ecs-task">Injecting failure: stopping one ECS task<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#injecting-failure-stopping-one-ecs-task" class="hash-link" aria-label="Direct link to Injecting failure: stopping one ECS task" title="Direct link to Injecting failure: stopping one ECS task" translate="no">​</a></h2>
+<p>To inject a failure, we manually stopped one of the ECS tasks for the orchestration cluster from the AWS console.</p>
+<p><img decoding="async" loading="lazy" alt="Stop task from AWS console" src="https://camunda.github.io/zeebe-chaos/assets/images/3-stop-task-0d020e3680e83bb32907bcfdd73f6dfe.png" width="1717" height="638" class="img_ev3q"></p>
+<p>This triggers a graceful shutdown of the broker, and we can see that NodeIdProvider released its S3 lease.</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.666] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.repository.s3.S3NodeIdRepository - Release lease Initialized[metadata=Metadata[task=Optional[03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7], version=Version[version=1], acquirable=true], lease=Lease[taskId=03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7, timestamp=1774431273727, nodeInstance=NodeInstance[id=1, version=Version[version=1]], knownVersionMappings=VersionMappings[mappingsByNodeId={0=Version[version=1], 1=Version[version=1], 2=Version[version=1]}]], eTag="07b2daecf534e87cae5a3993f1102b22"]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.638] [SpringApplicationShutdownHook] [{broker-id=Broker-1}] INFO io.camunda.zeebe.broker.system - Broker shut down.</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster```</span><br></span></code></pre></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="replacement-task-and-recovery">Replacement task and recovery<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#replacement-task-and-recovery" class="hash-link" aria-label="Direct link to Replacement task and recovery" title="Direct link to Replacement task and recovery" translate="no">​</a></h2>
+<p>ECS replaces the stopped task to meet the configured desired task count.</p>
+<ol>
+<li class="">The old task went into <em>deprovisioning</em> and eventually <em>stopped</em>.</li>
+</ol>
+<p><img decoding="async" loading="lazy" alt="Deprovisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/4-deprovisioning-feb18a6d43129e5235f33d107838be99.png" width="1596" height="587" class="img_ev3q"></p>
+<ol start="2">
+<li class="">ECS launched a new task for the same service a couple of minutes later.</li>
+</ol>
+<p><img decoding="async" loading="lazy" alt="Provisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/5-provisioning-0f6d1173d62450f54658736a228e9e19.png" width="1695" height="595" class="img_ev3q">
+3. On startup, the new broker instance:</p>
+<ul>
+<li class="">Acquired the S3 lease for the same logical node with a new version (v2).</li>
+<li class="">Copied the previous data directory into a fresh <code>v2</code> directory (versioned data layout).</li>
+</ul>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.555] [main] INFO io.camunda.zeebe.dynamic.nodeid.fs.VersionedNodeIdBasedDataDirectoryProvider - Initializing data directory /usr/local/camunda/data/node-1/v2 by copying from /usr/local/camunda/data/node-1/v1</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.037] [main] WARN io.camunda.configuration.beanoverrides.BrokerBasedPropertiesOverride - The following legacy property is no longer supported and should be removed in favor of 'camunda.data.exporters': zeebe.broker.exporters</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.979] [main] WARN io.camunda.configuration.UnifiedConfigurationHelper - The following legacy configuration properties should be removed in favor of 'camunda.data.primary-storage.directory': zeebe.broker.data.directory</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.912] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.RepositoryNodeIdProvider - Acquired lease w/ nodeId=NodeInstance[id=1, version=Version[version=2]]. Initialized[metadata=Metadata[task=Optional[5228b3d3-7cde-4365-b4c5-7afd0ae094cd], version=Version[version=2], acquirable=true], lease=Lease[taskId=5228b3d3-7cde-4365-b4c5-7afd0ae094cd, timestamp=1774431401724, nodeInstance=NodeInstance[id=1, version=Version[version=2]], knownVersionMappings=VersionMappings[mappingsByNodeId={1=Version[version=2]}]], eTag="9f0c6e1c2a92bbaa1fde872e1d545e05"]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></span></code></pre></div></div>
+<p>The new task becomes healthy and the orchestration cluster service is now fully healthy.</p>
+<p><img decoding="async" loading="lazy" alt="Recovered" src="https://camunda.github.io/zeebe-chaos/assets/images/6-recovery-d3802107d3932e3f1d296fbfde6d428d.png" width="1378" height="476" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-we-learned">What we learned<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#what-we-learned" class="hash-link" aria-label="Direct link to What we learned" title="Direct link to What we learned" translate="no">​</a></h2>
+<p>This first experiment validated that:</p>
+<ul>
+<li class=""><strong>S3-based leases behave correctly under node loss</strong>: when a task is killed, the broker releases its lease, and a new task can safely acquire a new versioned lease.</li>
+<li class=""><strong>Graceful shutdown still happens under forced task stop</strong>: even though we stopped the task from the ECS console, the broker had enough time to drain and shut down its internal components cleanly.</li>
+<li class=""><strong>Replace task becomes healthy</strong>: the replacement task comes up, reuses the data via a new versioned directory, and rejoins the cluster without any issues.</li>
+</ul>]]></content>
+        <author>
+            <name>Deepthi Akkoorath</name>
+            <uri>https://github.com/deepthidevaki</uri>
+        </author>
+        <author>
+            <name>Rodrigo Lopes</name>
+            <uri>https://github.com/rodrigo-lourenco-lopes</uri>
+        </author>
+        <category label="availability" term="availability"/>
+        <category label="ecs" term="ecs"/>
+    </entry>
     <entry>
         <title type="html"><![CDATA[RTO with varying backup schedules]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/03/19/RTO-with-varying-backup-schedules</id>
@@ -1979,251 +2157,6 @@ We recently found some smaller issues in our benchmarks, related to <a href="htt
         <author>
             <name>Christopher Kujawa</name>
             <uri>https://github.com/ChrisKujawa</uri>
-        </author>
-        <category label="performance" term="performance"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Camunda Exporter MVP]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP"/>
-        <updated>2024-10-24T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[After a long pause, I come back with an interesting topic to share and experiment with. Right now we are re-architecture]]></summary>
-        <content type="html"><![CDATA[<p>After a long pause, I come back with an interesting topic to share and experiment with. Right now we are re-architecture
-Camunda 8. One important part (which I'm contributing to) is to get rid of Webapps Importer/Archivers and move
-data aggregation closer to the engine (inside a Zeebe Exporter).</p>
-<p>Today, I want to experiment with the first increment/iteration of our so-called MVP. The MVP targets green field installations where you simply deploy Camunda (with a new Camunda Exporter enabled) without Importers.</p>
-<p><strong>TL;DR;</strong> All our experiments were successful. The MVP is a success, and we are looking forward to further improvements and additions. Next stop Iteration 2: Adding Archiving historic data and preparing for data migration (and polishing MVP).</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="camunda-exporter">Camunda Exporter<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#camunda-exporter" class="hash-link" aria-label="Direct link to Camunda Exporter" title="Direct link to Camunda Exporter" translate="no">​</a></h2>
-<p>The <a href="https://github.com/camunda/product-hub/issues/2128" target="_blank" rel="noopener noreferrer" class="">Camunda Exporter project</a> deserves a complete own blog post, here is just a short summary.</p>
-<p>Our current Camunda architecture looks something like this (simplified).</p>
-<p><img decoding="async" loading="lazy" alt="current" src="https://camunda.github.io/zeebe-chaos/assets/images/current-miro-659b193b670b1b604ebb32ff30b067a4.png" width="1096" height="885" class="img_ev3q"></p>
-<p>It has certain challenges, like:</p>
-<ul>
-<li class="">Space: duplication of data in ES</li>
-<li class="">Maintenance: duplication of importer and archiver logic</li>
-<li class="">Performance: Round trip (delay) of data visible to the user</li>
-<li class="">Complexity: installation and operational complexity (we need separate pods to deploy)</li>
-<li class="">Scalability: The Importer is not scalable in the same way as Zeebe or brokers (and workload) are.</li>
-</ul>
-<p>These challenges we obviously wanted to overcome and the plan (as mentioned earlier) is to get rid of the need of separate importers and archivers (and in general to have separate application; but this is a different topic).</p>
-<p>The plan for this project looks something like this:</p>
-<p><img decoding="async" loading="lazy" alt="plan" src="https://camunda.github.io/zeebe-chaos/assets/images/how-brown-field-929f9a23e6dfee9ede15e76b1a134fdc.png" width="1228" height="904" class="img_ev3q"></p>
-<p>We plan to:</p>
-<ol>
-<li class="">Harmonize the existing indices stored in Elasticsearch/Opensearch<!-- -->
-<ul>
-<li class="">Space: Reduce the unnecessary data duplication</li>
-</ul>
-</li>
-<li class="">Move importer and archiver logic into a new Camunda exporter<!-- -->
-<ul>
-<li class="">Performance: This should allow us to reduce one additional hop (as we don't need to use ES/OS as a queue)</li>
-<li class="">Maintenance: Indices and business logic is maintained in one place</li>
-<li class="">Scalability: With this approach, we can scale with partitions, as Camunda Exporters are executed for each partition separately (soon partition scaling will be introduced)</li>
-<li class="">Complexity: The Camunda Exporter will be built-in and shipped with Zeebe/Camunda 8. No additional pod/application is needed.</li>
-</ul>
-</li>
-</ol>
-<p>Note: Optimize is right now out of scope (due to time), but will later be part of this as well.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="mvp">MVP<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#mvp" class="hash-link" aria-label="Direct link to MVP" title="Direct link to MVP" translate="no">​</a></h3>
-<p>After we know what we want to achieve what is the Minimum viable product (MVP)?</p>
-<p>We have divided the Camunda Exporter in 3-4 iterations. You can see and read more about this <a href="https://github.com/camunda/issues/issues/803" target="_blank" rel="noopener noreferrer" class="">here</a>.</p>
-<p>The first iteration contains the MVP (the first breakthrough). Providing the Camunda Exporter with the basic functionality ported from the Operate and Tasklist importers, writing into harmonized indices.</p>
-<p>The MVP is targeting green field installations (clean installations) of Camunda 8 with Camunda Exporter without running the old Importer (no data migration yet),</p>
-<p><img decoding="async" loading="lazy" alt="mvp" src="https://camunda.github.io/zeebe-chaos/assets/images/it1-mvp-421ca897b91c0d03c1d77adde73b48a7.png" width="1069" height="870" class="img_ev3q"></p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
-<p>What I want to verify today, when I deploy the Camunda 8 stack with Camunda Exporter (and Importer disabled):</p>
-<ul>
-<li class="">Are webapps schemas created in ES, by the new Camunda Exporter</li>
-<li class="">Is data exported into the indices</li>
-<li class="">Can Operate show data? (right now just checking for basic functionality)</li>
-</ul>
-<p>Additionally, I would like to understand what the performance looks like, how the system behaves with two ES exporters (the old ES exporter and the new Camunda Exporter), and more.</p>
-<p>For our experiment, I use a <a href="https://github.com/camunda/camunda/issues/21472" target="_blank" rel="noopener noreferrer" class="">newly defined realistic benchmark</a> (with a more complex process model). More about this in a separate blog post.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>I can deploy the newest helm charts (alpha stage), by disabling Importer manually, and will be able to use Zeebe and Operate together. See the verifications above.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>As always we use our <a href="https://github.com/camunda/zeebe-benchmark-helm" target="_blank" rel="noopener noreferrer" class="">benchmark-helm charts</a> (that building on top of our <a href="https://github.com/camunda/camunda-platform-helm" target="_blank" rel="noopener noreferrer" class="">Camunda Platform Helm</a> charts).</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="installation">Installation<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#installation" class="hash-link" aria-label="Direct link to Installation" title="Direct link to Installation" translate="no">​</a></h3>
-<p>I had to adjust our benchmarks to <a href="https://github.com/camunda/zeebe-benchmark-helm/commit/db682a89788d6c511083ec743c6cf7d358155e3c" target="_blank" rel="noopener noreferrer" class="">use the alpha snapshots </a></p>
-<div class="language-yaml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-yaml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token key atrule" style="color:#00a4db">dependencies</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token punctuation" style="color:#393A34">-</span><span class="token plain"> </span><span class="token key atrule" style="color:#00a4db">name</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> camunda</span><span class="token punctuation" style="color:#393A34">-</span><span class="token plain">platform</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token key atrule" style="color:#00a4db">repository</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"oci://ghcr.io/camunda/helm"</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token key atrule" style="color:#00a4db">version</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"0.0.0-snapshot-alpha"</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token key atrule" style="color:#00a4db">condition</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"camunda.enabled"</span><br></span></code></pre></div></div>
-<p>and <a href="https://github.com/camunda/zeebe-benchmark-helm/commit/aafac6e9ec78e9cfd2e59a5b6f30bf887a4fcbd0" target="_blank" rel="noopener noreferrer" class="">disable the Importer via ENV</a></p>
-<div class="language-yaml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-yaml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token key atrule" style="color:#00a4db">env</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">-</span><span class="token plain"> </span><span class="token key atrule" style="color:#00a4db">name</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> CAMUNDA_OPERATE_IMPORTERENABLED</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token key atrule" style="color:#00a4db">value</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">"false"</span><br></span></code></pre></div></div>
-<p>With that, we can install our chart:</p>
-<div class="language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">$ helm install zeebe-benchmark-test charts/zeebe-benchmark/ --render-subchart-notes -f charts/zeebe-benchmark/values-realistic-benchmark.yaml --set global.elasticsearch.prefix=null</span><br></span></code></pre></div></div>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="basic-first-verification">Basic First Verification<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#basic-first-verification" class="hash-link" aria-label="Direct link to Basic First Verification" title="Direct link to Basic First Verification" translate="no">​</a></h3>
-<p>After our benchmark chart is deployed we can already see the first time our Camunda Exporter running <!-- -->🎉</p>
-<p><img decoding="async" loading="lazy" alt="firsttime" src="https://camunda.github.io/zeebe-chaos/assets/images/first-time-seeing-camunda-exporter-70ed9f616eb84150a74085d4c29a3bff.png" width="1253" height="528" class="img_ev3q"></p>
-<p>Worth mentioning that the Camunda Export already comes with some metrics, visible on our Zeebe Dashboard</p>
-<p><img decoding="async" loading="lazy" alt="metrics" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-c8-exporter-metrics-c26a2e069e64c8a894ec4d5ffa718a70.png" width="1293" height="751" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="metrics2" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-c8-exporter-metrics2-062900d6bdddbdc951da85805bf2d89e.png" width="1263" height="407" class="img_ev3q"></p>
-<p>The general overview also looks good. No obvious problem.</p>
-<p><img decoding="async" loading="lazy" alt="general" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-general-overview-ee162c7186d9914428efb78c3f57c8f1.png" width="2532" height="812" class="img_ev3q"></p>
-<p>Looking into logs we can see that at the start it fails temporarily because ES is not yet ready to accept the schema creation.</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">ERROR - Failed to open exporter 'CamundaExporter'. Retrying...</span><br></span></code></pre></div></div>
-<p><img decoding="async" loading="lazy" alt="log" src="https://camunda.github.io/zeebe-chaos/assets/images/exporter-opened-ed454d2a9960e13dd721f43ff2fe47ec.png" width="1004" height="198" class="img_ev3q"></p>
-<p>At some point, the exporter can be opened and the loop stops.</p>
-<p>I think generally it shouldn't be an ERROR but more a WARN (but these are details we can fix). Follow-up.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="verify-operate-data">Verify Operate Data<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#verify-operate-data" class="hash-link" aria-label="Direct link to Verify Operate Data" title="Direct link to Verify Operate Data" translate="no">​</a></h3>
-<p>To make sure that Operate is not importing, I checked the Operate dashboard. We can see that there is no Importer metrics. Furthermore, in the configuration and logs we see no indication of importing.</p>
-<p><img decoding="async" loading="lazy" alt="op-metrics" src="https://camunda.github.io/zeebe-chaos/assets/images/no-importer-metrics-4adf3f44ee863313bc7db7536fb82476.png" width="2548" height="531" class="img_ev3q"></p>
-<p>We can now start to port-forward to operate:</p>
-<div class="language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">k port-forward svc/zeebe-benchmark-test-operate 8081:80</span><br></span></code></pre></div></div>
-<p>When opening Operate we see unfortunately no data.</p>
-<p><img decoding="async" loading="lazy" alt="operate-no-data" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-no-data-operate-a93144c5143ac98ec9aef7e9a4b82329.png" width="2448" height="862" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="investigating-missing-data">Investigating missing data<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#investigating-missing-data" class="hash-link" aria-label="Direct link to Investigating missing data" title="Direct link to Investigating missing data" translate="no">​</a></h4>
-<p>We need to understand why there is no data available for Operate.</p>
-<p>What we saw is that the Camunda Exporter is open (logs), that it is also makes progress and data is written to elastic (metrics). What we haven't checked Elasticsearch in detail.</p>
-<p>Looking into ES dashboard we can see that indices are created, but the Operate indices seem to be empty.</p>
-<p><img decoding="async" loading="lazy" alt="es-indices" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-operate-indices-empty-546f9dc0740acb0c660046b97d81e621.png" width="2531" height="588" class="img_ev3q"></p>
-<p>When checking the Zeebe indices:</p>
-<p><img decoding="async" loading="lazy" alt="zeebe-indices" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-zeebe-indices-filled-1125b6776b8ca7d9e08b2c2e4043b3c5.png" width="2542" height="537" class="img_ev3q"></p>
-<p>we can see that they are filled. An attentive reader will also chekc that there actuall some prefix problem in the indices.</p>
-<p>Thanks to Deepthi which spotted this as well (and told me), we were exporting to the wrong index names. There was a <a href="https://github.com/camunda/camunda-platform-helm/blob/46f6ee9d828439b0b1cf37bae4d135ba5281a832/charts/camunda-platform-alpha/templates/zeebe/configmap.yaml#L66" target="_blank" rel="noopener noreferrer" class="">bug</a> existing in the current alpha Helm chart version.</p>
-<p><img decoding="async" loading="lazy" alt="wrong-prefix" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-wrong-prefix-817f26674c55ba97e399e60d0e7261fe.png" width="2530" height="429" class="img_ev3q"></p>
-<p>This has been fixed with <a href="https://github.com/camunda/camunda-platform-helm/pull/2506" target="_blank" rel="noopener noreferrer" class="">PR-2506</a>. Until this gets merged I changed this manually via:</p>
-<div class="language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain"># Get the templates </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">helm template zeebe-benchmark-test charts/zeebe-benchmark/ --render-subchart-notes -f charts/zeebe-benchmark/values-realistic-benchmark.yaml --output-dir templates</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># Adjust the config map - remove the prefix</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">vim templates/zeebe-benchmark/charts/camunda-platform/templates/zeebe/configmap.yaml </span><br></span><span class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># Apply all manifests</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">k apply -f . --recursive</span><br></span></code></pre></div></div>
-<blockquote>
-<p><strong>Note:</strong></p>
-<p>I also tried</p>
-<div class="language-shell codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-shell codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">helm template charts/zeebe-benchmark/ --version 0.0.0-snapshot-alpha     --show-only charts/camunda-platform/templates/zeebe/configmap.yaml --set global.elasticsearch.prefix=null</span><br></span></code></pre></div></div>
-<p>But this breaks the ES exporter.</p>
-</blockquote>
-<p>With this change we were can see that indices are correctly created and filled!</p>
-<p><img decoding="async" loading="lazy" alt="indices-filled" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-fixed-prefix-indices-1fb3dae117514d6a849127d776edad93.png" width="1269" height="390" class="img_ev3q"></p>
-<p>Finally, we are able to see data in Operate! <!-- -->🚀<!-- --> <strong>WITHOUT ANY IMPORTER.</strong></p>
-<p><img decoding="async" loading="lazy" alt="mvp-operate-data.png" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-operate-data-eb8f2bc8a636a72be68760c53817192a.png" width="1258" height="524" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="mvp-operate-instance.png" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-operate-instance-27c3cfefb626236cc70f14ae7fb55d17.png" width="2536" height="926" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="mvp-operate-pi.png" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-operate-pi-9a30d4606bee4f381e9643812a3b0471.png" width="1243" height="888" class="img_ev3q">
-<img decoding="async" loading="lazy" alt="operate-overview" src="https://camunda.github.io/zeebe-chaos/assets/images/mvp-decisions-cea9463cdf38ecc36a14fbc131985a9b.png" width="1261" height="944" class="img_ev3q"></p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion" translate="no">​</a></h2>
-<p>The MVP is a success. We were able to provide a Camunda Exporter that creates the necessary harmonized schema and migrate the basic business logic from Operate and Tasklist into the exporter. This allows us to use only the Camunda Exporter without running any Importer pod/application.</p>
-<p>Great work Team <!-- -->🚀<!-- --> <!-- -->🎉</p>
-<p><strong>Next stop:</strong></p>
-<p><em>Iteration 2:</em></p>
-<ul>
-<li class="">Implementing migration logic for old data</li>
-<li class="">Moving Archiver logic (for historical data) into the Exporter</li>
-<li class="">Polish MVP state (add some missing features like TreePath, etc.)</li>
-</ul>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="additional-notes">Additional notes<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#additional-notes" class="hash-link" aria-label="Direct link to Additional notes" title="Direct link to Additional notes" translate="no">​</a></h3>
-<p>This time I was not able to deep dive into performance or stability for this change. I plan to do this next.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="found-bugs">Found Bugs<a href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP#found-bugs" class="hash-link" aria-label="Direct link to Found Bugs" title="Direct link to Found Bugs" translate="no">​</a></h3>
-<ul>
-<li class="">ERROR log level for logs that are transitive</li>
-<li class="">Auth/User indices are still prefixed with identity</li>
-</ul>]]></content>
-        <author>
-            <name>Christopher Kujawa</name>
-            <uri>https://github.com/ChrisKujawa</uri>
-        </author>
-        <category label="performance" term="performance"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Optimizing cluster sizing using a real world benchmark]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark"/>
-        <updated>2024-10-14T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[Our first goal of this experiment is to use a benchmarks to]]></summary>
-        <content type="html"><![CDATA[<p>Our first goal of this experiment is to use a benchmarks to
-derive new optimized cluster configuration that can handle
-at least 100 tasks per second, while maintaining low backpressure and low latency.</p>
-<p>For our experiment, we use a newly defined realistic benchmark (with a more complex process model). More about this in a separate blog post.</p>
-<p>The second goal is to scale out optimized cluster configuration
-resources linearly and see if the performance scales accordingly.</p>
-<p><strong>TL;DR;</strong></p>
-<p>We used a realistic benchmark to derive a new
-cluster configuration based on previous requirements.</p>
-<p>When we scale this base configuration linearly we see that the performance
-increases almost linearly as well, while maintaining low
-backpressure and low latency.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>We expect that we can find a cluster configuration that can handle at 100
-tasks second to be significantly reduced in resources in relation to our
-smaller clusters (G3-S HA Plan) since these can process significantly above
-our initial target.</p>
-<p>We also expect that we can scale this base configuration linearly, and that
-the processing tasks rate to grow initially a bit faster than linearly due to
-the lower relative overhead, and if we keep expanding further to flatten due
-to the partition count being a bottleneck.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="minimal-requirements-for-our-cluster">Minimal Requirements for our Cluster<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#minimal-requirements-for-our-cluster" class="hash-link" aria-label="Direct link to Minimal Requirements for our Cluster" title="Direct link to Minimal Requirements for our Cluster" translate="no">​</a></h4>
-<p>Based on known customer usage, and our own previous experiments, we
-determined that the new cluster would need to create and complete a
-baseline of 100 tasks per second, or about 8.6 million tasks per day.</p>
-<p>Other metrics that we want to preserve and keep track are the backpressure
-to preserve user experience, guarantee that exporting speed can keep up
-with the processing speed, write-to-import latency which tells us how long
-it takes for a record to be written to being imported by our other
-apps such as the operator.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="reverse-engineering-the-cluster-configuration">Reverse Engineering the Cluster Configuration<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#reverse-engineering-the-cluster-configuration" class="hash-link" aria-label="Direct link to Reverse Engineering the Cluster Configuration" title="Direct link to Reverse Engineering the Cluster Configuration" translate="no">​</a></h4>
-<p>For our new configurations the only resources that we are going to change
-are the ones relevant to the factors described above. These are the
-resources allocated to our zeebe-brokers, gateway and elasticSearch.</p>
-<p>Our starting point in resources was the configuration for our G3-S HA Plan
-as this already had the capability to significantly outperform the current
-goal of 100 tasks per second.</p>
-<p>The next step was to deploy our realistic benchmark, with a payload of 5
-customer disputes per instance and start 7 instances per second, this
-generated approximately 120 tasks per second (some buffer was added to guarantee performance).</p>
-<p>After this we reduced the resources iteratively until we saw any increase
-in backpressure, given that no there was no backlog of records, and no
-significant increase in the write to import latency.</p>
-<p>The results for our new cluster are specified bellow in the tables, where
-our starting cluster configuration is the G3-S HA Plan and the new
-configuration cluster is the G3 - BasePackage HA.</p>
-<table><thead><tr><th>G3-S HA</th><th>CPU Limit</th><th>Memory Limit in GB</th></tr></thead><tbody><tr><td>operate</td><td>2</td><td>2</td></tr><tr><td>operate.elasticsearch</td><td>6</td><td>6</td></tr><tr><td>optimize</td><td>2</td><td>2</td></tr><tr><td>tasklist</td><td>2</td><td>2</td></tr><tr><td>zeebe.broker</td><td>2.88</td><td>12</td></tr><tr><td>zeebe.gateway</td><td>0.9</td><td>0.8</td></tr><tr><td><strong>TOTAL</strong></td><td><strong>15.78</strong></td><td><strong>24.8</strong></td></tr></tbody></table>
-<table><thead><tr><th>G3 - BasePackage HA</th><th>CPU Limit</th><th>Memory Limit in GB</th></tr></thead><tbody><tr><td>operate</td><td>1</td><td>1</td></tr><tr><td>operate.elasticsearch</td><td>3</td><td>4.5</td></tr><tr><td>optimize</td><td>1</td><td>1.6</td></tr><tr><td>tasklist</td><td>1</td><td>1</td></tr><tr><td>zeebe.broker</td><td>1.5</td><td>4.5</td></tr><tr><td>zeebe.gateway</td><td>0.6</td><td>1</td></tr><tr><td><strong>TOTAL</strong></td><td><strong>8.1</strong></td><td><strong>13.6</strong></td></tr></tbody></table>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="reduction-in-resources-for-our-optimized-cluster">Reduction in Resources for our Optimized Cluster<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#reduction-in-resources-for-our-optimized-cluster" class="hash-link" aria-label="Direct link to Reduction in Resources for our Optimized Cluster" title="Direct link to Reduction in Resources for our Optimized Cluster" translate="no">​</a></h5>
-<table><thead><tr><th style="text-align:left"></th><th style="text-align:right">CPU Reduction (%)</th><th style="text-align:right">Memory Reduction (%)</th></tr></thead><tbody><tr><td style="text-align:left">zeebe.broker</td><td style="text-align:right">47.92</td><td style="text-align:right">62.5</td></tr><tr><td style="text-align:left">zeebe.gateway</td><td style="text-align:right">33.33</td><td style="text-align:right">-25.0</td></tr><tr><td style="text-align:left">operate.elasticsearch</td><td style="text-align:right">50.00</td><td style="text-align:right">25.0</td></tr></tbody></table>
-<p>Total cluster reduction:</p>
-<table><thead><tr><th style="text-align:left"></th><th style="text-align:right">G3-S HA</th><th style="text-align:right">G3 - BasePackage HA</th><th style="text-align:right">Reduction (%)</th></tr></thead><tbody><tr><td style="text-align:left">CPU Limits</td><td style="text-align:right">15.78</td><td style="text-align:right">8.1</td><td style="text-align:right">49</td></tr><tr><td style="text-align:left">Memory Limits</td><td style="text-align:right">24.8</td><td style="text-align:right">13.6</td><td style="text-align:right">45</td></tr></tbody></table>
-<p>The process of reducing the hardware requirements was donne initially by
-scaling down the resources of the zeebe-broker, gateway and elasticSearch.
-The other components were left untouched, as they had no impact in our key
-metrics, and were scaled down later in separate experiences to maintain
-user experience.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="scaling-out-the-cluster">Scaling out the Cluster<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#scaling-out-the-cluster" class="hash-link" aria-label="Direct link to Scaling out the Cluster" title="Direct link to Scaling out the Cluster" translate="no">​</a></h4>
-<p>Now for the scaling procedure we intend to see if we can linearly increase
-the allocated resources and having a corresponding performance increase,
-while keeping the backpressure low, low latency, and user experience.</p>
-<p>For this we started with the G3 - BasePackage HA configuration and
-incremented the load again until we saw any increase in backpressure,
-capture our key metrics and repeated the process for the cluster
-configuration resources respectively multiplied by 2x, 3x, and 4x.</p>
-<p>This means that the resources allocated for our clusters were:</p>
-<table><thead><tr><th style="text-align:left"></th><th style="text-align:right">Base 1x</th><th style="text-align:right">Base 2x</th><th style="text-align:right">Base 3x</th><th style="text-align:right">Base 4x</th></tr></thead><tbody><tr><td style="text-align:left">CPU Limits</td><td style="text-align:right">8.7</td><td style="text-align:right">17.4</td><td style="text-align:right">26.1</td><td style="text-align:right">34.8</td></tr><tr><td style="text-align:left">Memory Limits</td><td style="text-align:right">14.9</td><td style="text-align:right">29.8</td><td style="text-align:right">44.7</td><td style="text-align:right">59.6</td></tr></tbody></table>
-<p>The results in the table bellow show the performance of our several cluster
-configurations:</p>
-<table><thead><tr><th style="text-align:left"></th><th style="text-align:right">Base 1x</th><th style="text-align:right">Base 2x</th><th style="text-align:right">Base 3x</th><th style="text-align:right">Base 4x</th></tr></thead><tbody><tr><td style="text-align:left">Process Instances/s</td><td style="text-align:right">7</td><td style="text-align:right">12</td><td style="text-align:right">23</td><td style="text-align:right">27</td></tr><tr><td style="text-align:left">Tasks/s</td><td style="text-align:right">125</td><td style="text-align:right">217</td><td style="text-align:right">414</td><td style="text-align:right">486</td></tr><tr><td style="text-align:left">Average Backpressure</td><td style="text-align:right">2%</td><td style="text-align:right">2%</td><td style="text-align:right">3%</td><td style="text-align:right">6%</td></tr><tr><td style="text-align:left">Write-to-Import Latency</td><td style="text-align:right">90s</td><td style="text-align:right">120s</td><td style="text-align:right">150s</td><td style="text-align:right">390s</td></tr><tr><td style="text-align:left">Write-to-Process Latency</td><td style="text-align:right">140ms</td><td style="text-align:right">89ms</td><td style="text-align:right">200ms</td><td style="text-align:right">160ms</td></tr><tr><td style="text-align:left">Records Processed Rate</td><td style="text-align:right">2500</td><td style="text-align:right">4700</td><td style="text-align:right">7800</td><td style="text-align:right">11400</td></tr><tr><td style="text-align:left">Records Exported Rate</td><td style="text-align:right">2100</td><td style="text-align:right">3900</td><td style="text-align:right">6500</td><td style="text-align:right">9200</td></tr></tbody></table>
-<p>This first observations is that the performance scales particularly well by
-just adding more resources to the cluster, particularly for a linear
-increase of the resources the performance as measured by tasks completed
-increases slightly less than linearly (comparing the 1x and 4x task/s we
-get 388% the initial rate).</p>
-<p>This a very good result as it means that we can scale our system linearly
-(at least initially) to handle the expected increase in loads.</p>
-<p>Importantly, the backpressure is kept low, and the write-to-import latency
-only increases significantly if we leave the cluster running at max rate
-for long periods of time. For slightly lower rates the write-to-import
-latency is kept in the single digits of seconds or lower tens. This might
-imply that a these sustained max rates, the amount records generated starts
-to be too much for either ElasticSearch or our web apps that import these
-records to handle. Some further investigation could be done here to
-investigate the bottleneck.</p>
-<p>Another metric also relevant but not shown in this table is the backlog of
-records not exported, which kept at almost null through all the experiments
-conducted.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="bugs-found">Bugs found<a href="https://camunda.github.io/zeebe-chaos/2024/10/14/Optimizing-cluster-sizing-using-a-real-world-benchmark#bugs-found" class="hash-link" aria-label="Direct link to Bugs found" title="Direct link to Bugs found" translate="no">​</a></h3>
-<p>During the initial tests, we had several OOM errors in the gateways pods.
-After some investigation, we found that this was exclusive to the Camunda 8.
-6.0 version, which consumes more memory in the gateway than the previous
-versions. This explains why the gateway memory limits were the only
-resource that was increased in the new reduced cluster configuration.</p>]]></content>
-        <author>
-            <name>Rodrigo Lopes</name>
-            <uri>https://github.com/rodrigo-lourenco-lopes</uri>
         </author>
         <category label="performance" term="performance"/>
     </entry>
