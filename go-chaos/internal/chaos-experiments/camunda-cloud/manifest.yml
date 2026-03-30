@@ -11,65 +11,65 @@
 experiments:
   - path: broker-dataloss/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: deployment-distribution/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: follower-restart/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: follower-terminate/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: leader-restart/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: leader-terminate/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: msg-correlation/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: multiple-leader-restart/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: stress-cpu-on-broker/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: worker-restart/experiment.json
     clusterPlans:
-      - production-s
+      - g3-s
   - path: job-push/gateway-restart.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.4
   - path: job-push/gateway-terminate.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.4
   - path: job-push/cluster-restart.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.4
   - path: job-push/cluster-terminate.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.4
   - path: worker-resilience/gateway-restart.json
     clusterPlans:
-      - production-s
+      - g3-s
     maxVersion: 8.3
   - path: worker-resilience/gateway-terminate.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.3
   - path: scaling/broker-scaling.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.4
   - path: scaling/broker-partition-scaling.json
     clusterPlans:
-      - production-s
+      - g3-s
     minVersion: 8.8
   # only for testing
   - path: test/experiment.json

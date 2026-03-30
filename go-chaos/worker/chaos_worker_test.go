@@ -187,7 +187,7 @@ func Test_ShouldSendExperimentsForClusterPlan(t *testing.T) {
 	job := entities.Job{
 		ActivatedJob: &pb.ActivatedJob{
 			Key:       123,
-			Variables: "{\"clusterPlan\":\"Production - S\", \"targetVersion\":\"8.8.0\"}",
+			Variables: "{\"clusterPlan\":\"G3-S\", \"targetVersion\":\"8.8.0\"}",
 		},
 	}
 
@@ -198,7 +198,7 @@ func Test_ShouldSendExperimentsForClusterPlan(t *testing.T) {
 	assert.True(t, fakeJobClient.Succeeded)
 	assert.Equal(t, 123, fakeJobClient.Key)
 	// as we don't have a version in this test, we should omit version bounded experiments
-	experiments, err := chaos_experiments.ReadExperimentsForClusterPlan("Production - S", "8.8.0")
+	experiments, err := chaos_experiments.ReadExperimentsForClusterPlan("G3-S", "8.8.0")
 	require.NoError(t, err)
 	assert.Equal(t, experiments, fakeJobClient.Variables)
 }
