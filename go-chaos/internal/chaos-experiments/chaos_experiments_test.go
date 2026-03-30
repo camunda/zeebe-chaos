@@ -12,7 +12,7 @@ func Test_ShouldReadExperiments(t *testing.T) {
 	// given
 
 	// when
-	experimentsForClusterPlan, err := ReadExperimentsForClusterPlan("Production - S", "8.4.0-SNAPSHOT")
+	experimentsForClusterPlan, err := ReadExperimentsForClusterPlan("G3-S", "8.4.0-SNAPSHOT")
 
 	// then
 	require.NoError(t, err)
@@ -28,7 +28,7 @@ func Test_ShouldBeAbleToMarshalExperiments(t *testing.T) {
 	// given
 
 	// when
-	experimentsForClusterPlan, err := ReadExperimentsForClusterPlan("Production - S", "8.4.0-SNAPSHOT")
+	experimentsForClusterPlan, err := ReadExperimentsForClusterPlan("G3-S", "8.4.0-SNAPSHOT")
 
 	// then
 	marshal, err := json.Marshal(experimentsForClusterPlan)
