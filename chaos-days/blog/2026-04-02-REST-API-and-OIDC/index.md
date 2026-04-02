@@ -21,7 +21,7 @@ While [doing such](https://github.com/camunda/camunda/pull/49938), we were exper
 
 On today's Chaos day, we want to verify how the system behaves when using the REST API and OIDC together, and how this changes under different loads and versions. We were also validating whether this was related to the cluster configuration (testing with SaaS).
 
-**TL;DR;** We were seeing these patterns, especially at higher load (300 PIs), but at lower load they were not visible. The issue was reproducible in 8.8 as well, so it was not related to the changes in 8.9. We haven't reproduced this pattern in SaaS, as we weren't able to achieve the same load as in the small clusters we used. While experimenting, we discovered several areas for improvement. During experimenting [Nic](https://github.com/nicpuppa) already fixed the underlying issue via [#50124](https://github.com/camunda/camunda/pull/50124) :rocket:
+**TL;DR;** We were seeing recurring throughput drops, especially at higher load (300 PIs), but at lower load they were not visible. The issue was reproducible in 8.8 as well, so it was not related to the changes in 8.9. We couldn't reproduce the pattern in SaaS, as we weren't able to achieve the same load with the small clusters we used. While experimenting, we discovered several areas for improvement. The root cause turned out to be JWT tokens expiring while requests queued in the Apache HttpAsyncClient connection pool. [Nic](https://github.com/nicpuppa) fixed this by moving token injection to after connection acquisition via [#50124](https://github.com/camunda/camunda/pull/50124) :rocket:
 
 ![rest-bug](2026-03-29_08-10.png)
 
@@ -147,7 +147,7 @@ When we increased the gateway resources, we were able to reduce the CPU throttli
 
 Overall, we were unable to reproduce the original REST+OIDC throughput drop pattern in SaaS due to resource constraints on the small cluster packages we used.
 
-### Root Cause
+### Root Cause REST API + OIDC Throughput Drop
 
 During our experiments, [Nic](https://github.com/nicpuppa) identified and fixed the underlying issue in [#50124](https://github.com/camunda/camunda/pull/50124). The [root cause](https://github.com/camunda/camunda/pull/50124#issuecomment-4176290819) was in the Java client's HTTP (REST) path: the `Authorization: Bearer <token>` header was attached at **request-build time**, long before the request actually reached the server.
 
