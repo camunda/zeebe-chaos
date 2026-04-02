@@ -110,17 +110,17 @@
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="further-investigations">Further investigations<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#further-investigations" class="hash-link" aria-label="Direct link to Further investigations" title="Direct link to Further investigations" translate="no">​</a></h3>
 <p>The recurring throughput drop under REST+OIDC has been fixed via <a href="https://github.com/camunda/camunda/pull/50124" target="_blank" rel="noopener noreferrer" class="">#50124</a>. The remaining open questions are:</p>
 <ul>
-<li class="">Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved.</li>
-<li class="">Improve measurement of request response times and back pressure to better identify bottlenecks under high load.</li>
+<li class="">Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved. <a href="https://github.com/camunda/camunda/issues/50382" target="_blank" rel="noopener noreferrer" class="">#50382</a></li>
+<li class="">Improve measurement of request response times and back pressure to better identify bottlenecks under high load. <a href="https://github.com/camunda/camunda/issues/50383" target="_blank" rel="noopener noreferrer" class="">#50383</a></li>
 </ul>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="possible-improvements-for-our-load-testing-and-reliability-testing">Possible improvements for our load testing and reliability testing<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#possible-improvements-for-our-load-testing-and-reliability-testing" class="hash-link" aria-label="Direct link to Possible improvements for our load testing and reliability testing" title="Direct link to Possible improvements for our load testing and reliability testing" translate="no">​</a></h3>
 <p>As we experimented and used our load testing tooling, we identified several things we can improve:</p>
 <ul>
-<li class="">Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable.</li>
-<li class="">Add a separate job output to print all the input values the user provided in the load test</li>
-<li class="">Provide a user option to choose between OIDC/Basic and none</li>
-<li class="">Fix the bug which causes issues when redeploying twice and replacing the client-secret</li>
-<li class="">Improve logging of the starter and worker applications</li>
+<li class="">Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable. <a href="https://github.com/camunda/camunda/issues/50384" target="_blank" rel="noopener noreferrer" class="">#50384</a></li>
+<li class="">Add a separate job output to print all the input values the user provided in the load test <a href="https://github.com/camunda/camunda/issues/50386" target="_blank" rel="noopener noreferrer" class="">#50386</a></li>
+<li class="">Provide a user option to choose between OIDC/Basic and none <a href="https://github.com/camunda/camunda/issues/50387" target="_blank" rel="noopener noreferrer" class="">#50387</a></li>
+<li class="">Fix the bug which causes issues when redeploying twice and replacing the client-secret <a href="https://github.com/camunda/camunda/issues/50388" target="_blank" rel="noopener noreferrer" class="">#50388</a></li>
+<li class="">Improve logging of the starter and worker applications <a href="https://github.com/camunda/camunda/issues/50389" target="_blank" rel="noopener noreferrer" class="">#50389</a></li>
 </ul>]]></content:encoded>
             <category>availability</category>
         </item>
