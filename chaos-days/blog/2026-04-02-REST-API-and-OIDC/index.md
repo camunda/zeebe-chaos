@@ -175,15 +175,15 @@ After the fix, the throughput is smooth and stable without any recurring drops:
 
 The recurring throughput drop under REST+OIDC has been fixed via [#50124](https://github.com/camunda/camunda/pull/50124). The remaining open questions are:
 
-- Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved.
-- Improve measurement of request response times and back pressure to better identify bottlenecks under high load.
+- Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved. [#50382](https://github.com/camunda/camunda/issues/50382)
+- Improve measurement of request response times and back pressure to better identify bottlenecks under high load. [#50383](https://github.com/camunda/camunda/issues/50383)
 
 ### Possible improvements for our load testing and reliability testing
 
 As we experimented and used our load testing tooling, we identified several things we can improve:
 
-- Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable.
-- Add a separate job output to print all the input values the user provided in the load test
-- Provide a user option to choose between OIDC/Basic and none
-- Fix the bug which causes issues when redeploying twice and replacing the client-secret
-- Improve logging of the starter and worker applications
+- Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable. [#50384](https://github.com/camunda/camunda/issues/50384)
+- Add a separate job output to print all the input values the user provided in the load test [#50386](https://github.com/camunda/camunda/issues/50386)
+- Provide a user option to choose between OIDC/Basic and none [#50387](https://github.com/camunda/camunda/issues/50387)
+- Fix the bug which causes issues when redeploying twice and replacing the client-secret [#50388](https://github.com/camunda/camunda/issues/50388)
+- Improve logging of the starter and worker applications [#50389](https://github.com/camunda/camunda/issues/50389)
