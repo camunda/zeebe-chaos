@@ -17,7 +17,7 @@ authors:
 
 Over the past weeks, we have been spending more time improving [our load testing and reliability testing coverage.](https://github.com/camunda/camunda/issues/47618) One of the things we did was to enable REST API (by default, we tend to use gRPC).
 
-While [doing such](https://github.com/camunda/camunda/pull/49938), we were experiencing [a weird load pattern.](https://github.com/camunda/camunda/pull/49938#issuecomment-4149559679) This seems to be  when enabling the REST API usage in our load tester clients, together with OIDC.
+While [doing such](https://github.com/camunda/camunda/pull/49938), we were experiencing [a weird load pattern.](https://github.com/camunda/camunda/pull/49938#issuecomment-4149559679) This seems to occur when enabling the REST API usage in our load tester clients, together with OIDC.
 
 On today's Chaos day, we want to verify how the system behaves when using the REST API and OIDC together, and how this changes under different loads and versions. We were also validating whether this was related to the cluster configuration (testing with SaaS).
 
@@ -46,10 +46,10 @@ As we already experienced this pattern, we expected to see it again when enablin
 *Expectations:*
 
   * Stress test with 300 PIs - we expect to see the pattern
-  * Lower load 100 PIs - we expect to not to see the pattern
+  * Lower load 100 PIs - we expect not to see the pattern
   * Lower load 200 PIs - we expect to see the pattern, but less visible
-  * Test with SaaS 300 PIs - we were not sure - if it is not visibile it might be related to a different cluster configuration
-  * Test with 8.8 300 PIs - we expect to not to see the pattern, as it should be related to the changes in 8.9
+  * Test with SaaS 300 PIs - we were not sure - if it is not visible it might be related to a different cluster configuration
+  * Test with 8.8 300 PIs - we expect not to see the pattern, as it should be related to the changes in 8.9
 
 
 ### Actual
@@ -82,7 +82,7 @@ When setting up a lower load with 100 PIs, we no longer saw the pattern. The sta
 
 #### Lower load 200 PIs
 
-Also, with 200 PIs, we were not able to see the pattern anymore. The starter is not CPU throttled, and there are no signs of memory pressure.
+Contrary to our expectation, with 200 PIs we were also not able to see the pattern. The starter is not CPU throttled, and there are no signs of memory pressure. This suggests the threshold for triggering the issue lies somewhere between 200 and 300 PIs.
 
 ![](200pi-no-bug.png)
 ![](200pi-cpu-no-bug.png)
@@ -118,11 +118,11 @@ This was unexpected, and further investigation revealed that the workers were ac
 ![](saas-worker-failure-oom.png)
 
 
-In comparison to our daily tests we seem to send a factor ~2-3 more jobs to the clients. 
+In comparison to our daily tests, we seem to send a factor ~2-3 more jobs to the clients. 
 
 ![](daily-job-push.png)
 
-After increasing the workers' memory, we reduced OOMs, but we still couldn't reach the same load as in our self-managed clusters. Causing us not to reproduce the same behavior as with our self-managed clusters.
+After increasing the workers' memory, we reduced OOMs, but we still couldn't reach the same load as in our self-managed clusters, preventing us from reproducing the same behavior.
 
 
 ##### 8.8 Cluster (SaaS)
@@ -145,6 +145,17 @@ When we increased the gateway resources, we were able to reduce the CPU throttli
 ![](saas-10pis-higher-load.png)
 ![](saas-10pis-higher-load-backpressure.png)
 
+Overall, we were unable to reproduce the original REST+OIDC throughput drop pattern in SaaS due to resource constraints on the small cluster packages we used.
+
+### Root Cause
+
+During our experiments, [Nic](https://github.com/nicpuppa) identified and fixed the underlying issue in [#50124](https://github.com/camunda/camunda/pull/50124). The [root cause](https://github.com/camunda/camunda/pull/50124#issuecomment-4176290819) was in the Java client's HTTP (REST) path: the `Authorization: Bearer <token>` header was attached at **request-build time**, long before the request actually reached the server.
+
+Under high load, the Apache HttpAsyncClient's connection pool was saturated. Requests sat in the internal queue for 60-120 seconds between token attachment and wire send. By the time the request reached the server, the JWT had expired, causing periodic spikes of `401 Unauthorized` errors.
+
+gRPC was not affected because it uses `CallCredentials.applyRequestMetadata()`, a late-binding API that resolves the token just before dispatching the request on the wire.
+
+The fix replaced the early-binding `applyCredentials()` call with an `HttpRequestInterceptor` registered via `addRequestInterceptorLast()`. This interceptor runs after the connection is acquired from the pool, right before writing bytes to the socket — reducing the gap between token injection and wire send to effectively zero.
 
 ## Found Weaknesses / Learnings
 
@@ -158,11 +169,10 @@ When we increased the gateway resources, we were able to reduce the CPU throttli
 
 ### Further investigations
 
-Based on the observations and learnings we had during the experiments, we identified several knowledge gaps we need to overcome:
+The recurring throughput drop under REST+OIDC has been fixed via [#50124](https://github.com/camunda/camunda/pull/50124). The remaining open questions are:
 
-- We need to investigate further why REST API usage causes higher CPU and memory usage on the client side, and whether this can be improved.
-- We need to investigate further the recurring throughput drop pattern under high load when using the REST API together with OIDC, and fix the underlying issue.
-- We need to have a better measurement of request response times and back pressure, to be able to better understand the behavior of the system under high load, and to be able to identify bottlenecks and issues more easily.
+- Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved.
+- Improve measurement of request response times and back pressure to better identify bottlenecks under high load.
 
 ### Possible improvements for our load testing and reliability testing
 
@@ -171,5 +181,5 @@ As we experimented and used our load testing tooling, we identified several thin
 - Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable.
 - Add a separate job output to print all the input values the user provided in the load test
 - Provide a user option to choose between OIDC/Basic and none
-- Fix the bug which causies isses when redeploying twice and replacing the client-secret
+- Fix the bug which causes issues when redeploying twice and replacing the client-secret
 - Improve logging of the starter and worker applications
