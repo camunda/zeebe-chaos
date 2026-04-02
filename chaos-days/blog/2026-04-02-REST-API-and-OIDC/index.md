@@ -157,6 +157,10 @@ gRPC was not affected because it uses `CallCredentials.applyRequestMetadata()`, 
 
 The fix replaced the early-binding `applyCredentials()` call with an `HttpRequestInterceptor` registered via `addRequestInterceptorLast()`. This interceptor runs after the connection is acquired from the pool, right before writing bytes to the socket — reducing the gap between token injection and wire send to effectively zero.
 
+After the fix, the throughput is smooth and stable without any recurring drops:
+
+![](fix-smooth-throughput.png)
+
 ## Found Weaknesses / Learnings
 
 - REST API usage causes higher CPU and memory usage on the client side
