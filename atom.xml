@@ -2,11 +2,139 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://camunda.github.io/zeebe-chaos/</id>
     <title>Zeebe Chaos Blog</title>
-    <updated>2026-03-25T00:00:00.000Z</updated>
+    <updated>2026-04-02T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://camunda.github.io/zeebe-chaos/"/>
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
+    <entry>
+        <title type="html"><![CDATA[REST API and OIDC]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC"/>
+        <updated>2026-04-02T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Over the past weeks, we have been spending more time improving our load testing and reliability testing coverage. One of the things we did was to enable REST API (by default, we tend to use gRPC).]]></summary>
+        <content type="html"><![CDATA[<p>Over the past weeks, we have been spending more time improving <a href="https://github.com/camunda/camunda/issues/47618" target="_blank" rel="noopener noreferrer" class="">our load testing and reliability testing coverage.</a> One of the things we did was to enable REST API (by default, we tend to use gRPC).</p>
+<p>While <a href="https://github.com/camunda/camunda/pull/49938" target="_blank" rel="noopener noreferrer" class="">doing such</a>, we were experiencing <a href="https://github.com/camunda/camunda/pull/49938#issuecomment-4149559679" target="_blank" rel="noopener noreferrer" class="">a weird load pattern.</a> This seems to occur when enabling the REST API usage in our load tester clients, together with OIDC.</p>
+<p>On today's Chaos day, we want to verify how the system behaves when using the REST API and OIDC together, and how this changes under different loads and versions. We were also validating whether this was related to the cluster configuration (testing with SaaS).</p>
+<p><strong>TL;DR;</strong> We were seeing recurring throughput drops, especially at higher load (300 PIs), but at lower load they were not visible. The issue was reproducible in 8.8 as well, so it was not related to the changes in 8.9. We couldn't reproduce the pattern in SaaS, as we weren't able to achieve the same load with the small clusters we used. While experimenting, we discovered several areas for improvement. The root cause turned out to be JWT tokens expiring while requests queued in the Apache HttpAsyncClient connection pool. <a href="https://github.com/nicpuppa" target="_blank" rel="noopener noreferrer" class="">Nic</a> fixed this by moving token injection to after connection acquisition via <a href="https://github.com/camunda/camunda/pull/50124" target="_blank" rel="noopener noreferrer" class="">#50124</a> <!-- -->🚀</p>
+<p><img decoding="async" loading="lazy" alt="rest-bug" src="https://camunda.github.io/zeebe-chaos/assets/images/2026-03-29_08-10-808b921289715b24d5c81830747799ed.png" width="1556" height="855" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
+<p>As mentioned earlier, we were testing the system with REST API enabled and OIDC. We were testing different loads (100, 200, 300 PIs) and different versions (8.8 and main). We also wanted to validate whether this is related to the cluster configuration, so we also tested with SaaS.</p>
+<p>The following experiments were run:</p>
+<ul>
+<li class="">Stress test with 300 PIs</li>
+<li class="">Lower load 100 PIs</li>
+<li class="">Lower load 200 PIs</li>
+<li class="">Test with SaaS 300 PIs</li>
+<li class="">Test with 8.8 300 PIs</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
+<p>As we already experienced this pattern, we expected to see it again when enabling REST API and OIDC together. We expected that this was related to the load, so for a lower load, this should not be visible. We also expected that this might be related to the version, so we shouldn't see the same pattern in 8.8. Finally, we were not sure whether this was related to the cluster configuration, so we wanted to validate whether we could see the same pattern in SaaS or not.</p>
+<p><em>Expectations:</em></p>
+<ul>
+<li class="">Stress test with 300 PIs - we expect to see the pattern</li>
+<li class="">Lower load 100 PIs - we expect not to see the pattern</li>
+<li class="">Lower load 200 PIs - we expect to see the pattern, but less visible</li>
+<li class="">Test with SaaS 300 PIs - we were not sure - if it is not visible it might be related to a different cluster configuration</li>
+<li class="">Test with 8.8 300 PIs - we expect not to see the pattern, as it should be related to the changes in 8.9</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="stress-test-with-300-pis">Stress test with 300 PIs<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#stress-test-with-300-pis" class="hash-link" aria-label="Direct link to Stress test with 300 PIs" title="Direct link to Stress test with 300 PIs" translate="no">​</a></h4>
+<p>When we set up a stress test with 300 PIs and the REST API enabled, we observed the pattern we had already seen. The starter is heavily CPU throttled and under high memory pressure. We were not able to reach 300 PIs; we reached ~140.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/max-throughput-bug-793109bfe9ace0b56d246b14eb910709.png" width="3065" height="633" class="img_ev3q"></p>
+<p>In general, it is interesting that we tend to use much more memory and CPU when using the REST API, whereas with gRPC, we are not seeing such high resource usage. This is something we need to investigate further, as it is unexpected and should not occur.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/max-cpu-starter-3cd2b3d8a7997e2e5c26dab325d3bf66.png" width="3065" height="672" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/max-mem-starter-a5e837f514106484c2c78b9c4af861dd.png" width="3057" height="361" class="img_ev3q"></p>
+<p>When we compare this to our daily stress tests, which are run with gRPC, we can see that the starter is not CPU-throttled and shows no signs of memory pressure.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/daily-cpu-starter-03eda5af8cc20990072d5ae968342727.png" width="3064" height="663" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/daily-mem-starter-4d5264d982418175e8a4557450f52d92.png" width="3047" height="334" class="img_ev3q"></p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="lower-load-100-pis">Lower load 100 PIs<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#lower-load-100-pis" class="hash-link" aria-label="Direct link to Lower load 100 PIs" title="Direct link to Lower load 100 PIs" translate="no">​</a></h4>
+<p>When setting up a lower load with 100 PIs, we no longer saw the pattern. The starter is not CPU throttled, and there are no signs of memory pressure.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/100pi-no-bug-1655d2811541e61c363a7005b8bc6183.png" width="3058" height="829" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/100pi-cpu-no-bug-fcca67acc231c67c09ffb681f7f5bd27.png" width="3074" height="670" class="img_ev3q"></p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="lower-load-200-pis">Lower load 200 PIs<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#lower-load-200-pis" class="hash-link" aria-label="Direct link to Lower load 200 PIs" title="Direct link to Lower load 200 PIs" translate="no">​</a></h4>
+<p>Contrary to our expectation, with 200 PIs we were also not able to see the pattern. The starter is not CPU throttled, and there are no signs of memory pressure. This suggests the threshold for triggering the issue lies somewhere between 200 and 300 PIs.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/200pi-no-bug-78f4c1fd19d189510f234a986c708d1c.png" width="3064" height="626" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/200pi-cpu-no-bug-829862dfc5dbdb81f7d6df299bb898e1.png" width="3055" height="666" class="img_ev3q"></p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="test-with-88-300-pis">Test with 8.8 300 PIs<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#test-with-88-300-pis" class="hash-link" aria-label="Direct link to Test with 8.8 300 PIs" title="Direct link to Test with 8.8 300 PIs" translate="no">​</a></h4>
+<p>When testing with 8.8, we were still able to see the pattern, so this indicates it is not related to the changes in 8.9 and either an existing bug or related to some configuration.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/88-rest-max-throughput-d7811f9a3c283113bfa93758dee8ceb3.png" width="3071" height="625" class="img_ev3q"></p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="test-with-saas-300-pis">Test with SaaS 300 PIs<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#test-with-saas-300-pis" class="hash-link" aria-label="Direct link to Test with SaaS 300 PIs" title="Direct link to Test with SaaS 300 PIs" translate="no">​</a></h4>
+<p>When testing with SaaS, we were not able to reach the same load as with our self-managed clusters (as we used quite small packages).</p>
+<p>There were several surprising behaviors we observed during experimentation with the SaaS clusters:</p>
+<ol>
+<li class="">When starting an 8.9 cluster in SaaS, we were observing that the job completion rate dropped to 0 in a recurring pattern.</li>
+<li class="">When testing with an 8.8 cluster, we observed that even when starting 300 PIs (from our load applications), the cluster was actually only processing 10 PIs, but we haven't seen any back pressure (from the server or client side).</li>
+</ol>
+<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="89-cluster-saas">8.9 Cluster (SaaS)<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#89-cluster-saas" class="hash-link" aria-label="Direct link to 8.9 Cluster (SaaS)" title="Direct link to 8.9 Cluster (SaaS)" translate="no">​</a></h5>
+<p>When starting an 8.9 cluster in SaaS, we were observing that the job completion rate dropped to 0 in a recurring pattern.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-89-worker-restarts-5b0d83f32de4598b978b2dcecc50a28a.png" width="3117" height="577" class="img_ev3q"></p>
+<p>This was unexpected, and further investigation revealed that the workers were actually going OOM. After digging deeper through the metrics, we saw that too many jobs were pushed to the clients, and the worker was actively rejecting them.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-job-push-89-2725976554d011f67d3b20e1df867e5c.png" width="1555" height="291" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-worker-failure-oom-0b74d6f83d8c01bf0968813f6a9a81a6.png" width="2159" height="278" class="img_ev3q"></p>
+<p>In comparison to our daily tests, we seem to send a factor ~2-3 more jobs to the clients.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/daily-job-push-880178216c2763fe914f50dd3fc6f272.png" width="1527" height="341" class="img_ev3q"></p>
+<p>After increasing the workers' memory, we reduced OOMs, but we still couldn't reach the same load as in our self-managed clusters, preventing us from reproducing the same behavior.</p>
+<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="88-cluster-saas">8.8 Cluster (SaaS)<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#88-cluster-saas" class="hash-link" aria-label="Direct link to 8.8 Cluster (SaaS)" title="Direct link to 8.8 Cluster (SaaS)" translate="no">​</a></h5>
+<p>As we expected certain misconfigurations, we wanted to validate the same with 8.8 in SaaS. When starting the 300-PI load, we were only able to reach ~10 PIs.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-10pis-8c1138d1504d0f09a3cb66437a30bcee.png" width="3100" height="572" class="img_ev3q"></p>
+<p>Even more interesting is that we were unable to see any back pressure on the server or client side, which is unexpected, given that we are pushing more load than the cluster can handle. But we observed that the gateway is actually heavily CPU-throttled. Interesting to note that almost all traffic hit one node.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-10pis-cpu-2f9927c5e2ec6df9ca4d8fac3b8107cf.png" width="3094" height="480" class="img_ev3q"></p>
+<p>Each request took 5-9s to complete, which might be why we are not seeing any back pressure, as the clients are not sending more requests until the previous ones are completed. The HTTP client we use might be saturated.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-10pis-http-latency-2e7f0054a6709ad58ff3fef7830c695c.png" width="3095" height="373" class="img_ev3q"></p>
+<p>When we increased the gateway resources, we were able to reduce the CPU throttling and reached higher load. Now we were also able to see backpressure.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-10pis-higher-load-f0446c084155a15f236c7248388b79eb.png" width="3098" height="559" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/saas-10pis-higher-load-backpressure-b39af3b4f83071b8b9aba8efc8e9a71b.png" width="3100" height="500" class="img_ev3q"></p>
+<p>Overall, we were unable to reproduce the original REST+OIDC throughput drop pattern in SaaS due to resource constraints on the small cluster packages we used.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="root-cause-rest-api--oidc-throughput-drop">Root Cause REST API + OIDC Throughput Drop<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#root-cause-rest-api--oidc-throughput-drop" class="hash-link" aria-label="Direct link to Root Cause REST API + OIDC Throughput Drop" title="Direct link to Root Cause REST API + OIDC Throughput Drop" translate="no">​</a></h3>
+<p>During our experiments, <a href="https://github.com/nicpuppa" target="_blank" rel="noopener noreferrer" class="">Nic</a> identified and fixed the underlying issue in <a href="https://github.com/camunda/camunda/pull/50124" target="_blank" rel="noopener noreferrer" class="">#50124</a>. The <a href="https://github.com/camunda/camunda/pull/50124#issuecomment-4176290819" target="_blank" rel="noopener noreferrer" class="">root cause</a> was in the Java client's HTTP (REST) path: the <code>Authorization: Bearer &lt;token&gt;</code> header was attached at <strong>request-build time</strong>, long before the request actually reached the server.</p>
+<p>Under high load, the Apache HttpAsyncClient's connection pool was saturated. Requests sat in the internal queue for 60-120 seconds between token attachment and wire send. By the time the request reached the server, the JWT had expired, causing periodic spikes of <code>401 Unauthorized</code> errors.</p>
+<p>gRPC was not affected because it uses <code>CallCredentials.applyRequestMetadata()</code>, a late-binding API that resolves the token just before dispatching the request on the wire.</p>
+<p>The fix replaced the early-binding <code>applyCredentials()</code> call with an <code>HttpRequestInterceptor</code> registered via <code>addRequestInterceptorLast()</code>. This interceptor runs after the connection is acquired from the pool, right before writing bytes to the socket — reducing the gap between token injection and wire send to effectively zero.</p>
+<p>After the fix, the throughput is smooth and stable without any recurring drops:</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/fix-smooth-throughput-3aa23d60e40703c99d1916889203d590.png" width="3082" height="613" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="found-weaknesses--learnings">Found Weaknesses / Learnings<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#found-weaknesses--learnings" class="hash-link" aria-label="Direct link to Found Weaknesses / Learnings" title="Direct link to Found Weaknesses / Learnings" translate="no">​</a></h2>
+<ul>
+<li class="">REST API usage causes higher CPU and memory usage on the client side</li>
+<li class="">REST API usage together with OIDC showed a recurring throughput drop pattern under high load, which was not visible with gRPC.</li>
+<li class="">This behavior was not reproducible with a lower load, so it seems to be related to the load we are pushing to the cluster.</li>
+<li class="">This was not related to the changes in 8.9, as it was also visible in 8.8, so it was an existing bug.</li>
+<li class="">In SaaS, we were not able to reach the same load as with our self-managed clusters, which prevented us from reproducing the same behavior as with our self-managed clusters.</li>
+<li class="">We have some observability gaps, as we were not able to see any back pressure from the server or client side when the gateway is overloaded. This is unexpected, as we are pushing more load than the cluster can handle.<!-- -->
+<ul>
+<li class="">This might be related to the HTTP client we use, which might be saturated, but we need to investigate further to understand the root cause.</li>
+</ul>
+</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="further-investigations">Further investigations<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#further-investigations" class="hash-link" aria-label="Direct link to Further investigations" title="Direct link to Further investigations" translate="no">​</a></h3>
+<p>The recurring throughput drop under REST+OIDC has been fixed via <a href="https://github.com/camunda/camunda/pull/50124" target="_blank" rel="noopener noreferrer" class="">#50124</a>. The remaining open questions are:</p>
+<ul>
+<li class="">Investigate why REST API usage causes higher CPU and memory usage on the client side compared to gRPC, and whether this can be improved.</li>
+<li class="">Improve measurement of request response times and back pressure to better identify bottlenecks under high load.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="possible-improvements-for-our-load-testing-and-reliability-testing">Possible improvements for our load testing and reliability testing<a href="https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC#possible-improvements-for-our-load-testing-and-reliability-testing" class="hash-link" aria-label="Direct link to Possible improvements for our load testing and reliability testing" title="Direct link to Possible improvements for our load testing and reliability testing" translate="no">​</a></h3>
+<p>As we experimented and used our load testing tooling, we identified several things we can improve:</p>
+<ul>
+<li class="">Rethink GitHub Workflow inputs for load test, where the description can be made more compact and readable.</li>
+<li class="">Add a separate job output to print all the input values the user provided in the load test</li>
+<li class="">Provide a user option to choose between OIDC/Basic and none</li>
+<li class="">Fix the bug which causes issues when redeploying twice and replacing the client-secret</li>
+<li class="">Improve logging of the starter and worker applications</li>
+</ul>]]></content>
+        <author>
+            <name>Christopher Kujawa</name>
+            <uri>https://github.com/ChrisKujawa</uri>
+        </author>
+        <author>
+            <name>Pranjal Goyal</name>
+            <uri>https://github.com/pranjalg13</uri>
+        </author>
+        <author>
+            <name>Jonathan Ballet</name>
+            <uri>https://github.com/multani</uri>
+        </author>
+        <category label="availability" term="availability"/>
+    </entry>
     <entry>
         <title type="html"><![CDATA[C8 on ECS: Simulate loss of lease]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation</id>
@@ -2069,95 +2197,5 @@ Furthermore, we expect that the latency until the user sees data (or data is wri
             <uri>https://github.com/ChrisKujawa</uri>
         </author>
         <category label="availability" term="availability"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Impact of Camunda Exporter on processing performance]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance"/>
-        <updated>2024-11-14T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[In our last Chaos day we experimented with the Camunda Exporter MVP. After our MVP we continued with Iteration 2, where we migrated the Archiver deployments and added a new Migration component (allows us to harmonize indices).]]></summary>
-        <content type="html"><![CDATA[<p>In our <a class="" href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP">last Chaos day</a> we experimented with the Camunda Exporter MVP. After our MVP we continued with Iteration 2, where we migrated the Archiver deployments and added a new Migration component (allows us to harmonize indices).</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-migration-1c91d1203aba0c2d454ce583eac8703c.png" width="1088" height="888" class="img_ev3q"></p>
-<p>Additionally, <a href="https://github.com/camunda/zeebe-benchmark-helm/pull/202" target="_blank" rel="noopener noreferrer" class="">some fixes and improvements</a> have been done to the realistic benchmarks that should allow us to better compare the general performance with a realistic good performing benchmark.</p>
-<p>Actually, this is what we want to explore and experiment with today.</p>
-<ul>
-<li class="">Does the Camunda Exporter (since the last benchmark) impact performance of the overall system?<!-- -->
-<ul>
-<li class="">If so how?</li>
-</ul>
-</li>
-<li class="">How can we potentially mitigate this?</li>
-</ul>
-<p><strong>TL;DR;</strong> Today's, results showed that enabling the Camunda Exporter causes a 25% processing throughput drop. We identified the CPU as a bottleneck. It seems to be mitigated by either adjusting the CPU requests or removing the ES exporter. With these results, we are equipped to make further investigations and decisions.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmarks">Benchmarks<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#benchmarks" class="hash-link" aria-label="Direct link to Benchmarks" title="Direct link to Benchmarks" translate="no">​</a></h2>
-<p>As in the <a class="" href="https://camunda.github.io/zeebe-chaos/2024/10/24/Camunda-Exporter-MVP">last Chaos day</a> we use the new realistic benchmarks, that contain a much more complex process model and workload.
-We recently found some smaller issues in our benchmarks, related to <a href="https://github.com/camunda/zeebe-benchmark-helm/pull/204" target="_blank" rel="noopener noreferrer" class="">CPU throttling</a> and <a href="https://github.com/camunda/zeebe-benchmark-helm/pull/202" target="_blank" rel="noopener noreferrer" class="">undersized workers</a>, these issues have been fixed. This allowed us to reach a much better workload/throughput on our weekly benchmarks, which we take here as a base for our comparison.</p>
-<p>The newest benchmark helm charts have been updated to the first <a href="https://github.com/camunda/zeebe-benchmark-helm/releases/tag/zeebe-benchmark-0.3.8" target="_blank" rel="noopener noreferrer" class="">Camunda Platform alpha1</a>, which includes the Camunda Exporter.</p>
-<p>Today we run the following benchmarks</p>
-<ul>
-<li class="">Use Camunda Exporter, with disabled Importer in our benchmark</li>
-<li class="">Use Camunda Exporter, with disabled Importer and disabled ES exporter</li>
-<li class="">Use Camunda Exporter, with disabled Importer and higher CPU on brokers</li>
-</ul>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmark-base">Benchmark: Base<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#benchmark-base" class="hash-link" aria-label="Direct link to Benchmark: Base" title="Direct link to Benchmark: Base" translate="no">​</a></h3>
-<p>As we can see we can have a healthy cluster with a stable load where we reach to complete ~50 process instances, with that ~100 tasks, per second. All of this with a low backpressure.</p>
-<p><img decoding="async" loading="lazy" alt="general" src="https://camunda.github.io/zeebe-chaos/assets/images/base-general-0d9b87e3c4c22e9a88803bb3d6c65356.png" width="2213" height="863" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmark-camunda-exporter">Benchmark: Camunda Exporter<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#benchmark-camunda-exporter" class="hash-link" aria-label="Direct link to Benchmark: Camunda Exporter" title="Direct link to Benchmark: Camunda Exporter" translate="no">​</a></h3>
-<p>When running our benchmarks with the Camunda Exporter the first thing we can observe is that the backpressure is much higher and the throughput went down by ~25-30%. We are now able to complete ~36 process instances, meaning 72 tasks, per second.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-exporter-general-bb19c0d984757686f856a5e0817987e8.png" width="2216" height="870" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="latency">Latency<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#latency" class="hash-link" aria-label="Direct link to Latency" title="Direct link to Latency" translate="no">​</a></h4>
-<p>Looking at the processing latency we can observe a significant increase</p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="base">Base<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#base" class="hash-link" aria-label="Direct link to Base" title="Direct link to Base" translate="no">​</a></h5>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/base-latency-53b85441222c4d658fe76896d4e970c7.png" width="2237" height="332" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/base-latency2-77df15ea527525cc0e2a17e7f2394435.png" width="2230" height="569" class="img_ev3q"></p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="camunda-exporter">Camunda Exporter<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#camunda-exporter" class="hash-link" aria-label="Direct link to Camunda Exporter" title="Direct link to Camunda Exporter" translate="no">​</a></h5>
-<p>The process instance execution p99 has been increased from ~4s to +60s, the p50 went from ~0,5s to ~3,7s.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-exporter-latency-1c325d61ad7921f9fd60a5174f232047.png" width="2223" height="324" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-exporter-latency2-e7fbece39a4cf20fcf5e7a9086fe7798.png" width="2228" height="562" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="cpu">CPU<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#cpu" class="hash-link" aria-label="Direct link to CPU" title="Direct link to CPU" translate="no">​</a></h4>
-<p>Investing this, we can look at the CPU. On our base Benchmark, we have CPU throttling at around 20%.</p>
-<p><img decoding="async" loading="lazy" alt="cpu" src="https://camunda.github.io/zeebe-chaos/assets/images/base-cpu-2bd3f742bb3e63c939f4bcbb2e5abf35.png" width="2227" height="678" class="img_ev3q"></p>
-<p>When comparing this with the Camunda Exporter benchmark, we can see that the CPU throttling went up to 80%. The benchmark is close to its limits.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-exporter-cpu-0364f523f3197afc5a588c6a6720a491.png" width="2225" height="678" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmark-without-es-exporter">Benchmark: Without ES exporter<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#benchmark-without-es-exporter" class="hash-link" aria-label="Direct link to Benchmark: Without ES exporter" title="Direct link to Benchmark: Without ES exporter" translate="no">​</a></h3>
-<p>As we have seen the Camunda Exporter, causes the Brokers to consume a lot more CPU. This is kind of  expected as there is much more running now in our system.</p>
-<p>As an additional experiment, we want to run the Benchmarks with the Camunda Exporter, without the Elasticsearch exporter. The hypothesis is that we can reduce the resource consumption and use it for the Camunda Exporter. The Elasticsearch exporter is with 8.7, only necessary for Optimize.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-es-general-371f07a7a870c2cf0aa69b513f2254da.png" width="1898" height="861" class="img_ev3q"></p>
-<p>After setting up the benchmark we can observe that the throughput went back to normal.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="latency-1">Latency<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#latency-1" class="hash-link" aria-label="Direct link to Latency" title="Direct link to Latency" translate="no">​</a></h4>
-<p>The latency is reduced, and we can also observe that it seems to drop over time as well.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-es-latency-29c218d2f4f7032be0c97ac70aadc4aa.png" width="1896" height="338" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-es-latency2-e8f5eca0ae902ff1a29285d700d489c3.png" width="1896" height="566" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="cpu-1">CPU<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#cpu-1" class="hash-link" aria-label="Direct link to CPU" title="Direct link to CPU" translate="no">​</a></h4>
-<p>The CPU throttling is dropping at some point, which explains the other drop of latency.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-es-cpu-df76c342afd4c0e936dca6b8bfd8a1a0.png" width="1889" height="676" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmark-more-cpu">Benchmark: More CPU<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#benchmark-more-cpu" class="hash-link" aria-label="Direct link to Benchmark: More CPU" title="Direct link to Benchmark: More CPU" translate="no">​</a></h3>
-<p>As we're migrating logic from the actual Importer deployment to the Camunda Exporter, we can get rid of such extra deployment and bound resources. Arguably we can use these free resources and assign them to the brokers.</p>
-<p>When we look at the Camunda Exporter benchmark, the Operate deployment itself doesn't use many resources and likely don't need the assigned ones.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/it2-exporter-operate-cpu-cd3a0bb1a0ad83932e56e8c228f90a65.png" width="1113" height="313" class="img_ev3q"></p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/change-resources-90f0b2609a3be8ba06662ba3c003ed93.png" width="1207" height="827" class="img_ev3q"></p>
-<p>This change allows us to bring the throughput as well back to normal.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/more-cpu-general-ef1023e3caa361ad74e2ce9292cebeb1.png" width="1898" height="877" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="latency-2">Latency<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#latency-2" class="hash-link" aria-label="Direct link to Latency" title="Direct link to Latency" translate="no">​</a></h4>
-<p>The latency is similar to our base benchmark.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/more-cpu-latency-538c03c7b6b866deaf65d4ac62eeb47c.png" width="1891" height="334" class="img_ev3q">
-<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/more-cpu-latency2-e8a9e06a59bc6acfd6f1485162bfe663.png" width="1897" height="564" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="cpu-2">CPU<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#cpu-2" class="hash-link" aria-label="Direct link to CPU" title="Direct link to CPU" translate="no">​</a></h4>
-<p>The CPU throttling has been reduced to almost zero. Interesting is that we don't use much more CPU resources (just slightly more, before ~1350m now ~1450 CPU). Increasing our requests by a little, allowed us to remove the CPU throttling. This is something we likely want to investigate further.</p>
-<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/more-cpu-cpu-5a2492087066afabd9b25114a27aaa78.png" width="1887" height="680" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="results">Results<a href="https://camunda.github.io/zeebe-chaos/2024/11/14/Impact-of-Camunda-Exporter-on-processing-performance#results" class="hash-link" aria-label="Direct link to Results" title="Direct link to Results" translate="no">​</a></h3>
-<p>As we have seen, introducing (or enabling) the Camunda Exporter, can or will increase our processing latency and reduce our potential processing throughput. This obviously depends on the cluster load.</p>
-<p>We were able to pinpoint the problem due to limited resources, to be specific CPU is the bottleneck.</p>
-<p>This is expected, as running the Camunda Exporter means we are running more logic inside the Zeebe system.</p>
-<p>We can mitigate this with:</p>
-<ul>
-<li class="">reducing load from the system, via disabling the additional ES exporter</li>
-<li class="">give the system more resources</li>
-</ul>]]></content>
-        <author>
-            <name>Christopher Kujawa</name>
-            <uri>https://github.com/ChrisKujawa</uri>
-        </author>
-        <category label="performance" term="performance"/>
     </entry>
 </feed>
