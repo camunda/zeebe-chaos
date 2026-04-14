@@ -23,6 +23,7 @@ spec:
               value: >-
                 -Dapp.brokerUrl=http://{{.ServiceName}}:26500
                 -Dapp.brokerRestUrl=http://{{.ServiceName}}:8080
+                -Dapp.preferRest=false
                 -Dapp.auth.type=OAUTH
                 -Dzeebe.client.requestTimeout=62000
                 -Dapp.worker.capacity=10
