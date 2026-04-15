@@ -30,7 +30,7 @@ spec:
                 -Dapp.worker.pollingDelay={{.PollingDelay}}
                 -Dapp.worker.completionDelay=50ms
                 -XX:+HeapDumpOnOutOfMemoryError
-            - name: LOG_LEVEL
+            - name: CAMUNDA_LOG_LEVEL
               value: "debug"
             - name: CAMUNDA_AUTHORIZATION_SERVER_URL
               value: {{.AuthServer}}
