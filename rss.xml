@@ -9,7 +9,7 @@
         <generator>https://github.com/jpmonette/feed</generator>
         <language>en</language>
         <item>
-            <title><![CDATA[Performance of Platform without Secondary Storage]]></title>
+            <title><![CDATA[Performance of Camunda Platform without Secondary Storage]]></title>
             <link>https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage</link>
             <guid>https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage</guid>
             <pubDate>Fri, 17 Apr 2026 00:00:00 GMT</pubDate>

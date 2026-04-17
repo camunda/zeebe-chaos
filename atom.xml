@@ -8,7 +8,7 @@
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
     <entry>
-        <title type="html"><![CDATA[Performance of Platform without Secondary Storage]]></title>
+        <title type="html"><![CDATA[Performance of Camunda Platform without Secondary Storage]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage</id>
         <link href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage"/>
         <updated>2026-04-17T00:00:00.000Z</updated>
