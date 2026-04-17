@@ -25,9 +25,9 @@ On this Chaos Day, we conducted an experiment to evaluate the performance of our
 
 ## Chaos Experiment
 
- We ran two clusters, one with secondary storage and one without, and compared their performance under load. For better comparison and better performance we used gRPC. As a workload we used our stress test workload, details can be found [here](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#max--stress-load-test).
+ We ran two clusters, one with secondary storage and one without, and compared their performance under load. For better comparison and better performance, we used gRPC. As a workload, we used our stress test workload; details can be found [here](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#max--stress-load-test).
 
-Important is here that one process instance, has one task to complete. It is the smallest process instance we can get, and it is a good way to stress test the system.
+It is important that one process instance has one task to complete. It is the smallest process instance we can get, and it is a good way to stress test the system.
 
 ### Expected
 
