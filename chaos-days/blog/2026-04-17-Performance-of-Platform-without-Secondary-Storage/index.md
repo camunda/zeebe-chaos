@@ -1,6 +1,6 @@
 ---
 layout: posts
-title:  "Performance of Platform without Secondary Storage"
+title:  "Performance of Camunda Platform without Secondary Storage"
 date:   2026-04-17
 categories: 
   - chaos_experiment 
