@@ -2,11 +2,80 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://camunda.github.io/zeebe-chaos/</id>
     <title>Zeebe Chaos Blog</title>
-    <updated>2026-04-02T00:00:00.000Z</updated>
+    <updated>2026-04-17T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://camunda.github.io/zeebe-chaos/"/>
     <subtitle>Zeebe Chaos Blog</subtitle>
     <icon>https://camunda.github.io/zeebe-chaos/img/zeebe-logo.png</icon>
+    <entry>
+        <title type="html"><![CDATA[Performance of Platform without Secondary Storage]]></title>
+        <id>https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage</id>
+        <link href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage"/>
+        <updated>2026-04-17T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[On this Chaos Day, we conducted an experiment to evaluate the performance of our platform without the use of the secondary storage. The goal was to understand how the system behaves under such conditions and whether and how performance would improve.]]></summary>
+        <content type="html"><![CDATA[<p>On this Chaos Day, we conducted an experiment to evaluate the performance of our platform without the use of the secondary storage. The goal was to understand how the system behaves under such conditions and whether and how performance would improve.</p>
+<p><strong>TL;DR;</strong> We observed that a cluster without secondary storage achieves significantly higher throughput, as it is not throttled by secondary storage and can reach up to 400 PI/s without issues. That is a factor of <em>1.7x</em> higher than the cluster with secondary storage.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/overview-9db215479fa913bd8d84c77fdbb63aef.png" width="1148" height="555" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
+<p>We ran two clusters, one with secondary storage and one without, and compared their performance under load. For better comparison and better performance, we used gRPC. As a workload, we used our stress test workload; details can be found <a href="https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#max--stress-load-test" target="_blank" rel="noopener noreferrer" class="">here</a>.</p>
+<p>It is important that one process instance has one task to complete. It is the smallest process instance we can get, and it is a good way to stress test the system.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
+<p>We expected that the cluster without secondary storage would perform better, as it would not have to write to secondary storage and would not be throttled by, for example, Elasticsearch (CamundaExporter).</p>
+<p>The maximum performance of a partition was not clear, but we expected that it would be higher than the cluster with secondary storage, which has a maximum performance of around 200 process instance completions per second (PI/s).</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
+<p>As a base, we started a load test with <a href="https://github.com/camunda/camunda/blob/main/load-tests/camunda-platform-values.yaml" target="_blank" rel="noopener noreferrer" class="">our default configuration</a> using gRPC and a max workload (300 PI/s).</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="base-grpc-with-secondary-storage">Base: gRPC with secondary storage<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#base-grpc-with-secondary-storage" class="hash-link" aria-label="Direct link to Base: gRPC with secondary storage" title="Direct link to Base: gRPC with secondary storage" translate="no">​</a></h4>
+<p>We can see that while we receive 300 PI/s, the cluster with secondary storage is throttled at around 230 PI/s.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/grpc-throughput-420782ee4eb2f98ac9fd3c94f6dfd5c1.png" width="1651" height="1044" class="img_ev3q"></p>
+<p>The backlog of exporting to secondary storage is rather high, and causes us to have around ~40% backpressure, which is the reason for the throttling.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/grpc-general-5eab2e125a7312e002d98022883f42ce.png" width="1652" height="793" class="img_ev3q"></p>
+<p>Compared to our daily tests, this looks similar.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/grpc-comparison-daily-48d7af9a94502f65c833c0a9c34572da.png" width="3380" height="868" class="img_ev3q"></p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="grpc-without-secondary-storage">gRPC without secondary storage<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#grpc-without-secondary-storage" class="hash-link" aria-label="Direct link to gRPC without secondary storage" title="Direct link to gRPC without secondary storage" translate="no">​</a></h4>
+<p>At the beginning, we had some issues with how to properly configure the cluster without secondary storage. We found a useful documentation about how <a href="https://docs.camunda.io/docs/self-managed/concepts/secondary-storage/no-secondary-storage/" target="_blank" rel="noopener noreferrer" class="">to disable the secondary storage</a></p>
+<p>The important part is this (which does all the magic):</p>
+<div class="language-yaml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-yaml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token key atrule" style="color:#00a4db">global</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token key atrule" style="color:#00a4db">noSecondaryStorage</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token boolean important" style="color:#36acaa">true</span><br></div></code></pre></div></div>
+<p>The open question was whether Authorization would work. After experimenting with it, we found out that actually the right profiles are configured: <code>admin, broker, consolidated-auth</code>, our initial authorizations are properly set (for our load tests), and the starter and worker are able to push data through the system.</p>
+<p>The only issue was that the search for data availability was still enabled, which caused some failures (as obviously the REST API will not work without a secondary storage).</p>
+<p>After disabling the search for data availability, we were able to run the load test without any issues. The load stabilized at 300 PI/s, and there was no backpressure.
+We were able to increase to 400 PI/s, and it worked without any issues. When we increased to 600 PI/s, we started to see some backpressure, which indicates that we are reaching the limits of the system.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-secondary-throughput-42fcbf2b05e3bf21837ac95a27fe4c27.png" width="1655" height="701" class="img_ev3q"></p>
+<p>The increased load, first 400 PI/s, later 600 PI/s, produced a bigger processing queue, causing backpressure at the end around ~40-50%. We can see that we are no longer able to complete 100% of the process instances created.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-secondary-overload-e054623dc3f9cdb71fa4a00634005e2b.png" width="1669" height="1241" class="img_ev3q"></p>
+<p>Investigating a bit further, we realized that we saw several JOB_TIMEOUT rejections, which could be either because Workers are too slow, or because we have too few workers. These job timeouts get rejected when jobs are already due, and actually want to time out the job, but the completion still happens just before the actual timeout can be processed. Means either it is standing long in the queue of the worker (or due to the processing queue). We also saw some requestLimitExhaust rejections, which indicate that we are reaching the limits of the system.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/no-sec-workers-bc819cdec993468d62879739336dfb65.png" width="1130" height="368" class="img_ev3q"></p>
+<p>We disabled the flow control and throttling configs and increased the number of workers. None of it improved the performance; we observed fewer timeout rejections at least.</p>
+<p>In general, the CPU and IOPS were at their limits, and we were not able to increase the performance further. We can see that the CPU is at 100% for the broker, and the IOPS are also at their limits, which indicates that we are reaching the limits of the system.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/non-sec-cpu-62df8108f8d3cd98b511935a6580c17b.png" width="1662" height="714" class="img_ev3q">
+<img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/non-sec-write-iops-cd64e7e777851228bf5ea9762afbf7f7.png" width="1642" height="241" class="img_ev3q"></p>
+<p>We haven't increased the resources of the cluster, as we wanted to compare the performance with and without secondary storage with a similar configuration. But this would be an interesting follow-up experiment to see how much we can increase the performance by increasing the resources of the cluster. For example, increasing the disks and CPU, as this is the limiting factor of IOPS in GCP, and Camunda is I/O intensive.</p>
+<p><img decoding="async" loading="lazy" src="https://camunda.github.io/zeebe-chaos/assets/images/non-sec-writing-8fa43f33fbcd3b283e3b41b3bcec3e95.png" width="1665" height="718" class="img_ev3q"></p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="conclusion">Conclusion<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion" translate="no">​</a></h3>
+<p>We can conclude that the cluster without secondary storage has a significantly higher throughput performance, as it is not throttled by the secondary storage, and can reach up to 400 PI/s without any issues.</p>
+<p>That is a factor of <em>1.7x</em> higher than the cluster with secondary storage.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-we-have-learned">What we have learned:<a href="https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage#what-we-have-learned" class="hash-link" aria-label="Direct link to What we have learned:" title="Direct link to What we have learned:" translate="no">​</a></h4>
+<ul>
+<li class="">We can run Camunda without secondary storage, which might be useful for users who have a certain performance requirement and do not want to use secondary storage.<!-- -->
+<ul>
+<li class="">This obviously has some limitations/drawbacks, as several features (depending on the secondary storage) will not work. You can find more in our <a href="https://docs.camunda.io/docs/self-managed/concepts/secondary-storage/no-secondary-storage/?configuration=helm#limitations-and-considerations" target="_blank" rel="noopener noreferrer" class="">documentation</a>.</li>
+</ul>
+</li>
+<li class="">Even without secondary storage, we can use OIDC for Authentication and Authorization</li>
+</ul>]]></content>
+        <author>
+            <name>Christopher Kujawa</name>
+            <uri>https://github.com/ChrisKujawa</uri>
+        </author>
+        <author>
+            <name>Pranjal Goyal</name>
+            <uri>https://github.com/pranjalg13</uri>
+        </author>
+        <author>
+            <name>Jonathan Ballet</name>
+            <uri>https://github.com/multani</uri>
+        </author>
+        <category label="performance" term="performance"/>
+    </entry>
     <entry>
         <title type="html"><![CDATA[REST API and OIDC]]></title>
         <id>https://camunda.github.io/zeebe-chaos/2026/04/02/REST-API-and-OIDC</id>
@@ -2124,73 +2193,6 @@ to 128 MB. This is a 75% reduction of previous used memory for RocksDB per parti
 <ul>
 <li class="">Several panels were broken related to memory, and their tooltip and legends. I fixed this during the investigation.</li>
 <li class="">Potential native memory leak</li>
-</ul>]]></content>
-        <author>
-            <name>Christopher Kujawa</name>
-            <uri>https://github.com/ChrisKujawa</uri>
-        </author>
-        <category label="availability" term="availability"/>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[News from Camunda Exporter project]]></title>
-        <id>https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project</id>
-        <link href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project"/>
-        <updated>2024-12-12T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[In this Chaos day, we want to verify the current state of the exporter project and run benchmarks with it. Comparing]]></summary>
-        <content type="html"><![CDATA[<p>In this Chaos day, we want to verify the current state of the exporter project and run benchmarks with it. Comparing
-with a previous version (v8.6.6) should give us a good hint on the current state and potential improvements.</p>
-<p><strong>TL;DR;</strong> The latency of user data availability has improved due to our architecture change, but we still need to fix some bugs before our planned release of the Camunda Exporter. This experiment allows us to detect three new bugs, fixing this should allow us to make the system more stable.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chaos-experiment">Chaos Experiment<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#chaos-experiment" class="hash-link" aria-label="Direct link to Chaos Experiment" title="Direct link to Chaos Experiment" translate="no">​</a></h2>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="benchmarks">Benchmarks<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#benchmarks" class="hash-link" aria-label="Direct link to Benchmarks" title="Direct link to Benchmarks" translate="no">​</a></h3>
-<p>We have seen in previous experiments and benchmarks that the realistic benchmarks are not yet totally reliable, as they seem to overload at some point the system. This can happen if there is a hiccup and jobs take longer to process. Jobs in the queue are getting delayed, and time out, they are sent out to different workers, but we will reach them at some point again the jobs, and we will publish also for this job a message. This in general increases the load of the system as we have to timeout jobs, we have to handle additional message publish, etc.</p>
-<p>Additionally, message publish can be rejected, when this happens we wait for another timeout adding again load on the system, more and more retries happen, etc. This breaks the benchmark performance.</p>
-<p>To avoid this, we reduce the benchmark payload for now, which is in charge of creating multiple instances and call activities, etc. To be specific, they reduced the items from 50 to 5
-but scaled the starter to start more instances. With this payload, we can scale more fine granular. Each instance can create 5 sub-instances, when creating three process instances  we create effectively 15 instances/token.</p>
-<p>As this benchmark runs quite stable, it allows us to better compare the latency between base and main.</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="details-experiment">Details Experiment<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#details-experiment" class="hash-link" aria-label="Direct link to Details Experiment" title="Direct link to Details Experiment" translate="no">​</a></h3>
-<p>We will run two benchmarks one against 8.6.6, call based, and one against the current main branch (commit a1609130).</p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="expected">Expected<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#expected" class="hash-link" aria-label="Direct link to Expected" title="Direct link to Expected" translate="no">​</a></h3>
-<p>When running the base and the main and comparing each other we expect that the general throughput should be similar.
-Furthermore, we expect that the latency until the user sees data (or data is written into ES and searchable) should be lowered on the main branch rather than on the base.</p>
-<p>Note: Right now we don't have a good metric to measure that data is available for the user, we plan to implement this in the starter benchmark application at some point via querying the REST API. For now, we calculate different average latencies together, whereas we take as elastic search flush a constant of 2 seconds.</p>
-<p>We expect a reduction of latency as we reduce one additional hop/usage of ES as intermediate storage, before aggregation.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="base">Base<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#base" class="hash-link" aria-label="Direct link to Base" title="Direct link to Base" translate="no">​</a></h4>
-<p><img decoding="async" loading="lazy" alt="current-8.6" src="https://camunda.github.io/zeebe-chaos/assets/images/current-miro-659b193b670b1b604ebb32ff30b067a4.png" width="1096" height="885" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="main">Main<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#main" class="hash-link" aria-label="Direct link to Main" title="Direct link to Main" translate="no">​</a></h4>
-<p><img decoding="async" loading="lazy" alt="main-target" src="https://camunda.github.io/zeebe-chaos/assets/images/target-1781d302fcf5b933b427a8f5d5df7bd7.png" width="1114" height="736" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="actual">Actual<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#actual" class="hash-link" aria-label="Direct link to Actual" title="Direct link to Actual" translate="no">​</a></h3>
-<p>We have set up both benchmarks, running as described above with changed payloads.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="general-performance">General Performance<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#general-performance" class="hash-link" aria-label="Direct link to General Performance" title="Direct link to General Performance" translate="no">​</a></h4>
-<p>The general throughput performance looks similar. The resource consumption looks similar as well, but we didn't investigate this more deeply. Will be done separate.</p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="base-general">Base general<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#base-general" class="hash-link" aria-label="Direct link to Base general" title="Direct link to Base general" translate="no">​</a></h5>
-<p><img decoding="async" loading="lazy" alt="base-general" src="https://camunda.github.io/zeebe-chaos/assets/images/base-general-452effab191f32fcf5a140949ec5a024.png" width="1901" height="780" class="img_ev3q"></p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="main-general">Main general<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#main-general" class="hash-link" aria-label="Direct link to Main general" title="Direct link to Main general" translate="no">​</a></h5>
-<p><img decoding="async" loading="lazy" alt="main-general" src="https://camunda.github.io/zeebe-chaos/assets/images/main-general-a2f75f96be9f6682c54ab3cdfb931a8f.png" width="1889" height="784" class="img_ev3q"></p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="latency">Latency<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#latency" class="hash-link" aria-label="Direct link to Latency" title="Direct link to Latency" translate="no">​</a></h4>
-<p>This experiment aims to show the difference in the data availability for the user.</p>
-<p>In order to better visualize the dashboard has been adjusted for this experiment.</p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="base-latency">Base latency<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#base-latency" class="hash-link" aria-label="Direct link to Base latency" title="Direct link to Base latency" translate="no">​</a></h5>
-<p><img decoding="async" loading="lazy" alt="base-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/base-latencies-tree-17aa593ad5dc16c9ca89726c38155b82.png" width="1134" height="793" class="img_ev3q"></p>
-<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="main-latency">Main latency<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#main-latency" class="hash-link" aria-label="Direct link to Main latency" title="Direct link to Main latency" translate="no">​</a></h5>
-<p>As we expected we were able to reduce the latency data is available for the user by the additional ES flush, reducing it by ~2 seconds.</p>
-<p><img decoding="async" loading="lazy" alt="main-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/main-latencies-tree-7908eb4f973bd8e21f5fab8b2aec36bb.png" width="1078" height="581" class="img_ev3q"></p>
-<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="result">Result<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#result" class="hash-link" aria-label="Direct link to Result" title="Direct link to Result" translate="no">​</a></h3>
-<p>We were able to show that the latency has been reduced under normal load.</p>
-<p><strong>Note:</strong> Be aware this experiment only runs benchmarks with less-to-normal load, on higher load this might change, and need to be tested separately.</p>
-<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="found-bugs">Found Bugs<a href="https://camunda.github.io/zeebe-chaos/2024/12/12/News-from-Camunda-Exporter-project#found-bugs" class="hash-link" aria-label="Direct link to Found Bugs" title="Direct link to Found Bugs" translate="no">​</a></h4>
-<p>Within the experiment, we run into several other issues. Especially after running for a while, when pods got restarted and importer have been enabled, the Camunda Exporter broke.</p>
-<p><img decoding="async" loading="lazy" alt="exporting-fail" src="https://camunda.github.io/zeebe-chaos/assets/images/exporting-fail-2ddb3996ac30f721fe4e9a1ec8fcce7a.png" width="951" height="449" class="img_ev3q"></p>
-<p>This caused to increase in the latency.</p>
-<p><img decoding="async" loading="lazy" alt="exporting-fail-latency" src="https://camunda.github.io/zeebe-chaos/assets/images/exporting-fail-latency-15efaf79627febc56dbe8ee0247c87d3.png" width="1888" height="193" class="img_ev3q"></p>
-<p>The exporter was not able to detect correctly anymore that the importing was done but was still flushing periodically (which is as well wrong)</p>
-<p>See related GitHub issue(s)</p>
-<ul>
-<li class=""><a href="https://github.com/camunda/camunda/issues/26046" target="_blank" rel="noopener noreferrer" class="">Importer(s) are not communicating import done correctly</a></li>
-<li class=""><a href="https://github.com/camunda/camunda/issues/26047" target="_blank" rel="noopener noreferrer" class="">Exporter flushes periodically even when importer not completed</a></li>
-</ul>
-<p>Furthermore, based on logs we saw that the treePath hasn't been published correctly in the Exporter.</p>
-<ul>
-<li class=""><a href="https://github.com/camunda/camunda/issues/26048" target="_blank" rel="noopener noreferrer" class="">Camunda Exporter is not able to consume treePath</a></li>
 </ul>]]></content>
         <author>
             <name>Christopher Kujawa</name>
