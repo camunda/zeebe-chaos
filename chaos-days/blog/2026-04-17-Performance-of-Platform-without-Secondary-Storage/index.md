@@ -15,9 +15,11 @@ authors:
 
 # Chaos Day Summary
 
-In this Chaos Day, we conducted an experiment to evaluate the performance of our platform without the usage of the secondary storage. The goal was to understand how the system behaves under such conditions and find the maximum performance of a partition.
+In this Chaos Day, we conducted an experiment to evaluate the performance of our platform without the usage of the secondary storage. The goal was to understand how the system behaves under such conditions and how and whether the performance would improve.
 
 **TL;DR;** We observed that a cluster without secondary storage has a significantly higher throughput performance, as it is not throttled by the secondary storage, and can reach up to 400 PI/s without any issues. That is a factor of *1.7x* higher than the cluster with secondary storage.
+
+![](overview.png)
 
 <!--truncate-->
 
@@ -87,7 +89,9 @@ In general the CPU and IOPS were at its limits, and we were not able to increase
 ![](non-sec-cpu.png)
 ![](non-sec-write-iops.png)
 
-We haven't increased the resources of the cluster, as we wanted to compare the performance with and without secondary storage with similar configuration.
+We haven't increased the resources of the cluster, as we wanted to compare the performance with and without secondary storage with similar configuration. But this would be an interesting follow-up experiment to see how much we can increase the performance by increasing the resources of the cluster. For example increasing the disks and CPU, as this is the limiting factor of IOPS in GCP, and Camunda is I/O intensive.
+
+![](non-sec-writing.png)
 
 ### Conclusion
 
