@@ -40,6 +40,24 @@ spec:
               value: {{.ClientId}}
             - name: CAMUNDA_CLIENT_SECRET
               value: {{.ClientSecret}}
+            - name: SPRING_PROFILES_ACTIVE
+              value: "worker"
+            - name: ZEEBE_AUTH_METHOD
+              value: {{if .AuthServer}}"oidc"{{else}}"none"{{end}}
+            - name: CAMUNDA_CLIENT_GRPC_ADDRESS
+              value: http://{{.ServiceName}}:26500
+            - name: CAMUNDA_CLIENT_REST_ADDRESS
+              value: http://{{.ServiceName}}:8080
+            - name: CAMUNDA_CLIENT_PREFER_REST_OVER_GRPC
+              value: "false"
+            - name: CAMUNDA_CLIENT_REQUEST_TIMEOUT
+              value: "62s"
+            - name: LOAD_TESTER_WORKER_CAPACITY
+              value: "10"
+            - name: LOAD_TESTER_WORKER_POLLING_DELAY
+              value: "{{.PollingDelay}}"
+            - name: LOAD_TESTER_WORKER_COMPLETION_DELAY
+              value: "50ms"
           resources:
             limits:
               cpu: 4

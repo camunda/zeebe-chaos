@@ -329,3 +329,65 @@ func mockedCredentials() *ClientCredentials {
 		ClientSecret: "SuperSecret",
 	}
 }
+
+func envValue(envs []v1.EnvVar, name string) string {
+	for _, e := range envs {
+		if e.Name == name {
+			return e.Value
+		}
+	}
+	return ""
+}
+
+func Test_ShouldRenderSpringBootEnvVarsForSelfManaged(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
+
+	// when
+	err := k8Client.CreateWorkerDeployment("testTag", 50, mockedCredentials())
+
+	// then
+	require.NoError(t, err)
+	deploymentList, err := k8Client.Clientset.AppsV1().Deployments(k8Client.GetCurrentNamespace()).List(context.TODO(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(deploymentList.Items))
+
+	envs := deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env
+	assert.Equal(t, "worker", envValue(envs, "SPRING_PROFILES_ACTIVE"))
+	assert.Equal(t, "http://sm-gateway-service:26500", envValue(envs, "CAMUNDA_CLIENT_GRPC_ADDRESS"))
+	assert.Equal(t, "http://sm-gateway-service:8080", envValue(envs, "CAMUNDA_CLIENT_REST_ADDRESS"))
+	assert.Equal(t, "false", envValue(envs, "CAMUNDA_CLIENT_PREFER_REST_OVER_GRPC"))
+	assert.Equal(t, "62s", envValue(envs, "CAMUNDA_CLIENT_REQUEST_TIMEOUT"))
+	assert.Equal(t, "10", envValue(envs, "LOAD_TESTER_WORKER_CAPACITY"))
+	assert.Equal(t, "50ms", envValue(envs, "LOAD_TESTER_WORKER_POLLING_DELAY"))
+	assert.Equal(t, "50ms", envValue(envs, "LOAD_TESTER_WORKER_COMPLETION_DELAY"))
+
+	// Auth credentials are carried by the legacy CAMUNDA_* env vars (consumed by the OLD
+	// camunda-cloud SDK directly). ZEEBE_AUTH_METHOD must engage OIDC when AuthServer is
+	// set; otherwise it defaults to "none" and no Authorization header is sent.
+	assert.Equal(t, "AuthServer", envValue(envs, "CAMUNDA_AUTHORIZATION_SERVER_URL"))
+	assert.Equal(t, "Audience", envValue(envs, "CAMUNDA_TOKEN_AUDIENCE"))
+	assert.Equal(t, "ClientId", envValue(envs, "CAMUNDA_CLIENT_ID"))
+	assert.Equal(t, "SuperSecret", envValue(envs, "CAMUNDA_CLIENT_SECRET"))
+	assert.Equal(t, "oidc", envValue(envs, "ZEEBE_AUTH_METHOD"))
+}
+
+func Test_ShouldRenderAuthMethodNoneWhenNoCredentials(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	setupGatewayServiceTarget(t, k8Client, "sm-gateway-service")
+
+	// when
+	err := k8Client.CreateWorkerDeploymentDefault()
+
+	// then
+	require.NoError(t, err)
+	deploymentList, err := k8Client.Clientset.AppsV1().Deployments(k8Client.GetCurrentNamespace()).List(context.TODO(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(deploymentList.Items))
+
+	envs := deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env
+	assert.Equal(t, "none", envValue(envs, "ZEEBE_AUTH_METHOD"))
+	assert.Equal(t, "", envValue(envs, "CAMUNDA_CLIENT_ID"))
+}
