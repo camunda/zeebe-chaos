@@ -32,13 +32,13 @@ spec:
                 -XX:+HeapDumpOnOutOfMemoryError
             - name: CAMUNDA_LOG_LEVEL
               value: "debug"
-            - name: CAMUNDA_AUTHORIZATION_SERVER_URL
+            - name: ZEEBE_AUTHORIZATION_SERVER_URL
               value: {{.AuthServer}}
-            - name: CAMUNDA_TOKEN_AUDIENCE
+            - name: ZEEBE_TOKEN_AUDIENCE
               value: {{.Audience}}
-            - name: CAMUNDA_CLIENT_ID
+            - name: ZEEBE_CLIENT_ID
               value: {{.ClientId}}
-            - name: CAMUNDA_CLIENT_SECRET
+            - name: ZEEBE_CLIENT_SECRET
               value: {{.ClientSecret}}
             - name: SPRING_PROFILES_ACTIVE
               value: "worker"
@@ -58,6 +58,8 @@ spec:
               value: "{{.PollingDelay}}"
             - name: LOAD_TESTER_WORKER_COMPLETION_DELAY
               value: "50ms"
+            - name: LOGGING_LEVEL_IO_CAMUNDA_ZEEBE
+              value: INFO
           resources:
             limits:
               cpu: 4

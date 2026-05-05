@@ -363,13 +363,15 @@ func Test_ShouldRenderSpringBootEnvVarsForSelfManaged(t *testing.T) {
 	assert.Equal(t, "50ms", envValue(envs, "LOAD_TESTER_WORKER_POLLING_DELAY"))
 	assert.Equal(t, "50ms", envValue(envs, "LOAD_TESTER_WORKER_COMPLETION_DELAY"))
 
-	// Auth credentials are carried by the legacy CAMUNDA_* env vars (consumed by the OLD
-	// camunda-cloud SDK directly). ZEEBE_AUTH_METHOD must engage OIDC when AuthServer is
-	// set; otherwise it defaults to "none" and no Authorization header is sent.
-	assert.Equal(t, "AuthServer", envValue(envs, "CAMUNDA_AUTHORIZATION_SERVER_URL"))
-	assert.Equal(t, "Audience", envValue(envs, "CAMUNDA_TOKEN_AUDIENCE"))
-	assert.Equal(t, "ClientId", envValue(envs, "CAMUNDA_CLIENT_ID"))
-	assert.Equal(t, "SuperSecret", envValue(envs, "CAMUNDA_CLIENT_SECRET"))
+	// The new Spring Boot starter resolves auth via ZEEBE_* env vars consumed by
+	// application.yaml's ${ZEEBE_*:…} placeholders. Legacy CAMUNDA_* names (used by the
+	// old camunda-cloud SDK) are not read by the starter, so they are not set here.
+	// ZEEBE_AUTH_METHOD must be "oidc" when AuthServer is set; otherwise the method
+	// defaults to "none" and no Authorization header is sent.
+	assert.Equal(t, "AuthServer", envValue(envs, "ZEEBE_AUTHORIZATION_SERVER_URL"))
+	assert.Equal(t, "Audience", envValue(envs, "ZEEBE_TOKEN_AUDIENCE"))
+	assert.Equal(t, "ClientId", envValue(envs, "ZEEBE_CLIENT_ID"))
+	assert.Equal(t, "SuperSecret", envValue(envs, "ZEEBE_CLIENT_SECRET"))
 	assert.Equal(t, "oidc", envValue(envs, "ZEEBE_AUTH_METHOD"))
 }
 
@@ -389,5 +391,5 @@ func Test_ShouldRenderAuthMethodNoneWhenNoCredentials(t *testing.T) {
 
 	envs := deploymentList.Items[0].Spec.Template.Spec.Containers[0].Env
 	assert.Equal(t, "none", envValue(envs, "ZEEBE_AUTH_METHOD"))
-	assert.Equal(t, "", envValue(envs, "CAMUNDA_CLIENT_ID"))
+	assert.Equal(t, "", envValue(envs, "ZEEBE_CLIENT_ID"))
 }
