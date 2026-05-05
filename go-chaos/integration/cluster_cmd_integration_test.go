@@ -38,7 +38,7 @@ func Test_ShouldBeAbleToQueryTopology(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for {
-		topology, err = cmd.QueryTopology(mappedPort.Int())
+		topology, err = cmd.QueryTopology(int(mappedPort.Num()))
 		require.NoError(t, err)
 		if topology.Version > 0 || ctx.Err() != nil {
 			break

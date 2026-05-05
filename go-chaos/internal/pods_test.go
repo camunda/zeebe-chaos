@@ -284,7 +284,7 @@ func Test_GetNoGatewayPods(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	require.NotNil(t, pods)
-	require.Empty(t, pods)
+	require.Empty(t, pods.Items)
 }
 
 func Test_GetNoGatewayPodNames(t *testing.T) {
