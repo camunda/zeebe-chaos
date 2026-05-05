@@ -35,7 +35,7 @@ func Test_ShouldBeAbleToDeployChaosModels(t *testing.T) {
 	defer container.StopLogProducer()
 	mappedPort, err := container.MappedPort(ctx, "26500/tcp")
 	require.NoError(t, err)
-	zeebeClient, err := internal.CreateZeebeClient(mappedPort.Int(), nil)
+	zeebeClient, err := internal.CreateZeebeClient(int(mappedPort.Num()), nil)
 	require.NoError(t, err)
 
 	// when
@@ -54,7 +54,7 @@ func Test_ShouldBeAbleToRunExperiments(t *testing.T) {
 	defer container.StopLogProducer()
 	mappedPort, err := container.MappedPort(ctx, "26500/tcp")
 	require.NoError(t, err)
-	zeebeClient, err := internal.CreateZeebeClient(mappedPort.Int(), nil)
+	zeebeClient, err := internal.CreateZeebeClient(int(mappedPort.Num()), nil)
 	require.NoError(t, err)
 	err = internal.DeployChaosModels(zeebeClient)
 
