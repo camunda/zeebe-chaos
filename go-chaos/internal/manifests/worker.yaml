@@ -60,6 +60,14 @@ spec:
               value: "50ms"
             - name: LOGGING_LEVEL_IO_CAMUNDA_ZEEBE
               value: INFO
+            - name: LOAD_TESTER_LOG_APPENDER
+              value: Stackdriver
+            - name: LOAD_TESTER_LOG_STACKDRIVER_SERVICENAME
+              value: load-tester
+            - name: LOAD_TESTER_LOG_STACKDRIVER_SERVICEVERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             limits:
               cpu: 4
