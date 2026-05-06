@@ -34,7 +34,7 @@ spec:
               value: "debug"
             - name: CAMUNDA_CLIENT_AUTH_TOKEN_URL
               value: {{.AuthServer}}
-            - name: CAMUNDA_CLIENT_AUTH_AUDIENCE
+            - name: ZEEBE_TOKEN_AUDIENCE
               value: {{.Audience}}
             - name: CAMUNDA_CLIENT_AUTH_CLIENT_ID
               value: {{.ClientId}}
@@ -44,9 +44,9 @@ spec:
               value: "worker"
             - name: CAMUNDA_CLIENT_AUTH_METHOD
               value: {{if .AuthServer}}"oidc"{{else}}"none"{{end}}
-            - name: CAMUNDA_CLIENT_GRPC_ADDRESS
+            - name: ZEEBE_GRPC_ADDRESS
               value: http://{{.ServiceName}}:26500
-            - name: CAMUNDA_CLIENT_REST_ADDRESS
+            - name: ZEEBE_REST_ADDRESS
               value: http://{{.ServiceName}}:8080
             - name: CAMUNDA_CLIENT_PREFER_REST_OVER_GRPC
               value: "false"
