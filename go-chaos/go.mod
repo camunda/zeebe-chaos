@@ -10,7 +10,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
-	golang.org/x/exp v0.0.0-20260528193900-50dc527dd6c7
+	golang.org/x/exp v0.0.0-20260529124908-c761662dc8c9
 	golang.org/x/mod v0.36.0
 	google.golang.org/grpc v1.81.1
 	k8s.io/api v0.36.1
