@@ -18,7 +18,7 @@ authors:
 
 On this Chaos Day, we conducted an experiment to observe the impact on Elasticsearch when deploying a large number of process versions to a Camunda cluster, and how that pressure propagates through Optimize, the Zeebe Elasticsearch exporter, and ultimately back to the Camunda engine itself. During recent investigations, we identified a dependency between deployed process models and Elasticsearch shard usage, and wanted to experiment with it to understand what happens when we deploy X process models and where the actual limit lies.
 
-**TL;DR;** We discovered a 1:1 relationship between Optimize indices and deployed processes, providing a clear, measurable limit on the number of process models that can coexist with Optimize on a given Elasticsearch cluster. Once the Elasticsearch cluster reaches its maximum normal shard limit (default `1000` per node, e.g., `3000` for a 3-node cluster), it stops creating new indices. The Zeebe engine remains unaffected initially. Our hypothesis is that the failure will cascade the next day, once the Zeebe Elasticsearch exporter attempts to create its new dated index and gets rejected. This would ultimately affect Camunda, causing unrecoverable backpressure.
+**TL;DR;** We discovered a 1:1 relationship between Optimize indices and deployed processes, providing a clear, measurable limit on the number of process models that can coexist with Optimize on a given Elasticsearch cluster. Once the Elasticsearch cluster reaches its maximum normal shard limit (default `1000` per node, e.g., `3000` for a 3-node cluster), it stops creating new indices. The Zeebe engine remains unaffected initially, but the failure cascades the next day: once the Zeebe Elasticsearch exporter attempts to create its new dated index, the request is rejected, the exporter stalls, and the Camunda engine hits unrecoverable backpressure. Recovery requires manual intervention (raise `cluster.max_shards_per_node`, add nodes, or delete indices).
 
 <!--truncate-->
 
@@ -58,18 +58,26 @@ Camunda continues to make progress temporarily because the archiver is decoupled
 
 ![](orchestration-cluster-after-shards-filled.png)
 
-#### The Critical Failure (Hypothesis)
+#### The Critical Failure (Confirmed)
 
-When we ended the test, the engine itself was still progressing, the `150 PI/s` workload was being processed without backpressure, and process instances kept completing. However, we expect the real damage to surface the next day. Our hypothesis is the following: when the Elasticsearch exporter attempts to create a new dated index (e.g., for the daily Zeebe record indices), the request will be rejected by Elasticsearch because no new shards can be allocated. This should block the exporter entirely, which would cascade into unrecoverable backpressure on the Camunda engine. At that point, process execution would halt, and manual intervention would be required to restore the cluster.
+When we ended the test, the engine itself was still progressing, the `150 PI/s` workload was being processed without backpressure, and process instances kept completing. The real damage surfaced the next day, as we expected. When the Zeebe Elasticsearch exporter rolled over and attempted to create its new dated index, Elasticsearch rejected the request for the same `max_shards_per_node` reason. The exporter stalled, backpressure propagated to the Camunda engine, and process execution halted. The cluster could only be recovered by manual intervention (raising the shard limit, adding nodes, or deleting indices).
 
-We will observe the cluster over the next day to verify the cascading failure and update this post with the findings.
+![](next-day-cascade-failure.png)
+
+Backpressure climbed to 100%:
+
+![](backpressure-rise-to-100.png)
+
+Processing dropped to 0:
+
+![](processing-drop-to-zero.png)
 
 ## What We Learned
 
 * **Optimize creates one index per deployed process model.** This 1:1 relationship is the root cause of the shard pressure. Combined with the default `1` shard + `1` replica per Optimize index ([source](https://github.com/camunda/camunda-operator/blob/8a82eb615853421330684d765cfb7d577c836b2a/templates/optimize_configmap_importer_archiver.yaml#L32)), each deployed process model consumes effectively `2` shards in the cluster. The shard count, therefore, grows as `2 × processes` and exhausts the cluster shard budget prematurely.
 * **Elasticsearch's shard limit is a hard ceiling for the whole platform.** Once `cluster.max_shards_per_node` is reached, no component can create new indices. Optimize import and archiver fail first.
-* **Camunda's engine stays healthy only as long as no new index needs to be created.** Runtime processing continues to work because the existing dated indices are still writable. The risk surfaces when a new dated index is needed (our hypothesis for the next-day cascade).
-* **Decoupling helps, but only delays the impact.** The archiver being decoupled from the engine hot path bought us time, but it did not prevent the eventual cascade once the exporter needs a new index.
+* **Camunda's engine stays healthy only as long as no new index needs to be created.** Runtime processing continues to work because the existing dated indices are still writable. The risk surfaces when a new dated index is needed, which is exactly what triggered the next-day cascade.
+* **Decoupling helps, but only delays the impact.** The archiver being decoupled from the engine hot path bought us time, but it did not prevent the eventual cascade once the exporter needed a new dated index.
 
 ## Possible Improvements
 
