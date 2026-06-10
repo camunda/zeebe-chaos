@@ -74,6 +74,30 @@ At the realistic workload, both clusters complete ~100% of started instances wit
 
 The realistic scenario is not throughput-constrained, so Optimize's overhead does not affect process execution. Where the difference shows up is in resources.
 
+#### Max workload: Latency
+
+![Latency comparison — max scenario](max-latency.png)
+
+| Metric | Base Max | No-Opt Max | Delta |
+|---|---|---|---|
+| Write-To-Processing latency | 3.25 ms | 6.79 ms | Factor ~2.1 |
+| Write-To-Exporting latency | 10s | 10s | 0 |
+| Data availability | 45.8s | 39.6s | ~6.2s |
+
+The latency metrics show an increase in Write-To-Processing latency without Optimize, which is expected since the cluster is completing more PI/s and thus has more work to do. However, the Write-To-Exporting latency is unchanged at 10s (the maximum value). The data availability latency is actually lower without Optimize, as there is less backpressure and the exporter can keep up with the load, resulting in faster data availability in Elasticsearch.
+
+#### Realistic workload: Latency
+
+![Latency comparison — realistic scenario](real-latency.png)
+
+| Metric | Base Realistic | No-Opt Realistic | Delta |
+|---|---|---|---|
+| Write-To-Processing latency | 26.8 ms | 20.5 ms | ~6.3 ms |
+| Write-To-Exporting latency | 42.2 ms | 16.2 ms | ~26 ms |
+| Data availability | 1.88 s | 1.77 s | ~0.11 s |
+
+Without Optimize all latencies are lower, with the most significant difference in Write-To-Exporting latency which is 2.6x higher with Optimize. This is likely because the exporter is doing more work.
+
 #### Max load: CPU
 
 ![CPU — max scenario](max-cpu.png)
