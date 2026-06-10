@@ -17,7 +17,7 @@ authors:
 
 On this Chaos Day, we measured the impact of Optimize on cluster performance and resource usage. We ran four 2-day load tests on Camunda 8.9.6 — two with Optimize enabled (max and realistic workloads) and two without — and compared throughput, latency, CPU, memory, and disk across all four.
 
-**TL;DR;** Optimize has a measurable negative impact on throughput under high load (-22% completed PI/s), but the most striking finding is its additional CPU load on Elasticsearch and extra disk footprint at a realistic workload: Elasticsearch CPU was 3.4x higher with Optimize enabled. After two days at a realistic workload, the cluster with Optimize accumulated a maximum of **221.5 GiB of ES data **, vs. 61.5 GiB without Optimize, a 3.6x difference. This is a critical finding for customers running Optimize at production scale, as it means that ES resources must be sized to account for Optimize's overhead, even at non-stress workloads.
+**TL;DR;** Optimize has a measurable negative impact on throughput under high load (**-22% completed PI/s**), but the most striking finding is its additional CPU load on Elasticsearch and extra disk footprint at a realistic workload: **Elasticsearch CPU was 3.4x higher with Optimize enabled**. After two days at a realistic workload, the cluster with Optimize accumulated a maximum of 221.5 GiB of ES data, vs. 61.5 GiB without Optimize, a **3.6x difference**. This is a critical finding for customers running Optimize at production scale, as it means that ES resources must be sized to account for Optimize's overhead, even at non-stress workloads.
 
 <!--truncate-->
 
