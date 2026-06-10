@@ -36,6 +36,14 @@
 <p>At the realistic workload, both clusters complete ~100% of started instances with zero backpressure, so from a correctness and latency standpoint, the workload is comfortably within limits either way:</p>
 <table><thead><tr><th>Metric</th><th>Base Realistic</th><th>No-Opt Realistic</th></tr></thead><tbody><tr><td>Completed PI/s</td><td>1.0</td><td>1.0</td></tr><tr><td>Completion ratio</td><td>99.9%</td><td>100%</td></tr><tr><td>Backpressure</td><td>0%</td><td>0%</td></tr></tbody></table>
 <p>The realistic scenario is not throughput-constrained, so Optimize's overhead does not affect process execution. Where the difference shows up is in resources.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="max-workload-latency">Max workload: Latency<a href="https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda#max-workload-latency" class="hash-link" aria-label="Direct link to Max workload: Latency" title="Direct link to Max workload: Latency" translate="no">​</a></h4>
+<p><img decoding="async" loading="lazy" alt="Latency comparison — max scenario" src="https://camunda.github.io/zeebe-chaos/assets/images/max-latency-13c892e64d319ded6601f69e36d2ca5e.png" width="3328" height="893" class="img_ev3q"></p>
+<table><thead><tr><th>Metric</th><th>Base Max</th><th>No-Opt Max</th><th>Delta</th></tr></thead><tbody><tr><td>Write-To-Processing latency</td><td>3.25 ms</td><td>6.79 ms</td><td>Factor ~2.1</td></tr><tr><td>Write-To-Exporting latency</td><td>10s</td><td>10s</td><td>0</td></tr><tr><td>Data availability</td><td>45.8s</td><td>39.6s</td><td>~6.2s</td></tr></tbody></table>
+<p>The latency metrics show an increase in Write-To-Processing latency without Optimize, which is expected since the cluster is completing more PI/s and thus has more work to do. However, the Write-To-Exporting latency is unchanged at 10s (the maximum value). The data availability latency is actually lower without Optimize, as there is less backpressure and the exporter can keep up with the load, resulting in faster data availability in Elasticsearch.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="realistic-workload-latency">Realistic workload: Latency<a href="https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda#realistic-workload-latency" class="hash-link" aria-label="Direct link to Realistic workload: Latency" title="Direct link to Realistic workload: Latency" translate="no">​</a></h4>
+<p><img decoding="async" loading="lazy" alt="Latency comparison — realistic scenario" src="https://camunda.github.io/zeebe-chaos/assets/images/real-latency-e417e11c70876ff0b3c6f64f09c80899.png" width="3306" height="880" class="img_ev3q"></p>
+<table><thead><tr><th>Metric</th><th>Base Realistic</th><th>No-Opt Realistic</th><th>Delta</th></tr></thead><tbody><tr><td>Write-To-Processing latency</td><td>26.8 ms</td><td>20.5 ms</td><td>~6.3 ms</td></tr><tr><td>Write-To-Exporting latency</td><td>42.2 ms</td><td>16.2 ms</td><td>~26 ms</td></tr><tr><td>Data availability</td><td>1.88 s</td><td>1.77 s</td><td>~0.11 s</td></tr></tbody></table>
+<p>Without Optimize all latencies are lower, with the most significant difference in Write-To-Exporting latency which is 2.6x higher with Optimize. This is likely because the exporter is doing more work.</p>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="max-load-cpu">Max load: CPU<a href="https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda#max-load-cpu" class="hash-link" aria-label="Direct link to Max load: CPU" title="Direct link to Max load: CPU" translate="no">​</a></h4>
 <p><img decoding="async" loading="lazy" alt="CPU — max scenario" src="https://camunda.github.io/zeebe-chaos/assets/images/max-cpu-1115c9b126b0dcafa09272b1348fc6b6.png" width="3303" height="704" class="img_ev3q"></p>
 <table><thead><tr><th>Metric</th><th>Base Max</th><th>No-Opt Max</th><th>Delta</th></tr></thead><tbody><tr><td>Camunda CPU (cores)</td><td>2.7</td><td>2.98</td><td>0.28</td></tr><tr><td>ES CPU (cores)</td><td>7</td><td>6.98</td><td>~0.02</td></tr></tbody></table>
@@ -297,66 +305,6 @@ We were able to increase to 400 PI/s, and it worked without any issues. When we 
             <category>availability</category>
         </item>
         <item>
-            <title><![CDATA[C8 on ECS: Restart Tasks]]></title>
-            <link>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker</link>
-            <guid>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker</guid>
-            <pubDate>Wed, 25 Mar 2026 00:00:00 GMT</pubDate>
-            <description><![CDATA[With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.]]></description>
-            <content:encoded><![CDATA[<p>With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.</p>
-<p>To make this work safely, the Camunda 8 ECS reference architecture introduces a dynamic NodeIdProvider backed by Amazon S3. Each ECS task:</p>
-<ul>
-<li class="">Competes for a lease stored in S3 that represents a specific logical broker node ID.</li>
-<li class="">When it acquires the lease, it becomes that broker and uses a dedicated directory on shared EFS for its data.</li>
-<li class="">Periodically renews the lease; if renewal fails or preconditions are violated, the task shts down immediately to avoid corrupting data or having two brokers think they own the same node.</li>
-</ul>
-<p>The experiments in this post tests how well this S3-backed lease mechanism behaves under specfic failure scenarios where a task is killed and replaced by a new one.</p>
-<h1>Experiment</h1>
-<p>Our first chaos experiment on ECS was simple: what happens to a Camunda 8 cluster on AWS ECS when we kill a single broker task by hand?</p>
-<p>The cluster was running Camunda 8 (Zeebe) on AWS ECS with 3 brokers and 3 partitions. Before we started the experiment, the dashboards showed a healthy topology, stable processing and exporting rates. The AWS console confirmed three running, healthy tasks for the orchestration cluster service.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="baseline-healthy-3-broker-cluster">Baseline: healthy 3-broker cluster<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#baseline-healthy-3-broker-cluster" class="hash-link" aria-label="Direct link to Baseline: healthy 3-broker cluster" title="Direct link to Baseline: healthy 3-broker cluster" translate="no">​</a></h2>
-<p>At steady state:</p>
-<ul>
-<li class=""><strong>Cluster topology</strong>: 3 brokers, each participating in the 3 partitions as leader or follower.</li>
-<li class=""><strong>Health</strong>: All partitions reported as healthy, with no restarts.</li>
-<li class=""><strong>Throughput</strong>: Processing and exporting metrics were flat and stable.</li>
-<li class=""><strong>ECS</strong>: Service view showed 3/3 tasks running and healthy.</li>
-</ul>
-<p><img decoding="async" loading="lazy" alt="Dashboard showing healthy brokers" src="https://camunda.github.io/zeebe-chaos/assets/images/1-healthy-dashboard-baf70b3660dab59d4cd79ca03a6158d6.png" width="1602" height="683" class="img_ev3q"></p>
-<p><img decoding="async" loading="lazy" alt="AWS console showing healthy tasks" src="https://camunda.github.io/zeebe-chaos/assets/images/2-healthy-service-2b6929389d10fa879038fa277dc683f1.png" width="1717" height="638" class="img_ev3q"></p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="injecting-failure-stopping-one-ecs-task">Injecting failure: stopping one ECS task<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#injecting-failure-stopping-one-ecs-task" class="hash-link" aria-label="Direct link to Injecting failure: stopping one ECS task" title="Direct link to Injecting failure: stopping one ECS task" translate="no">​</a></h2>
-<p>To inject a failure, we manually stopped one of the ECS tasks for the orchestration cluster from the AWS console.</p>
-<p><img decoding="async" loading="lazy" alt="Stop task from AWS console" src="https://camunda.github.io/zeebe-chaos/assets/images/3-stop-task-0d020e3680e83bb32907bcfdd73f6dfe.png" width="1717" height="638" class="img_ev3q"></p>
-<p>This triggers a graceful shutdown of the broker, and we can see that NodeIdProvider released its S3 lease.</p>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.666] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.repository.s3.S3NodeIdRepository - Release lease Initialized[metadata=Metadata[task=Optional[03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7], version=Version[version=1], acquirable=true], lease=Lease[taskId=03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7, timestamp=1774431273727, nodeInstance=NodeInstance[id=1, version=Version[version=1]], knownVersionMappings=VersionMappings[mappingsByNodeId={0=Version[version=1], 1=Version[version=1], 2=Version[version=1]}]], eTag="07b2daecf534e87cae5a3993f1102b22"]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.638] [SpringApplicationShutdownHook] [{broker-id=Broker-1}] INFO io.camunda.zeebe.broker.system - Broker shut down.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster```</span><br></div></code></pre></div></div>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="replacement-task-and-recovery">Replacement task and recovery<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#replacement-task-and-recovery" class="hash-link" aria-label="Direct link to Replacement task and recovery" title="Direct link to Replacement task and recovery" translate="no">​</a></h2>
-<p>ECS replaces the stopped task to meet the configured desired task count.</p>
-<ol>
-<li class="">The old task went into <em>deprovisioning</em> and eventually <em>stopped</em>.</li>
-</ol>
-<p><img decoding="async" loading="lazy" alt="Deprovisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/4-deprovisioning-feb18a6d43129e5235f33d107838be99.png" width="1596" height="587" class="img_ev3q"></p>
-<ol start="2">
-<li class="">ECS launched a new task for the same service a couple of minutes later.</li>
-</ol>
-<p><img decoding="async" loading="lazy" alt="Provisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/5-provisioning-0f6d1173d62450f54658736a228e9e19.png" width="1695" height="595" class="img_ev3q">
-3. On startup, the new broker instance:</p>
-<ul>
-<li class="">Acquired the S3 lease for the same logical node with a new version (v2).</li>
-<li class="">Copied the previous data directory into a fresh <code>v2</code> directory (versioned data layout).</li>
-</ul>
-<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.555] [main] INFO io.camunda.zeebe.dynamic.nodeid.fs.VersionedNodeIdBasedDataDirectoryProvider - Initializing data directory /usr/local/camunda/data/node-1/v2 by copying from /usr/local/camunda/data/node-1/v1</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.037] [main] WARN io.camunda.configuration.beanoverrides.BrokerBasedPropertiesOverride - The following legacy property is no longer supported and should be removed in favor of 'camunda.data.exporters': zeebe.broker.exporters</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.979] [main] WARN io.camunda.configuration.UnifiedConfigurationHelper - The following legacy configuration properties should be removed in favor of 'camunda.data.primary-storage.directory': zeebe.broker.data.directory</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.912] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.RepositoryNodeIdProvider - Acquired lease w/ nodeId=NodeInstance[id=1, version=Version[version=2]]. Initialized[metadata=Metadata[task=Optional[5228b3d3-7cde-4365-b4c5-7afd0ae094cd], version=Version[version=2], acquirable=true], lease=Lease[taskId=5228b3d3-7cde-4365-b4c5-7afd0ae094cd, timestamp=1774431401724, nodeInstance=NodeInstance[id=1, version=Version[version=2]], knownVersionMappings=VersionMappings[mappingsByNodeId={1=Version[version=2]}]], eTag="9f0c6e1c2a92bbaa1fde872e1d545e05"]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div></code></pre></div></div>
-<p>The new task becomes healthy and the orchestration cluster service is now fully healthy.</p>
-<p><img decoding="async" loading="lazy" alt="Recovered" src="https://camunda.github.io/zeebe-chaos/assets/images/6-recovery-d3802107d3932e3f1d296fbfde6d428d.png" width="1378" height="476" class="img_ev3q"></p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-we-learned">What we learned<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#what-we-learned" class="hash-link" aria-label="Direct link to What we learned" title="Direct link to What we learned" translate="no">​</a></h2>
-<p>This first experiment validated that:</p>
-<ul>
-<li class=""><strong>S3-based leases behave correctly under node loss</strong>: when a task is killed, the broker releases its lease, and a new task can safely acquire a new versioned lease.</li>
-<li class=""><strong>Graceful shutdown still happens under forced task stop</strong>: even though we stopped the task from the ECS console, the broker had enough time to drain and shut down its internal components cleanly.</li>
-<li class=""><strong>Replace task becomes healthy</strong>: the replacement task comes up, reuses the data via a new versioned directory, and rejoins the cluster without any issues.</li>
-</ul>]]></content:encoded>
-            <category>availability</category>
-            <category>ecs</category>
-        </item>
-        <item>
             <title><![CDATA[C8 on ECS: Simulate loss of lease]]></title>
             <link>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation</link>
             <guid>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation</guid>
@@ -456,6 +404,66 @@ We were able to increase to 400 PI/s, and it worked without any issues. When we 
 <p><img decoding="async" loading="lazy" alt="Healthy Service" src="https://camunda.github.io/zeebe-chaos/assets/images/1-healthy-01afde103102aa59518d7773cdbca12a.png" width="1920" height="590" class="img_ev3q"></p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="takeaways">Takeaways<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-S3-manipulation#takeaways" class="hash-link" aria-label="Direct link to Takeaways" title="Direct link to Takeaways" translate="no">​</a></h2>
 <p>Overall, this experiment shows that when a broker loses its lease and another broker acquires it, the combination of NodeIdProvider safety checks and ECS rescheduling steers the system toward a safe recovery path rather than silent data corruption.</p>]]></content:encoded>
+            <category>ecs</category>
+        </item>
+        <item>
+            <title><![CDATA[C8 on ECS: Restart Tasks]]></title>
+            <link>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker</link>
+            <guid>https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker</guid>
+            <pubDate>Wed, 25 Mar 2026 00:00:00 GMT</pubDate>
+            <description><![CDATA[With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.]]></description>
+            <content:encoded><![CDATA[<p>With 8.9, we support C8 deployments on ECS. Camunda 8 is originally designed for Kubernetes StatefulSets, where each broker has a stable identity and disk. On Amazon ECS, tasks are ephemeral: IPs and container instances change frequently, and you rely on external storage like EFS and S3 instead of node-local disks.</p>
+<p>To make this work safely, the Camunda 8 ECS reference architecture introduces a dynamic NodeIdProvider backed by Amazon S3. Each ECS task:</p>
+<ul>
+<li class="">Competes for a lease stored in S3 that represents a specific logical broker node ID.</li>
+<li class="">When it acquires the lease, it becomes that broker and uses a dedicated directory on shared EFS for its data.</li>
+<li class="">Periodically renews the lease; if renewal fails or preconditions are violated, the task shts down immediately to avoid corrupting data or having two brokers think they own the same node.</li>
+</ul>
+<p>The experiments in this post tests how well this S3-backed lease mechanism behaves under specfic failure scenarios where a task is killed and replaced by a new one.</p>
+<h1>Experiment</h1>
+<p>Our first chaos experiment on ECS was simple: what happens to a Camunda 8 cluster on AWS ECS when we kill a single broker task by hand?</p>
+<p>The cluster was running Camunda 8 (Zeebe) on AWS ECS with 3 brokers and 3 partitions. Before we started the experiment, the dashboards showed a healthy topology, stable processing and exporting rates. The AWS console confirmed three running, healthy tasks for the orchestration cluster service.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="baseline-healthy-3-broker-cluster">Baseline: healthy 3-broker cluster<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#baseline-healthy-3-broker-cluster" class="hash-link" aria-label="Direct link to Baseline: healthy 3-broker cluster" title="Direct link to Baseline: healthy 3-broker cluster" translate="no">​</a></h2>
+<p>At steady state:</p>
+<ul>
+<li class=""><strong>Cluster topology</strong>: 3 brokers, each participating in the 3 partitions as leader or follower.</li>
+<li class=""><strong>Health</strong>: All partitions reported as healthy, with no restarts.</li>
+<li class=""><strong>Throughput</strong>: Processing and exporting metrics were flat and stable.</li>
+<li class=""><strong>ECS</strong>: Service view showed 3/3 tasks running and healthy.</li>
+</ul>
+<p><img decoding="async" loading="lazy" alt="Dashboard showing healthy brokers" src="https://camunda.github.io/zeebe-chaos/assets/images/1-healthy-dashboard-baf70b3660dab59d4cd79ca03a6158d6.png" width="1602" height="683" class="img_ev3q"></p>
+<p><img decoding="async" loading="lazy" alt="AWS console showing healthy tasks" src="https://camunda.github.io/zeebe-chaos/assets/images/2-healthy-service-2b6929389d10fa879038fa277dc683f1.png" width="1717" height="638" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="injecting-failure-stopping-one-ecs-task">Injecting failure: stopping one ECS task<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#injecting-failure-stopping-one-ecs-task" class="hash-link" aria-label="Direct link to Injecting failure: stopping one ECS task" title="Direct link to Injecting failure: stopping one ECS task" translate="no">​</a></h2>
+<p>To inject a failure, we manually stopped one of the ECS tasks for the orchestration cluster from the AWS console.</p>
+<p><img decoding="async" loading="lazy" alt="Stop task from AWS console" src="https://camunda.github.io/zeebe-chaos/assets/images/3-stop-task-0d020e3680e83bb32907bcfdd73f6dfe.png" width="1717" height="638" class="img_ev3q"></p>
+<p>This triggers a graceful shutdown of the broker, and we can see that NodeIdProvider released its S3 lease.</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.666] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.repository.s3.S3NodeIdRepository - Release lease Initialized[metadata=Metadata[task=Optional[03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7], version=Version[version=1], acquirable=true], lease=Lease[taskId=03acfc2a-6ff8-4e76-8e56-0a2a4e7227e7, timestamp=1774431273727, nodeInstance=NodeInstance[id=1, version=Version[version=1]], knownVersionMappings=VersionMappings[mappingsByNodeId={0=Version[version=1], 1=Version[version=1], 2=Version[version=1]}]], eTag="07b2daecf534e87cae5a3993f1102b22"]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:34</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:34:19.638] [SpringApplicationShutdownHook] [{broker-id=Broker-1}] INFO io.camunda.zeebe.broker.system - Broker shut down.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster```</span><br></div></code></pre></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="replacement-task-and-recovery">Replacement task and recovery<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#replacement-task-and-recovery" class="hash-link" aria-label="Direct link to Replacement task and recovery" title="Direct link to Replacement task and recovery" translate="no">​</a></h2>
+<p>ECS replaces the stopped task to meet the configured desired task count.</p>
+<ol>
+<li class="">The old task went into <em>deprovisioning</em> and eventually <em>stopped</em>.</li>
+</ol>
+<p><img decoding="async" loading="lazy" alt="Deprovisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/4-deprovisioning-feb18a6d43129e5235f33d107838be99.png" width="1596" height="587" class="img_ev3q"></p>
+<ol start="2">
+<li class="">ECS launched a new task for the same service a couple of minutes later.</li>
+</ol>
+<p><img decoding="async" loading="lazy" alt="Provisioning" src="https://camunda.github.io/zeebe-chaos/assets/images/5-provisioning-0f6d1173d62450f54658736a228e9e19.png" width="1695" height="595" class="img_ev3q">
+3. On startup, the new broker instance:</p>
+<ul>
+<li class="">Acquired the S3 lease for the same logical node with a new version (v2).</li>
+<li class="">Copied the previous data directory into a fresh <code>v2</code> directory (versioned data layout).</li>
+</ul>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.555] [main] INFO io.camunda.zeebe.dynamic.nodeid.fs.VersionedNodeIdBasedDataDirectoryProvider - Initializing data directory /usr/local/camunda/data/node-1/v2 by copying from /usr/local/camunda/data/node-1/v1</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:27.037] [main] WARN io.camunda.configuration.beanoverrides.BrokerBasedPropertiesOverride - The following legacy property is no longer supported and should be removed in favor of 'camunda.data.exporters': zeebe.broker.exporters</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.979] [main] WARN io.camunda.configuration.UnifiedConfigurationHelper - The following legacy configuration properties should be removed in favor of 'camunda.data.primary-storage.directory': zeebe.broker.data.directory</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">March 25, 2026, 10:36</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[2026-03-25 09:36:26.912] [NodeIdProvider] INFO io.camunda.zeebe.dynamic.nodeid.RepositoryNodeIdProvider - Acquired lease w/ nodeId=NodeInstance[id=1, version=Version[version=2]]. Initialized[metadata=Metadata[task=Optional[5228b3d3-7cde-4365-b4c5-7afd0ae094cd], version=Version[version=2], acquirable=true], lease=Lease[taskId=5228b3d3-7cde-4365-b4c5-7afd0ae094cd, timestamp=1774431401724, nodeInstance=NodeInstance[id=1, version=Version[version=2]], knownVersionMappings=VersionMappings[mappingsByNodeId={1=Version[version=2]}]], eTag="9f0c6e1c2a92bbaa1fde872e1d545e05"]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">orchestration-cluster</span><br></div></code></pre></div></div>
+<p>The new task becomes healthy and the orchestration cluster service is now fully healthy.</p>
+<p><img decoding="async" loading="lazy" alt="Recovered" src="https://camunda.github.io/zeebe-chaos/assets/images/6-recovery-d3802107d3932e3f1d296fbfde6d428d.png" width="1378" height="476" class="img_ev3q"></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-we-learned">What we learned<a href="https://camunda.github.io/zeebe-chaos/2026/03/25/ECS-stop-broker#what-we-learned" class="hash-link" aria-label="Direct link to What we learned" title="Direct link to What we learned" translate="no">​</a></h2>
+<p>This first experiment validated that:</p>
+<ul>
+<li class=""><strong>S3-based leases behave correctly under node loss</strong>: when a task is killed, the broker releases its lease, and a new task can safely acquire a new versioned lease.</li>
+<li class=""><strong>Graceful shutdown still happens under forced task stop</strong>: even though we stopped the task from the ECS console, the broker had enough time to drain and shut down its internal components cleanly.</li>
+<li class=""><strong>Replace task becomes healthy</strong>: the replacement task comes up, reuses the data via a new versioned directory, and rejoins the cluster without any issues.</li>
+</ul>]]></content:encoded>
+            <category>availability</category>
             <category>ecs</category>
         </item>
         <item>
