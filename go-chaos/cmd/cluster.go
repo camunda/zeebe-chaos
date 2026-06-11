@@ -295,8 +295,9 @@ func portForwardAndWaitForChange(flags *Flags) error {
 	port, closePortForward := k8Client.MustGatewayPortForward(0, 9600)
 	defer closePortForward()
 
-	// Wait for shorter time. Retry and longer timeout can be configured in the chaos experiment description
-	timeout := time.Minute * 5
+	// Allow enough time for large Raft snapshot transfers during data-loss recovery.
+	// Retries and a longer overall budget can be configured in the chaos experiment description.
+	timeout := time.Minute * 15
 	return waitForChange(port, flags.changeId, timeout)
 }
 
@@ -342,7 +343,7 @@ func waitForChange(port int, changeId int64, timeout time.Duration) error {
 		time.Sleep(interval)
 	}
 
-	return fmt.Errorf("change %d did not complete within 25 minutes", changeId)
+	return fmt.Errorf("change %d did not complete within %s", changeId, timeout)
 }
 
 func forceFailover(flags *Flags) error {
