@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.25
 FROM golang:alpine as builder
 RUN apk update && apk upgrade && apk add --no-cache ca-certificates && update-ca-certificates
 WORKDIR /app
