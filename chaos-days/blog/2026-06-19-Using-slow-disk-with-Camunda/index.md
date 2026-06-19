@@ -7,15 +7,17 @@ categories:
   - bpmn
 tags:
   - availability
-authors: zell
+authors:
+- zell
+- jon
 ---
 
 # Chaos Day Summary
 
 
-In todays, Chaos day we wanted to experiment with slow disk related issues as we have recently run into some incidents realted to that. We want to understand and document how Camunda behaves in such scenarios. 
+In today's Chaos Day, we wanted to experiment with slow disks. As we have recently run into some incidents related to that. We want to understand and document how Camunda behaves in such scenarios. 
 
-We have two main experiments planned: one about using slow disks for the primary storage and one for the secondary storage (in this case Elasticsearch).
+We have two main experiments planned: one for primary storage and one for secondary storage (in this case, Elasticsearch) using slow disks.
 
 
 
@@ -28,20 +30,20 @@ We have two main experiments planned: one about using slow disks for the primary
 
 ## Chaos experiment: Slow disk on primary storage
 
-We have certain recommendations for disk types in our [documentation](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements), especially using SSDs, high-throughput low-latency disks, as Camunda is an IO tense application. What we miss as part of our documentation is to actual show case why this is important. 
+We have certain recommendations for disk types in our [documentation](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements), especially using SSDs, high-throughput, low-latency disks, as Camunda is an IO-intensive application. What we miss in our documentation is actually showing why this is important. 
 
-In this experiment we want to understand how the Camunda cluster behaves when the primary storage disks are slow. How does this affect the performance and availability of the cluster.
+In this experiment, we want to understand how the Camunda cluster behaves when the primary storage disks are slow. How does this affect the cluster's performance and availability?
 
-We plan to setup an realistic load test, with a Camunda cluster using a standard hard disk for the primary storage.
+We plan to set up a realistic load test using a Camunda cluster with a standard hard disk for primary storage.
 
 
 ### Expected 
 
-We only support SSDs, as Camunda is in general IO intensive, and we expect that using slower disks will cause performance degradation. We expect that the system may become unresponsive, and we may see timeouts and increased latency in processing requests.
+We only support SSDs, as Camunda is generally IO-intensive, and we expect that using slower disks will degrade performance. We expect the system to become unresponsive, leading to timeouts and increased request processing latency.
 
 #### Actual
 
-As we runnig our tests and setup in GCP, we make use of what GCP us offers as standard hard disks.
+As we run our tests and set up in GCP, we use the standard hard disks that GCP provides.
 
 [GCP persistent disk types:](https://docs.cloud.google.com/compute/docs/disks/persistent-disks#disk-types) The standard storage class maps to the pd-standard GCP disk type:
 
@@ -71,96 +73,96 @@ orchestration:
 +  pvcStorageClassName: standard
 ```
 
-We will compare this test with our 8.9.x release tests that use SSDs, to see the difference in performance and availability.
+We will compare this test with our 8.9. x release tests that use SSDs to see the difference in performance and availability.
 
-During the begin of the test the throughput looked promising, but after maybe 30 minutes we see a significant drop in throughput, and the latency increases significantly. Compared to the same test with SSDs, we see a significant performance degradation of around 50%.
+At the beginning of the test, the throughput looked promising, but after about 30 minutes, we saw a significant drop in throughput, and latency increased. Compared to the same test with SSDs, we see a significant performance degradation of around 50%.
 
 ![general](general.png)
 
-We can see in the release test for 8.9 that at the start it struggled as well, because some load test applications restarted, but later it run stable with ~51 PI/s and 101 Tasks per second, while the test with standard disks run with ~25 PI/s and ~58 Tasks per second.
+We can see in the release test for 8.9 that at the start it struggled as well, because some load test applications restarted, but later it ran stably at ~51 PI/s and ~101 Tasks per second, while the test with standard disks ran at ~25 PI/s and ~58 Tasks per second.
 
-It is interesting to note that base on [GCP docummentation the disk throughput](https://docs.cloud.google.com/compute/docs/disks/performance#pd-ssd_12) looks similar. Some could wonder what is the difference here, and why we need to use SSDs. The difference is that the standard disks have a much higher latency, which can cause significant performance degradation for an IO intensive application like Camunda.
+It is interesting to note that, based on [GCP documentation, the disk throughput](https://docs.cloud.google.com/compute/docs/disks/performance#pd-ssd_12) looks similar. Some might wonder what the difference is here and why we need to use SSDs. The difference is that the standard disks have a much higher latency, which can cause significant performance degradation for an IO-intensive application like Camunda. This is not well documented in hyperscalers like this.
 
 ![disk-perf](disk-perf.png)
 
-This can especially seen in the record write and commit latencies.
+This can be especially seen in the record write and commit latencies.
 
 ![commit-latencies](commit-latencies.png)
 
-These latencies have a significant impact on the overall performance of the cluster. As a leader needs to replicate and commit first an command before it is allowed to process and response to it. A follower needs to write and flush such, before it can acknowledge the replication to the leader. 
+These latencies have a significant impact on the cluster's overall performance. As a leader, one needs to replicate and commit to a command before it is allowed to process and respond to it. A follower needs to write and flush such before it can acknowledge the replication to the leader. 
 
 ![overall-processing](overall-processing.png)
 
-This means that the latency of the disk directly impacts the latency of processing requests, and can cause significant performance degradation as we also see in the metrics.
+This means that the disk's latency directly impacts request processing latency and can cause significant performance degradation, as we also see in the metrics.
 
-Using slower disks is not only impacting the general processing performance, but also disrupting the underlying RAFT cluster.
+Using slower disks not only affects overall processing performance but also disrupts the underlying RAFT cluster.
 
 ![raft-snapshot](raft-snapshot.png)
 ![non-committed](non-committed.png)
 
 
-Slower followers as in the base, lag behind the leader even more, and this will cause snapshot replications. Depending on the disk latency this could even cause more severe issues, retry-loops on append for example.Depending on the state size (snapshot size) this could put more load on the network as well.
+If followers are slow, they lag behind the leader even more than they would naturally, which is already the case, and this will cause snapshot replications. Depending on disk latency, this could even cause more severe issues, such as retry loops on append operations. Depending on the state size (snapshot size), this could put additional load on the network.
 
 
 ## Conclusion
 
-We were able to show what kind of negative impact slow disks can have. We were able to reproduce significant performance degradation, increased latency with using simple HDDs. With this it is visible that not only disk throughput is important but also disk latency.
+We were able to demonstrate the negative impact that slow disks can have. We were able to reproduce significant performance degradation and increased latency when using simple HDDs. With this, it is visible that not only disk throughput is important, but also disk latency.
 
-This is why we [recommend using SSDs](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements) for the primary storage of Camunda clusters, as it significantly improves the performance and availability of the cluster.
+This is why we [recommend using SSDs](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements) for the primary storage in Camunda clusters, as they significantly improve performance and availability.
 
 ## Chaos experiment: Slow disk on secondary storage
 
-Similar to the first experiment we want to understand how the Camunda cluster behaves when we use a slower disk for the secondary storage. In this case we will use Elasticsearch as the secondary storage.
+Similar to the first experiment, we want to understand how the Camunda cluster behaves when we use a slower disk for the secondary storage. In this case, we will use Elasticsearch as the secondary storage.
 
-As part of our documentation we recommend using SSDs for Camunda (primary storage), but for the secondary storage we do not have a specific recommendation in the [reference architecture](https://docs.camunda.io/docs/next/self-managed/reference-architecture/#secondary-storage-architecture) or [sizing guides](https://docs.camunda.io/docs/next/components/best-practices/architecture/sizing-self-managed/#elasticsearch-scaling).
+As part of our documentation, we recommend using SSDs for Camunda (primary storage), but we do not have a specific recommendation for secondary storage in the [reference architecture](https://docs.camunda.io/docs/next/self-managed/reference-architecture/#secondary-storage-architecture) or [sizing guides](https://docs.camunda.io/docs/next/components/best-practices/architecture/sizing-self-managed/#elasticsearch-scaling).
 
 
 ### Expected 
 
-In general, it must be clear that if the secondary storage is not performing well, this will have a negative impact on Camunda (see other related posts).
+In general, it must be clear that if secondary storage is not performing well, it will negatively impact Camunda (see related posts).
 
 ### Actual
 
-Setup follows similar pattern as [above](#actual), but we will use a slower disk for the Elasticsearch nodes. We will compare this test with our 8.9.x release tests that use SSDs, to see the difference in performance and availability.
+Setup follows a similar pattern as [above](#actual), but we will use a slower disk for the Elasticsearch nodes. We will compare this test with our 8.9.x release tests that use SSDs to see the difference in performance and availability.
 
 
 ![general](exp2-general.png)
 
 
-The performance of the cluster is even worse as the first experiment, with a significant drop in throughput and increased latency. We see that the performance is around 15.1 PI/s and 47.1 Tasks per second, which is a significant degradation compared to the test with SSDs.
+The cluster's performance is even worse than in the first experiment, with a significant drop in throughput and increased latency. We see that the performance is around 15.1 PI/s and 47.1 Tasks per second, which is a significant degradation compared to the test with SSDs.
 
-The backpressure is also significantly higher, as in the first experiment, which indicates that the cluster is struggling to keep up with the load. The backpressure is tighly coupled with the exporting backlog which would explain this. We have a constant backlog of ~200k records that are not exported.
+The backpressure is also significantly higher, as in the first experiment, which indicates that the cluster is struggling to keep up with the load. The backpressure is tightly coupled with the exporting backlog, which would explain this. We have a constant backlog of ~200k records that are not exported.
 
 ![exporting](exp2-export.png)
 
-Obviously, this impacts the data availability measurment and is on its maximum value.
+Obviously, this affects the data availability measurement and reaches its maximum value.
 
 ![data-avail](exp2-data-avail.png)
 
-We can see in the exporter metrics that flush to elasticsearch has a much higher latency now.
+We can see in the exporter metrics that flushes to Elasticsearch now have much higher latency.
 
 ![es-exporter](exp2-es-exporter.png)
 
 ![camunda-exporter](exp2-camunda-exporter.png)
 
-Flush duration goes up to 8-10 seconds.
+Flush duration can reach 8-10 seconds.
 
-In CPU metrics we wouldn't see anything in this case, as the cluster is not able to process as much requests (not handling the same throughput), and the CPU is not fully utilized.
+In CPU metrics, we wouldn't see anything in this case, as the cluster isn't able to process as many requests (i.e., it's not handling the same throughput), and the CPU isn't fully utilized.
 
 ![es-cpu](es-cpu.png)
 
-Interesting is that the memory usage of Camunda (and GC activity) is growing in the case of using HDD for secondary storage. This is likely the case because of the inflight records that are not exported and we keep in memory.
+It is interesting that Camunda's memory usage (and GC activity) increases when using HDD for secondary storage. This is likely the case because the in-flight records are not exported, and we keep them in memory.
 
 ![memory](exp2-memory.png)
 
-Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we couldn't see reason why it would perform worse. Something which we should keep in mind, that most metrics here are related to throughput, and not covering latency which is the reason for the performance degradation. 
+Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we couldn't see reason why it would perform worse. Something we should keep in mind is that most metrics here are related to throughput, not latency (which is the reason for the performance degradation)
 
 
 ## Conclusion
 
-We were able to show that using slower disks, like HDDs, for the secondary storage can have a significant negative impact on the Camunda cluster performance as well. It is even worse than using slower disks for the primary storage. 
+We were able to show that using slower disks, such as HDDs, for secondary storage can have a significant negative impact on the Camunda cluster's performance as well. It is even worse than using slower disks for the primary storage. 
 
-This is why we should also recommend using SSDs for the secondary storage of Camunda clusters, as it significantly improves the performance and availability of the cluster. We should reflect that in our documentation as well.
+This is why we should also recommend using SSDs for secondary storage in Camunda clusters, as they significantly improve performance and availability. We should reflect that in our documentation as well.
 
 
 
