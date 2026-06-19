@@ -71,7 +71,7 @@ orchestration:
 +  pvcStorageClassName: standard
 ```
 
-We will compare this test with some of our release tests that use SSDs, to see the difference in performance and availability.
+We will compare this test with our 8.9.x release tests that use SSDs, to see the difference in performance and availability.
 
 During the begin of the test the throughput looked promising, but after maybe 30 minutes we see a significant drop in throughput, and the latency increases significantly. Compared to the same test with SSDs, we see a significant performance degradation of around 50%.
 
@@ -107,15 +107,57 @@ This is why we [recommend using SSDs](https://docs.camunda.io/docs/next/self-man
 
 ## Chaos experiment: Slow disk on secondary storage
 
+Similar to the first experiment we want to understand how the Camunda cluster behaves when we use a slower disk for the secondary storage. In this case we will use Elasticsearch as the secondary storage.
+
+As part of our documentation we recommend using SSDs for Camunda (primary storage), but for the secondary storage we do not have a specific recommendation in the [reference architecture](https://docs.camunda.io/docs/next/self-managed/reference-architecture/#secondary-storage-architecture) or [sizing guides](https://docs.camunda.io/docs/next/components/best-practices/architecture/sizing-self-managed/#elasticsearch-scaling).
 
 
+### Expected 
 
-### Expected
+In general, it must be clear that if the secondary storage is not performing well, this will have a negative impact on Camunda (see other related posts).
 
 ### Actual
 
-## Found Bugs
+Setup follows similar pattern as [above](#actual), but we will use a slower disk for the Elasticsearch nodes. We will compare this test with our 8.9.x release tests that use SSDs, to see the difference in performance and availability.
 
+
+![general](exp2-general.png)
+
+
+The performance of the cluster is even worse as the first experiment, with a significant drop in throughput and increased latency. We see that the performance is around 15.1 PI/s and 47.1 Tasks per second, which is a significant degradation compared to the test with SSDs.
+
+The backpressure is also significantly higher, as in the first experiment, which indicates that the cluster is struggling to keep up with the load. The backpressure is tighly coupled with the exporting backlog which would explain this. We have a constant backlog of ~200k records that are not exported.
+
+![exporting](exp2-export.png)
+
+Obviously, this impacts the data availability measurment and is on its maximum value.
+
+![data-avail](exp2-data-avail.png)
+
+We can see in the exporter metrics that flush to elasticsearch has a much higher latency now.
+
+![es-exporter](exp2-es-exporter.png)
+
+![camunda-exporter](exp2-camunda-exporter.png)
+
+Flush duration goes up to 8-10 seconds.
+
+In CPU metrics we wouldn't see anything in this case, as the cluster is not able to process as much requests (not handling the same throughput), and the CPU is not fully utilized.
+
+![es-cpu](es-cpu.png)
+
+Interesting is that the memory usage of Camunda (and GC activity) is growing in the case of using HDD for secondary storage. This is likely the case because of the inflight records that are not exported and we keep in memory.
+
+![memory](exp2-memory.png)
+
+Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we couldn't see reason why it would perform worse. Something which we should keep in mind, that most metrics here are related to throughput, and not covering latency which is the reason for the performance degradation. 
+
+
+## Conclusion
+
+We were able to show that using slower disks, like HDDs, for the secondary storage can have a significant negative impact on the Camunda cluster performance as well. It is even worse than using slower disks for the primary storage. 
+
+This is why we should also recommend using SSDs for the secondary storage of Camunda clusters, as it significantly improves the performance and availability of the cluster. We should reflect that in our documentation as well.
 
 
 
