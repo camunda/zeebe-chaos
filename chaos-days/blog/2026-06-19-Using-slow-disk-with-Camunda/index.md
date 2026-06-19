@@ -15,13 +15,13 @@ authors:
 # Chaos Day Summary
 
 
-In today's Chaos Day, we wanted to experiment with slow disks. As we have recently run into some incidents related to that. We want to understand and document how Camunda behaves in such scenarios. 
+In today's Chaos Day, we wanted to experiment with slow disks, as we have recently run into some incidents related to that. We want to understand and document how Camunda behaves in such scenarios. 
 
 We have two main experiments planned: one for primary storage and one for secondary storage (in this case, Elasticsearch) using slow disks.
 
 
 
-**TL;DR;** 
+**TL;DR;** Using HDDs instead of SSDs on Camunda's primary storage caused around 50% throughput degradation — not because of lower disk throughput, but because of higher latency, which directly stalls Raft replication and commit acknowledgement. Moving the slow disk to Elasticsearch (secondary storage) was even worse, dropping throughput to ~15 PI/s and accumulating a permanent export backlog of ~200k records, with memory growing from unexported in-flight data. Both experiments confirm that SSDs are essential for both storage layers, and our documentation for secondary storage needs to be updated to reflect this.
 
 <!--truncate-->
 
@@ -73,7 +73,7 @@ orchestration:
 +  pvcStorageClassName: standard
 ```
 
-We will compare this test with our 8.9. x release tests that use SSDs to see the difference in performance and availability.
+We will compare this test with our 8.9.x release tests that use SSDs to see the difference in performance and availability.
 
 At the beginning of the test, the throughput looked promising, but after about 30 minutes, we saw a significant drop in throughput, and latency increased. Compared to the same test with SSDs, we see a significant performance degradation of around 50%.
 
@@ -119,7 +119,7 @@ As part of our documentation, we recommend using SSDs for Camunda (primary stora
 
 ### Expected 
 
-In general, it must be clear that if secondary storage is not performing well, it will negatively impact Camunda (see related posts).
+In general, it must be clear that if secondary storage is not performing well, it will negatively impact Camunda. We have covered this in related posts such as [Elastic restart impact on Camunda](https://camunda.github.io/zeebe-chaos/2026/03/12/Elastic-restart-impact-on-Camunda), [Resiliency against ELS unavailability](https://camunda.github.io/zeebe-chaos/2025/08/26/Resiliency-against-ELS-unavailability), and [Performance of Camunda Platform without Secondary Storage](https://camunda.github.io/zeebe-chaos/2026/04/17/Performance-of-Platform-without-Secondary-Storage).
 
 ### Actual
 
@@ -155,7 +155,7 @@ It is interesting that Camunda's memory usage (and GC activity) increases when u
 
 ![memory](exp2-memory.png)
 
-Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we couldn't see reason why it would perform worse. Something we should keep in mind is that most metrics here are related to throughput, not latency (which is the reason for the performance degradation)
+Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we couldn't see a reason why it would perform worse. Something we should keep in mind is that most metrics here are related to throughput, not latency (which is the reason for the performance degradation).
 
 
 ## Conclusion
@@ -164,5 +164,7 @@ We were able to show that using slower disks, such as HDDs, for secondary storag
 
 This is why we should also recommend using SSDs for secondary storage in Camunda clusters, as they significantly improve performance and availability. We should reflect that in our documentation as well.
 
+# Overall
 
+Both experiments show that disk latency — not throughput — is the critical factor for Camunda's performance, and that this applies to both storage layers. Slow primary storage degraded throughput by ~50% by stalling Raft replication; slow secondary storage was even more damaging, cutting throughput by ~70% and causing memory growth from unexported in-flight records. SSDs are a hard prerequisite for stable, predictable operation at both layers, and our documentation should make this explicit for secondary storage as clearly as it already does for primary storage.
 
