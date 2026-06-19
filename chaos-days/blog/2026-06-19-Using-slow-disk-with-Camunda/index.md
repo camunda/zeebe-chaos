@@ -87,17 +87,20 @@ This can especially seen in the record write and commit latencies.
 
 ![commit-latencies](commit-latencies.png)
 
-These latencies have a significant impact on the overall performance of the cluster. As a leader needs to replicate and commit first an command before it is allowed to process and response to it. A follower needs to write and flush such, before it can acknowledge the replication to the leader. This means that the latency of the disk directly impacts the latency of processing requests, and can cause significant performance degradation as we also see in the metrics.
+These latencies have a significant impact on the overall performance of the cluster. As a leader needs to replicate and commit first an command before it is allowed to process and response to it. A follower needs to write and flush such, before it can acknowledge the replication to the leader. 
 
 ![overall-processing](overall-processing.png)
 
+This means that the latency of the disk directly impacts the latency of processing requests, and can cause significant performance degradation as we also see in the metrics.
 
-Using slower disks is not impacting the general processing performance, but also disrubting the underlying RAFT cluster. Slower followers, we natuarlly lag behind the leader, and this will cause more snapshot replications. Depending on the disk latency this could even cause more severe issues, retry-loops on append for example.
-
-Depending on the state size this could put more load on the network as well.
+Using slower disks is not only impacting the general processing performance, but also disrupting the underlying RAFT cluster.
 
 ![raft-snapshot](raft-snapshot.png)
 ![non-committed](non-committed.png)
+
+
+Slower followers as in the base, lag behind the leader even more, and this will cause snapshot replications. Depending on the disk latency this could even cause more severe issues, retry-loops on append for example.Depending on the state size (snapshot size) this could put more load on the network as well.
+
 
 ## Conclusion
 
