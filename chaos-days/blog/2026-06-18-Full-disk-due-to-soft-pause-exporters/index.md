@@ -3,8 +3,7 @@ layout: posts
 title:  "Full-disk due to soft-pausing exporters"
 date:   2026-06-18
 categories: 
-  - chaos_experiment 
-  - bpmn
+  - chaos_experiment
 tags:
   - availability
 authors: 
@@ -60,14 +59,15 @@ curl -X POST http://localhost:9600/actuator/exporting/pause?soft=true
 To compare disk usage, we used one of our weekly load tests as a baseline. We can see that disk space usage is constant, while the number of records exported and acknowledged fluctuates between 0 and ~4k. By pausing the exporter, we see a large spike in unacknowledged positions.
 
 
-![FULL-DISK](exp1-full-disk.png)
+![full-disk](exp1-full-disk.png)
 
 
 After reaching the disk capacity, we can see how requests and processing stop. What is interesting is that the backpressure metric itself is 0, as no requests are counted as coming in (they are rejected directly by the node). The client itself doesn't log that much, as RESOURCE_EXHAUSTED errors are mostly not logged.
 
-> Note: 
+> Note:
 >
 > This is something we should improve, as it might be hard to understand that the node is rejecting requests because of a full disk, but the backpressure metric is 0.
+> Tracked in [camunda/camunda#55510](https://github.com/camunda/camunda/issues/55510).
 
 
 In the gRPC metrics, we can see that the node is rejecting requests.
@@ -85,11 +85,13 @@ Even REST query requests are not successful, which is unexpected, as we do not n
 > Note:
 >
 > We should investigate further why REST requests stop, as it should still be possible to query data from the secondary storage.
+> This also means web components like Operate become unavailable during a full-disk condition.
+> Tracked in [camunda/camunda#55511](https://github.com/camunda/camunda/issues/55511).
 
 After reaching the full disk, we restarted the cluster. This is not so unlikely to happen in real life: if the node becomes unresponsive, an operator might try to restart it. We wanted to see what happens in this case.
 
 
-```
+```sh
 kubectl delete pod camunda-0 camunda-1 camunda-2
 ```
 
@@ -125,13 +127,13 @@ The whole process of re-exporting all the data can be especially evident in Elas
 After reclaiming some disk space, the node becomes responsive again, and we can see that the backpressure metric is reporting, and requests are being processed again.
 
 
-![load -starting](exp1-load-starting-again.png)
+![load-starting](exp1-load-starting-again.png)
 
-Interesting to note, is that some partition got unhealthy after the restart. Based on the log, it seemed that the Engine (StreamProcessor) got blocked while processing records (it ran longer than usual). 
+Interesting to note is that some partition got unhealthy after the restart. Based on the log, it seemed that the Engine (StreamProcessor) got blocked while processing records (it ran longer than usual). 
 
 ![blocked-actor](exp1-actor-blocked.png)
 
-This seems to be because of certain records take longer than usual to process. Normally, we are between 50 and 250 ms to process a record, but after restarting and unpausing, some records take 5-10s to process.
+This seems to be because certain records take longer than usual to process. Normally, we are between 50 and 250 ms to process a record, but after restarting and unpausing, some records take 5-10s to process.
 
 ![record-processing](exp1-record-processing.png)
 
@@ -142,10 +144,10 @@ At the end, we were able to reclaim the disk space, but it took around the same 
 
 # Key learnings
 
-- Learning 1: When exporters are soft-paused, and we restart a node the exporters need to re-export all not acknowledged records. Ideally, resume them without restarting, to avoid this.
+- Learning 1: When exporters are soft-paused and we restart a node, the exporters need to re-export all unacknowledged records. Ideally, resume them without restarting to avoid this.
 - Learning 2: Do not keep exporters soft-paused for a long time, as it can lead to a large backlog of records in the log.
-- Learning 3: When the disk is full, the node becomes unresponsive and rejects requests, but the backpressure metric is 0, which can be misleading. 
-- Learning 4: When the disk is full, even REST requests are not successful, which impacts data availability. 
-- Learning 5: Record processing can take much longer than usual when having a full disk and a large backlog to export.
+- Learning 3: When the disk is full, the node becomes unresponsive and rejects requests, but the backpressure metric is 0, which can be misleading. Tracked in [camunda/camunda#55510](https://github.com/camunda/camunda/issues/55510).
+- Learning 4: When the disk is full, even REST query requests fail. This affects overall availability — web components like Operate that depend on the REST API become unavailable, even though they don't need to write to disk. Tracked in [camunda/camunda#55511](https://github.com/camunda/camunda/issues/55511).
+- Learning 5: Record processing can take much longer than usual when recovering from a full disk with a large export backlog. Tracked in [camunda/camunda#55512](https://github.com/camunda/camunda/issues/55512).
 
 
