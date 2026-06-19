@@ -23,9 +23,9 @@ On today's Chaos Day, we wanted to experiment with disks filling up due to [soft
 
 ## Chaos Experiment
 
-In this experiment, we want to understand how Zeebe behaves when the disk is full due to an Exporter that is not exporting. This can happen when backups have been taken, but exporters haven't been unpause.
+In this experiment, we want to understand how Zeebe behaves when the disk is full due to an Exporter that is not exporting. This can happen when backups have been taken, but exporters haven't been resumed.
 
-The idea is to set up a realistic load test, pause the exporters, fill the disk, restart the node (for maximum impact), and then unpause the exporters to see if the node can recover and reclaim the disk space by clearing the log.
+The idea is to set up a realistic load test, pause the exporters, fill the disk, restart the node (for maximum impact), and then resume the exporters to see if the node can recover and reclaim the disk space by clearing the log.
 
 We will make use of the [soft-pause](https://docs.camunda.io/docs/next/reference/glossary/#soft-pause-exporting) feature:
 
@@ -34,7 +34,7 @@ We will make use of the [soft-pause](https://docs.camunda.io/docs/next/reference
 
 ### Expected
 
-We expected that once the disk filled, the node would become unresponsive, leading to timeouts and increased request processing latency. However, once we unpause the exporters, we expected the node to clear the log and reclaim disk space, allowing it to come back to life and resume normal operations.
+We expected that once the disk filled, the node would become unresponsive, leading to timeouts and increased request processing latency. However, once we resume the exporters, we expected the node to clear the log and reclaim disk space, allowing it to come back to life and resume normal operations.
 
 ### Actual
 
@@ -93,12 +93,12 @@ After reaching the full disk, we restarted the cluster. This is not so unlikely 
 kubectl delete pod camunda-0 camunda-1 camunda-2
 ```
 
-After the restart, unpause the exporters via:
+After the restart, resume the exporters via:
 
 ```sh
 kubectl port-forward svc/camunda 9600:9600 -n c8-chaos-full-disk &
 sleep 5
-curl -X POST http://localhost:9600/actuator/exporting/pause?soft=true
+curl -X POST http://localhost:9600/actuator/exporting/resume
 {"body":null,"status":204,"contentType":null}
 ```
 
@@ -142,7 +142,7 @@ At the end, we were able to reclaim the disk space, but it took around the same 
 
 # Key learnings
 
-- Learning 1: When exporters are soft-paused, and we restart a node the exporters need to re-export all not acknowledged records. Ideally, unpause them without restarting, to avoid this.
+- Learning 1: When exporters are soft-paused, and we restart a node the exporters need to re-export all not acknowledged records. Ideally, resume them without restarting, to avoid this.
 - Learning 2: Do not keep exporters soft-paused for a long time, as it can lead to a large backlog of records in the log.
 - Learning 3: When the disk is full, the node becomes unresponsive and rejects requests, but the backpressure metric is 0, which can be misleading. 
 - Learning 4: When the disk is full, even REST requests are not successful, which impacts data availability. 
