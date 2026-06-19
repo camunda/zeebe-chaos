@@ -21,7 +21,7 @@ We have two main experiments planned: one for primary storage and one for second
 
 
 
-**TL;DR;** Using HDDs instead of SSDs on Camunda's primary storage caused around 50% throughput degradation — not because of lower disk throughput, but because of higher latency, which directly stalls Raft replication and commit acknowledgement. Moving the slow disk to Elasticsearch (secondary storage) was even worse, dropping throughput to ~15 PI/s and accumulating a permanent export backlog of ~200k records, with memory growing from unexported in-flight data. Both experiments confirm that SSDs are essential for both storage layers, and our documentation for secondary storage needs to be updated to reflect this.
+**TL;DR;** Using HDDs instead of SSDs on Camunda's primary storage caused around 50% throughput degradation — not because of lower disk throughput, but because of higher latency, which directly stalls Raft replication and commit acknowledgement. Moving the slow disk to Elasticsearch (secondary storage) was even worse, dropping throughput by ~70% and accumulating a permanent export backlog of ~200k records, with memory growing from unexported in-flight data. Both experiments confirm that SSDs are essential for both storage layers, and our documentation for secondary storage needs to be updated to reflect this.
 
 <!--truncate-->
 
