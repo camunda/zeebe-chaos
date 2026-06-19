@@ -162,7 +162,7 @@ Looking at the Elasticsearch metrics and dashboard (provided by Prometheus) we c
 
 We were able to show that using slower disks, such as HDDs, for secondary storage can have a significant negative impact on the Camunda cluster's performance as well. It is even worse than using slower disks for the primary storage. 
 
-This is why we should also recommend using SSDs for secondary storage in Camunda clusters, as they significantly improve performance and availability. We should reflect that in our documentation as well.
+This is why we should also recommend using SSDs for secondary storage in Camunda clusters, as they significantly improve performance and availability. We have opened a [documentation PR](https://github.com/camunda/camunda-docs/pull/9150) to reflect this in our sizing guide and reference architecture.
 
 # Overall
 
