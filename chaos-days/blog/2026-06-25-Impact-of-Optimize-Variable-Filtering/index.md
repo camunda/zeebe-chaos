@@ -51,7 +51,42 @@ Each configuration was run at two workloads, mirroring the previous post:
 - **realistic** — a complex process model at a sustainable production rate (~1 PI/s), each instance with multiple tasks, sub-processes, and variables; representative of real customer workloads.
 - **max** — driven at 300 PI/s to push the engine to its throughput ceiling and surface backpressure.
 
-Metrics were captured over a steady-state window (≥4h after start) using PromQL against the cluster's central Prometheus. The realistic payload {{contains / does not contain}} `customer`-prefixed variables — relevant to interpreting the prefix-filter result.
+Metrics were captured over a steady-state window (≥4h after start) using PromQL against the cluster's central Prometheus.
+
+The two workloads use **different variable payloads**, which matters for interpreting the prefix-filter configuration:
+
+- the **realistic** payload has 15 named variables including three `customer`-prefixed ones (`customer`, `customerId`, `customer_claim_frequency`) alongside `disputeDetails`, `fraud_score_result`, and others — so the `customer` prefix filter keeps a meaningful subset.
+- the **max** payload uses generic names (`var1`…`var14`, `businessKey`) with no `customer`-prefixed variables — so the `customer` prefix filter matches nothing and behaves identically to disabling variable export entirely. The prefix-filter result is therefore **not** comparable across the two workloads, and at max load the prefix-filter cluster is effectively a second "exporter variable off" data point.
+
+### Validating the configuration at the data level
+
+Before trusting the resource numbers, we confirmed each configuration actually does what it claims — not just that the Helm values rendered correctly, but that the data landing in Elasticsearch reflects the filter. A terms aggregation on the Zeebe variable record index shows which variable names reached ES:
+
+```bash
+curl -s -H 'Content-Type: application/json' \
+  'localhost:9200/zeebe-record_variable*/_search' -d '{
+    "size": 0,
+    "track_total_hits": true,
+    "aggs": { "names": { "terms": { "field": "value.name", "size": 50 } } }
+  }'
+```
+
+Running this against each realistic cluster confirms the filtering (counts for one non-`customer` variable, `disputeDetails`, and one `customer`-prefixed variable, `customer`):
+
+| Configuration | Total variable docs | `disputeDetails` | `customer` |
+|---|---|---|---|
+| Baseline | 11.4M | 16,001 | 1,615,967 |
+| Optimize mode | 11.5M | 16,114 | 1,627,390 |
+| Prefix filter (`customer`) | 1.67M | 0 | 1,637,615 |
+| Exporter variable off | 0 | 0 | 0 |
+| Exporter off + importer off | 0 | 0 | 0 |
+| Importer off | 11.5M | 16,164 | 1,632,452 |
+
+This confirms three things at the data level:
+
+- **Exporter variable off** and **exporter off + importer off** write no variable records at all.
+- The **prefix filter** drops every non-`customer` variable (`disputeDetails` → 0) while keeping the `customer`-prefixed ones — cutting variable documents by ~85% for this payload.
+- **Importer off** leaves the full variable stream in Elasticsearch (it only stops Optimize from reading it), and **Optimize mode** does not filter variable export at the exporter at all. Both keep the same variable documents as baseline in the Zeebe index; their effect shows up instead in Optimize's own imported indices, which we look at next.
 
 ### Expected
 
@@ -80,6 +115,31 @@ We expected the configurations that remove variable data from Elasticsearch to r
 | ES disk used (GiB) | {{}} | {{}} | {{}} | {{}} | {{}} | {{}} |
 
 {{Prose: the disk ranking. Key question answered here — does "importer off" (variables still exported) save disk, or does the saving only come from stopping the export? This is where the surprising finding, if any, lands.}}
+
+##### Where the disk actually goes: the Optimize index
+
+The dominant consumer is not the Zeebe export but **Optimize's own imported indices**. Optimize stores process-instance data — including each instance's variables as nested documents — in `optimize-process-instance-*` indices. Measuring those directly per cluster shows where variable filtering pays off:
+
+```bash
+curl -s 'localhost:9200/_cat/indices/optimize-process-instance-*?h=index,docs.count,store.size&bytes=b'
+```
+
+| Configuration | Optimize PI index | Process-instance docs |
+|---|---|---|
+| Baseline | 56.3 GiB | 43.4M |
+| Optimize mode | 61.7 GiB | 43.7M |
+| Prefix filter (`customer`) | 17.4 GiB | 20.8M |
+| Importer off | 1.9 GiB | 10.4M |
+| Exporter variable off | 1.9 GiB | 10.4M |
+| Exporter off + importer off | 1.9 GiB | 10.4M |
+
+The doc count tells the story: without variable import the index holds ~10.4M documents (instances and flow nodes); baseline holds ~43.4M. The extra ~33M documents — and ~54 GiB — are imported **variables**. Consequently:
+
+- **Disabling variable import or export collapses the Optimize index to ~3% of baseline** (56 GiB → 1.9 GiB), and it makes no difference whether you stop the export (`index.variable=false`) or just the import (`VARIABLE_IMPORT_ENABLED=false`) — both leave Optimize with the same variable-free index. The Zeebe-export side differs (the export-off configs also drop the Zeebe variable records measured above), but the Optimize index — the bulk of the cost — is identical.
+- The **prefix filter** lands in between (~17 GiB), proportional to how much of the payload matches the prefix.
+- **Optimize mode does not reduce the Optimize index** — here it was slightly larger than baseline, so `optimizeModeEnabled` is not a storage-reduction lever for variables.
+
+{{Confirm these figures against the steady-state (8h) snapshot — the numbers above are a ~4.5h preview and are still growing.}}
 
 ![General overview — realistic scenario](real-general.png)
 
