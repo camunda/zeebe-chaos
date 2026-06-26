@@ -99,7 +99,10 @@ Open questions have been: how much does each actually save, whether disabling on
 
 #### Realistic workload: where the storage goes
 
-*At a realistic workload throughput is unconstrained (all six held ~1 PI/s with zero backpressure), so the differences land entirely in Elasticsearch.*
+*At a realistic workload throughput is unconstrained (all six held ~1 root PI/s + 50 sub-process instances with zero backpressure), so the differences land entirely in Elasticsearch.*
+
+![Throughput realistic scenario](realistic-throughput.png)
+
 
 Breaking total ES storage into three families makes the picture clear — **Optimize** (`optimize-*`, the ES exporter indices only consumer), **Zeebe export** (`zeebe-record*`, the raw record exporter output), and **Camunda** (`operate-*` + `tasklist-*` + `camunda-*`, written by the independent Camunda Exporter):
 
