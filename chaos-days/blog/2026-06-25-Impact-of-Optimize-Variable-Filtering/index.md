@@ -22,7 +22,7 @@ All numbers are filled from the definitive steady-state measurement; see the tea
 
 In a [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/) we measured what Optimize costs a cluster: at a realistic workload it drove **3.4x higher Elasticsearch CPU** and **~4x more ES disk** than running without it. That post ended with an open question — *can variable handling be tuned to reduce the impact?* This Chaos Day answers it.
 
-We ran **twelve** load tests on Camunda 8.9.9 — six variable-filtering configurations, each at both a **realistic** and a **max** workload — and compared throughput, CPU, memory, and ES disk across all of them. All twelve ran in parallel on identical infrastructure and the same Helm chart, each started fresh with an empty Elasticsearch and all started together, so their footprints are directly comparable.
+We ran **twelve** load tests on Camunda 8.9.9 — six variable-filtering configurations, each at both a **realistic** and a **max** workload — and compared throughput, CPU, memory, and ES disk across all of them. All twelve started together and ran in parallel on identical infrastructure and the same Helm chart, each started fresh with an empty Elasticsearch, so their footprints are directly comparable.
 
 **TL;DR;** Keeping variables out of Optimize is the big lever. Disabling variable export (`index.variable=false`) cuts **total Elasticsearch storage ~60%** and **ES CPU ~65%** at a realistic load, and recovers **~15–25% throughput** at max load. The surprising part: **Optimize stores a variable ~14× more expensively than the raw Zeebe export does** (≈29× for high-cardinality string variables), so the cost lives almost entirely in Optimize's imported indices — not in the export. And because in Camunda 8.9 the Elasticsearch exporter feeds **only Optimize**, this costs you Optimize variable analytics *only* — Operate and Tasklist (served by the Camunda Exporter) keep their variables untouched.
 
@@ -96,7 +96,7 @@ We expected configurations that remove variable data to reduce ES disk and CPU, 
 
 Breaking total ES storage into three families makes the picture clear — **Optimize** (`optimize-*`, the ES exporter's only consumer), **Zeebe export** (`zeebe-record*`, the raw exporter output), and **Camunda** (`operate-*` + `tasklist-*` + `camunda-*`, written by the independent Camunda Exporter):
 
-![Disk — realistic scenario](real-disk.png)
+![Elasticsearch storage by index family, per configuration](storage-by-family.png)
 
 | Configuration | Optimize | Zeebe export | Camunda | **Total** | vs base |
 |---|---|---|---|---|---|

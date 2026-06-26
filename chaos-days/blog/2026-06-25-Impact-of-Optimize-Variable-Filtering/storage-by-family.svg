@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" font-family="Inter,Helvetica,Arial,sans-serif">
+<rect width="860" height="470" fill="#0f1419"/>
+<text x="170" y="32" fill="#d8d9da" font-size="18" font-weight="600">Elasticsearch storage by index family (total on-disk, ~22h, 1 replica)</text>
+<line x1="170.0" y1="60" x2="170.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="170.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">0</text>
+<line x1="292.0" y1="60" x2="292.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="292.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">100</text>
+<line x1="414.0" y1="60" x2="414.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="414.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">200</text>
+<line x1="536.0" y1="60" x2="536.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="536.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">300</text>
+<line x1="658.0" y1="60" x2="658.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="658.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">400</text>
+<line x1="780.0" y1="60" x2="780.0" y2="430" stroke="#2a2f37" stroke-width="1"/>
+<text x="780.0" y="454" fill="#d8d9da" font-size="12" text-anchor="middle">500</text>
+<text x="475.0" y="464" fill="#d8d9da" font-size="12" text-anchor="middle">GiB</text>
+<rect x="170.0" y="71.7" width="291.6" height="38.2" fill="#E0A800"/>
+<text x="315.8" y="94.8" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">239</text>
+<rect x="461.6" y="71.7" width="104.9" height="38.2" fill="#3B82F6"/>
+<text x="514.0" y="94.8" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">86</text>
+<rect x="566.5" y="71.7" width="109.8" height="38.2" fill="#16A34A"/>
+<text x="621.4" y="94.8" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="684.3" y="94.8" fill="#d8d9da" font-size="13" font-weight="600">415 GiB</text>
+<text x="158" y="94.8" fill="#d8d9da" font-size="13" text-anchor="end">Baseline</text>
+<rect x="170.0" y="133.4" width="297.7" height="38.2" fill="#E0A800"/>
+<text x="318.8" y="156.5" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">244</text>
+<rect x="467.7" y="133.4" width="54.9" height="38.2" fill="#3B82F6"/>
+<text x="495.1" y="156.5" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">45</text>
+<rect x="522.6" y="133.4" width="109.8" height="38.2" fill="#16A34A"/>
+<text x="577.5" y="156.5" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="640.4" y="156.5" fill="#d8d9da" font-size="13" font-weight="600">379 GiB</text>
+<text x="158" y="156.5" fill="#d8d9da" font-size="13" text-anchor="end">Optimize mode</text>
+<rect x="170.0" y="195.0" width="90.3" height="38.2" fill="#E0A800"/>
+<text x="215.1" y="218.2" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">74</text>
+<rect x="260.3" y="195.0" width="86.6" height="38.2" fill="#3B82F6"/>
+<text x="303.6" y="218.2" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">71</text>
+<rect x="346.9" y="195.0" width="111.0" height="38.2" fill="#16A34A"/>
+<text x="402.4" y="218.2" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">91</text>
+<text x="465.9" y="218.2" fill="#d8d9da" font-size="13" font-weight="600">236 GiB</text>
+<text x="158" y="218.2" fill="#d8d9da" font-size="13" text-anchor="end">Prefix filter</text>
+<rect x="170.0" y="256.7" width="9.8" height="38.2" fill="#E0A800"/>
+<rect x="179.8" y="256.7" width="103.7" height="38.2" fill="#3B82F6"/>
+<text x="231.6" y="279.8" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">85</text>
+<rect x="283.5" y="256.7" width="111.0" height="38.2" fill="#16A34A"/>
+<text x="339.0" y="279.8" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">91</text>
+<text x="402.5" y="279.8" fill="#d8d9da" font-size="13" font-weight="600">184 GiB</text>
+<text x="158" y="279.8" fill="#d8d9da" font-size="13" text-anchor="end">Importer off</text>
+<rect x="170.0" y="318.4" width="9.8" height="38.2" fill="#E0A800"/>
+<rect x="179.8" y="318.4" width="84.2" height="38.2" fill="#3B82F6"/>
+<text x="221.8" y="341.5" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">69</text>
+<rect x="263.9" y="318.4" width="109.8" height="38.2" fill="#16A34A"/>
+<text x="318.8" y="341.5" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="381.7" y="341.5" fill="#d8d9da" font-size="13" font-weight="600">167 GiB</text>
+<text x="158" y="341.5" fill="#d8d9da" font-size="13" text-anchor="end">Exp off + imp off</text>
+<rect x="170.0" y="380.0" width="9.8" height="38.2" fill="#E0A800"/>
+<rect x="179.8" y="380.0" width="84.2" height="38.2" fill="#3B82F6"/>
+<text x="221.8" y="403.2" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">69</text>
+<rect x="263.9" y="380.0" width="109.8" height="38.2" fill="#16A34A"/>
+<text x="318.8" y="403.2" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="381.7" y="403.2" fill="#d8d9da" font-size="13" font-weight="600">167 GiB</text>
+<text x="158" y="403.2" fill="#d8d9da" font-size="13" text-anchor="end">Exporter var off</text>
+<rect x="170" y="48" width="12" height="12" fill="#E0A800"/>
+<text x="188" y="58" fill="#d8d9da" font-size="12">Optimize</text>
+<rect x="270.0" y="48" width="12" height="12" fill="#3B82F6"/>
+<text x="288.0" y="58" fill="#d8d9da" font-size="12">Zeebe export</text>
+<rect x="400.0" y="48" width="12" height="12" fill="#16A34A"/>
+<text x="418.0" y="58" fill="#d8d9da" font-size="12">Camunda</text>
+</svg>
