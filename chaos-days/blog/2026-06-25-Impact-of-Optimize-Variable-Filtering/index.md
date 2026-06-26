@@ -25,7 +25,7 @@ In a [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impac
 
 We ran **twelve** load tests on Camunda 8.9.9 — six variable-filtering configurations, each at both a **realistic** and a **max** workload — and compared throughput, CPU, memory, and ES disk across all of them. All twelve started together and ran in parallel on identical infrastructure and the same Helm chart, each started fresh with an empty Elasticsearch, so their footprints are directly comparable.
 
-**TL;DR;** Keeping variables out of Optimize is the big lever. Disabling variable export (`index.variable=false`) cuts **total Elasticsearch storage ~60%** and **ES CPU ~65%** at a realistic load, and recovers **~15–25% throughput** at max load. The surprising part: **Optimize stores a variable ~14× more expensively than the raw Zeebe export does** (≈29× for high-cardinality string variables), so the cost lives almost entirely in Optimize's imported indices — not in the export. And because in Camunda 8.9 the Elasticsearch exporter feeds **only Optimize**, this costs you Optimize variable analytics *only* — Operate and Tasklist (served by the Camunda Exporter) keep their variables untouched.
+**TL;DR;** Keeping variables out of Optimize is the big lever. Disabling variable export (`index.variable=false`) cuts **total Elasticsearch storage ~60%** and **ES CPU ~65%** at a realistic load, and recovers **~15–25% throughput** at max load — enough to give back essentially all the throughput Optimize was shown to cost in the [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/), while keeping Optimize running. The surprising part: **Optimize stores a variable ~14× more expensively than the raw Zeebe export does** (≈29× for high-cardinality string variables), so the cost lives almost entirely in Optimize's imported indices — not in the export. And because in Camunda 8.9 the Elasticsearch exporter feeds **only Optimize**, this costs you Optimize variable analytics *only* — Operate and Tasklist (served by the Camunda Exporter) keep their variables untouched.
 
 <!--truncate-->
 
@@ -155,11 +155,11 @@ The robust signal: **baseline is consistently the worst** (~205–224 PI/s with 
 
 One subtlety worth calling out: at max load, **only export-side removal recovers throughput**. Importer-off barely helps (235 vs 222) — it leaves the export write load unchanged, and at max load the Zeebe→Elasticsearch write path is the bottleneck, not Optimize's downstream import.
 
+**This gives back the throughput Optimize costs.** The [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/) measured that penalty by toggling Optimize on and off at max load: **214 PI/s with Optimize vs 274 without — a 22% loss**. Here, baseline (Optimize on, all variables) sits at ~222 PI/s — matching that "with Optimize" figure — and **exporter-var-off reaches ~266, back at the no-Optimize level** (within run-to-run noise). The striking part: var-off keeps Optimize *enabled* and still importing process data, yet recovers nearly all the lost throughput — so Optimize's max-load penalty was almost entirely **variable handling**, not Optimize itself. This is a cross-experiment comparison (patch levels 8.9.6 → 8.9.9, separate runs), but the matching baselines (214 vs 222) make it sound. It also confirms the previous post's proposed mechanism — the extra ES write pressure that made the exporter lag *was* the variable data.
+
 On resources, the ES CPU chart above tells the max story too: the variable-reduced configurations run **cheaper** (~7–9 cores) than baseline and Optimize mode (~13 cores) — and they do so while sustaining *higher* throughput, so the lever wins on both axes at once.
 
 (We deliberately don't show a max-load storage breakdown: at 300 PI/s each configuration completes a *different* number of instances, so the Zeebe and Camunda index sizes there reflect differing throughput rather than the variable setting. Only the equal-rate realistic decomposition above is a clean apples-to-apples comparison.)
-
-ES CPU and disk at max mirror the realistic picture — the variable-reduced configs run materially cheaper (ES CPU ~7–9 vs ~13 cores; less than half the ES disk) — with the same caveat that baseline and Optimize mode are the heaviest.
 
 ## Configuration Guide
 
@@ -176,6 +176,7 @@ For each lever: what it controls, the measured effect, and when to use it. (Stor
 - **The Optimize index is where variables cost you** — ~58% of baseline ES storage. Removing variables from import or export cuts it ~97% (239 → 8 GiB) and ES CPU ~65%, with zero throughput cost at a realistic load.
 - **Optimize amplifies variable storage ~14× over the raw export** (≈29× for high-cardinality string variables) — so trimming the export alone barely helps; the variables must be kept out of Optimize.
 - **Importer-off ≈ exporter-off for storage**, but only **export-side** removal recovers throughput at max load (the export write path is the max-load bottleneck).
+- **Exporter-var-off gives back the throughput Optimize costs.** It reaches ~266 PI/s vs baseline ~222 — back at the previous post's no-Optimize level (274), while Optimize stays enabled. Optimize's ~22% max-load penalty was almost entirely variable handling.
 - **Optimize mode is not a variable lever** — it shrinks the export (jobs etc.), not the Optimize index.
 - **It only affects Optimize.** The Camunda Exporter keeps Operate/Tasklist variables intact (~90 GiB, flat across all configs). Camunda broker CPU and memory are unaffected — this is an Elasticsearch-side lever.
 
