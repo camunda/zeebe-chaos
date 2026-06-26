@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" font-family="Inter,Helvetica,Arial,sans-serif">
+<rect width="860" height="470" fill="#0f1419"/>
+<text x="175" y="30" fill="#d8d9da" font-size="18" font-weight="600">Elasticsearch storage by index family (total on-disk, ~22h, 1 replica)</text>
+<line x1="175.0" y1="64" x2="175.0" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="175.0" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">0</text>
+<line x1="310.6" y1="64" x2="310.6" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="310.6" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">100</text>
+<line x1="446.1" y1="64" x2="446.1" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="446.1" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">200</text>
+<line x1="581.7" y1="64" x2="581.7" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="581.7" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">300</text>
+<line x1="717.2" y1="64" x2="717.2" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="717.2" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">400</text>
+<text x="480.0" y="464" fill="#d8d9da" font-size="12" text-anchor="middle">GiB</text>
+<rect x="175.0" y="75.5" width="324.0" height="37.6" fill="#E0A800"/>
+<text x="337.0" y="98.3" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">239</text>
+<rect x="499.0" y="75.5" width="116.6" height="37.6" fill="#3B82F6"/>
+<text x="557.3" y="98.3" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">86</text>
+<rect x="615.6" y="75.5" width="122.0" height="37.6" fill="#16A34A"/>
+<text x="676.6" y="98.3" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="745.6" y="98.3" fill="#d8d9da" font-size="13" font-weight="600">415 GiB</text>
+<text x="163" y="98.3" fill="#d8d9da" font-size="13" text-anchor="end">Baseline</text>
+<rect x="175.0" y="136.2" width="330.8" height="37.6" fill="#E0A800"/>
+<text x="340.4" y="159.0" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">244</text>
+<rect x="505.8" y="136.2" width="61.0" height="37.6" fill="#3B82F6"/>
+<text x="536.3" y="159.0" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">45</text>
+<rect x="566.8" y="136.2" width="122.0" height="37.6" fill="#16A34A"/>
+<text x="627.8" y="159.0" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="696.8" y="159.0" fill="#d8d9da" font-size="13" font-weight="600">379 GiB</text>
+<text x="163" y="159.0" fill="#d8d9da" font-size="13" text-anchor="end">Optimize mode</text>
+<rect x="175.0" y="196.9" width="100.3" height="37.6" fill="#E0A800"/>
+<text x="225.2" y="219.7" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">74</text>
+<rect x="275.3" y="196.9" width="96.2" height="37.6" fill="#3B82F6"/>
+<text x="323.4" y="219.7" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">71</text>
+<rect x="371.6" y="196.9" width="123.4" height="37.6" fill="#16A34A"/>
+<text x="433.2" y="219.7" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">91</text>
+<text x="502.9" y="219.7" fill="#d8d9da" font-size="13" font-weight="600">236 GiB</text>
+<text x="163" y="219.7" fill="#d8d9da" font-size="13" text-anchor="end">Prefix filter</text>
+<rect x="175.0" y="257.5" width="10.8" height="37.6" fill="#E0A800"/>
+<rect x="185.8" y="257.5" width="115.2" height="37.6" fill="#3B82F6"/>
+<text x="243.5" y="280.3" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">85</text>
+<rect x="301.1" y="257.5" width="123.4" height="37.6" fill="#16A34A"/>
+<text x="362.7" y="280.3" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">91</text>
+<text x="432.4" y="280.3" fill="#d8d9da" font-size="13" font-weight="600">184 GiB</text>
+<text x="163" y="280.3" fill="#d8d9da" font-size="13" text-anchor="end">Importer off</text>
+<rect x="175.0" y="318.2" width="10.8" height="37.6" fill="#E0A800"/>
+<rect x="185.8" y="318.2" width="93.5" height="37.6" fill="#3B82F6"/>
+<text x="232.6" y="341.0" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">69</text>
+<rect x="279.4" y="318.2" width="122.0" height="37.6" fill="#16A34A"/>
+<text x="340.4" y="341.0" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="409.4" y="341.0" fill="#d8d9da" font-size="13" font-weight="600">167 GiB</text>
+<text x="163" y="341.0" fill="#d8d9da" font-size="13" text-anchor="end">Exporter var off</text>
+<rect x="175.0" y="378.9" width="10.8" height="37.6" fill="#E0A800"/>
+<rect x="185.8" y="378.9" width="93.5" height="37.6" fill="#3B82F6"/>
+<text x="232.6" y="401.7" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">69</text>
+<rect x="279.4" y="378.9" width="122.0" height="37.6" fill="#16A34A"/>
+<text x="340.4" y="401.7" fill="#0b0e12" font-size="12" font-weight="600" text-anchor="middle">90</text>
+<text x="409.4" y="401.7" fill="#d8d9da" font-size="13" font-weight="600">167 GiB</text>
+<text x="163" y="401.7" fill="#d8d9da" font-size="13" text-anchor="end">Exp off + imp off</text>
+<rect x="175" y="50" width="12" height="12" fill="#E0A800"/>
+<text x="193" y="60" fill="#d8d9da" font-size="12">Optimize</text>
+<rect x="273" y="50" width="12" height="12" fill="#3B82F6"/>
+<text x="291" y="60" fill="#d8d9da" font-size="12">Zeebe export</text>
+<rect x="399" y="50" width="12" height="12" fill="#16A34A"/>
+<text x="417" y="60" fill="#d8d9da" font-size="12">Camunda</text>
+</svg>
