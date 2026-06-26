@@ -144,8 +144,6 @@ ES CPU tracks the storage story almost exactly (the chart above shows both workl
 
 Removing variables from Optimize cuts ES CPU by ~65% (6.6 → ~2.4 cores). **Camunda broker CPU is unaffected** — it sits around 4–5 cores regardless. Variable filtering is purely an Elasticsearch-side lift. ES (and total) memory was likewise flat (~13–15 GiB ES) across all six, likely as the JVMs simply preallocate necessary memory.
 
-![General overview — realistic scenario](real-general.png)
-
 #### Max workload: throughput and backpressure
 
 *At 300 PI/s the clusters are throughput-constrained, so the question becomes which configuration sustains the most completed instances by freeing Elasticsearch write capacity.*
@@ -154,7 +152,7 @@ Removing variables from Optimize cuts ES CPU by ~65% (6.6 → ~2.4 cores). **Cam
 
 | Metric | Baseline | Importer off | Prefix filter | Exporter var off | Exp off + imp off | Optimize mode |
 |---|---|---|---|---|---|---|
-| Completed PI/s | 222 | 235 | 244 | 266 | 230 | 253 |
+| Completed PI/s | 225 | 240 | 249 | 261 | 239 | 250 |
 | Dropped req/s (backpressure) | 416 | 374 | 345 | 267 | 379 | 318 |
 
 The robust signal: **baseline is consistently the worst** (~205–224 PI/s with the highest backpressure across every sample), and configurations that keep variables out of the export sustain **~15–25% more throughput**. The fine ranking *among* the variable-reduced configs sits inside run-to-run / noisy-neighbour variance (±~20 PI/s), so we don't read precise positions into it — e.g. Optimize mode read 253 PI/s here but 207 in a later sample, so we make no throughput claim for it.
