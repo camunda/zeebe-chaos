@@ -45,11 +45,11 @@ Each configuration changes only how process **variables** are exported to Elasti
 | Name | What it changes | Key setting |
 |---|---|---|
 | Baseline | Default, all variables exported and imported | _(none)_ |
-| Importer off | Optimize skips importing variables (still exported to ES) | `CAMUNDA_OPTIMIZE_ZEEBE_VARIABLE_IMPORT_ENABLED=false` |
+| Optimize mode | Exporter writes only what Optimize needs | `zeebe.broker.exporters.elasticsearch.args.index.optimizeModeEnabled=true` |
 | Prefix filter | Only variables named `customer*` are exported | `zeebe.broker.exporters.elasticsearch.args.index.variableNameInclusionStartWith[0]=customer` |
+| Importer off | Optimize skips importing variables (still exported to ES) | `CAMUNDA_OPTIMIZE_ZEEBE_VARIABLE_IMPORT_ENABLED=false` |
 | Exporter variable off | No variable records exported at all | `zeebe.broker.exporters.elasticsearch.args.index.variable=false` |
 | Exporter off + importer off | Both of the above (belt-and-suspenders) | `index.variable=false` + `VARIABLE_IMPORT_ENABLED=false` |
-| Optimize mode | Exporter writes only what Optimize needs | `zeebe.broker.exporters.elasticsearch.args.index.optimizeModeEnabled=true` |
 
 **A note on the 8.9 architecture, because it shapes every result:** the Elasticsearch exporter being tuned here feeds **only Optimize** (plus any custom data-ingestion pipeline a customer wires up). **Operate and Tasklist get their data from the Camunda Exporter**, a separate path. So all of these levers affect Optimize alone; Operate and Tasklist keep full variable data regardless. We confirm this empirically below.
 
@@ -82,11 +82,11 @@ curl -s -H 'Content-Type: application/json' \
 | Configuration | Total Docs in `zeebe-record_variable.*` | `disputeDetails` | `customer` |
 |---|---|---|---|
 | Baseline | 11.4M | 16,001 | 1,615,967 |
-| Importer off | 11.5M | 16,164 | 1,632,452 |
+| Optimize mode | 11.5M | 16,114 | 1,627,390 |
 | Prefix filter (`customer`) | 1.67M | 0 | 1,637,615 |
+| Importer off | 11.5M | 16,164 | 1,632,452 |
 | Exporter variable off | 0 | 0 | 0 |
 | Exporter off + importer off | 0 | 0 | 0 |
-| Optimize mode | 11.5M | 16,114 | 1,627,390 |
 
 This confirms the filters at the data level: **exporter variable off** writes no variable records; the **prefix filter** drops every non-`customer` variable (`disputeDetails` = 0) while keeping `customer*`. The **importer off** / **optimize mode** leave the full variable stream in the exported indices (their effect is downstream, in Optimize's own indices).
 
@@ -141,10 +141,10 @@ The Optimize-mode result leaves the Optimize index essentially unchanged (244 vs
 
 ES CPU tracks the storage story almost exactly (the chart above shows both workloads; the max bars are discussed below):
 
-| Metric (cores) | Baseline | Importer off | Prefix filter | Exporter var off | Exp off + imp off | Optimize mode |
+| Metric (cores) | Baseline | Optimize mode | Prefix filter | Importer off | Exporter var off | Exp off + imp off |
 |---|---|---|---|---|---|---|
-| ES CPU | 6.6 | 2.3 | 4.6 | 2.4 | 2.4 | 5.0 |
-| Camunda CPU | ~4.5 | ~4.2 | ~5.5 | ~3.9 | ~4.9 | ~4.4 |
+| ES CPU | 6.6 | 5.0 | 4.6 | 2.3 | 2.4 | 2.4 |
+| Camunda CPU | ~4.5 | ~4.4 | ~5.5 | ~4.2 | ~3.9 | ~4.9 |
 
 Removing variables from Optimize cuts ES CPU by ~65% (6.6 → ~2.4 cores). **Camunda broker CPU is unaffected**: it sits around 4-5 cores regardless. Variable filtering is purely an Elasticsearch-side lever. ES (and total) memory was likewise flat (~13-15 GiB ES) across all six, likely because the JVMs simply preallocate the memory.
 
@@ -154,10 +154,10 @@ Removing variables from Optimize cuts ES CPU by ~65% (6.6 → ~2.4 cores). **Cam
 
 ![Throughput comparison, max scenario](max-throughput.png)
 
-| Metric | Baseline | Importer off | Prefix filter | Exporter var off | Exp off + imp off | Optimize mode |
+| Metric | Baseline | Optimize mode | Prefix filter | Importer off | Exporter var off | Exp off + imp off |
 |---|---|---|---|---|---|---|
-| Completed PI/s | 225 | 240 | 249 | 261 | 239 | 250 |
-| Dropped req/s (backpressure) | 416 | 374 | 345 | 267 | 379 | 318 |
+| Completed PI/s | 225 | 250 | 249 | 240 | 261 | 239 |
+| Dropped req/s (backpressure) | 416 | 318 | 345 | 374 | 267 | 379 |
 
 The robust signal: **baseline is consistently the worst** (~205-225 PI/s with the highest backpressure across every sample), and configurations that keep variables out of the export sustain **~15-20% more throughput**. The fine ranking *among* the variable-reduced configs sits inside run-to-run / noisy-neighbour variance (±~20 PI/s), so we don't read precise positions into it. For example, Optimize mode read 250 PI/s in this sample but 207 in another, so we make no throughput claim for it.
 
