@@ -1,55 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" font-family="Inter,Helvetica,Arial,sans-serif">
 <rect width="860" height="470" fill="#0f1419"/>
-<text x="170" y="30" fill="#d8d9da" font-size="18" font-weight="600">Elasticsearch CPU by configuration (cores)</text>
-<line x1="170.0" y1="64" x2="170.0" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="170.0" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">0</text>
-<line x1="258.6" y1="64" x2="258.6" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="258.6" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">2</text>
-<line x1="347.1" y1="64" x2="347.1" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="347.1" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">4</text>
-<line x1="435.7" y1="64" x2="435.7" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="435.7" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">6</text>
-<line x1="524.3" y1="64" x2="524.3" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="524.3" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">8</text>
-<line x1="612.9" y1="64" x2="612.9" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="612.9" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">10</text>
-<line x1="701.4" y1="64" x2="701.4" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="701.4" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">12</text>
-<line x1="790.0" y1="64" x2="790.0" y2="428" stroke="#2a2f37" stroke-width="1"/>
-<text x="790.0" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">14</text>
+<text x="175" y="30" fill="#d8d9da" font-size="18" font-weight="600">Elasticsearch CPU by configuration (cores)</text>
+<line x1="175.0" y1="64" x2="175.0" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="175.0" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">0</text>
+<line x1="262.1" y1="64" x2="262.1" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="262.1" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">2</text>
+<line x1="349.3" y1="64" x2="349.3" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="349.3" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">4</text>
+<line x1="436.4" y1="64" x2="436.4" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="436.4" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">6</text>
+<line x1="523.6" y1="64" x2="523.6" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="523.6" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">8</text>
+<line x1="610.7" y1="64" x2="610.7" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="610.7" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">10</text>
+<line x1="697.9" y1="64" x2="697.9" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="697.9" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">12</text>
+<line x1="785.0" y1="64" x2="785.0" y2="428" stroke="#2a2f37" stroke-width="1"/>
+<text x="785.0" y="450" fill="#d8d9da" font-size="12" text-anchor="middle">14</text>
 <text x="480.0" y="464" fill="#d8d9da" font-size="12" text-anchor="middle">cores</text>
-<rect x="170" y="75.2" width="292.3" height="18.2" fill="#60A5FA"/>
-<text x="469.3" y="88.3" fill="#d8d9da" font-size="12" font-weight="600">6.6</text>
-<rect x="170" y="94.3" width="558.0" height="18.2" fill="#1E40AF"/>
-<text x="735.0" y="107.4" fill="#d8d9da" font-size="12" font-weight="600">12.6</text>
-<text x="158" y="98.3" fill="#d8d9da" font-size="13" text-anchor="end">Baseline</text>
-<rect x="170" y="135.9" width="221.4" height="18.2" fill="#60A5FA"/>
-<text x="398.4" y="149.0" fill="#d8d9da" font-size="12" font-weight="600">5</text>
-<rect x="170" y="155.0" width="571.3" height="18.2" fill="#1E40AF"/>
-<text x="748.3" y="168.1" fill="#d8d9da" font-size="12" font-weight="600">12.9</text>
-<text x="158" y="159.0" fill="#d8d9da" font-size="13" text-anchor="end">Optimize mode</text>
-<rect x="170" y="196.6" width="203.7" height="18.2" fill="#60A5FA"/>
-<text x="380.7" y="209.7" fill="#d8d9da" font-size="12" font-weight="600">4.6</text>
-<rect x="170" y="215.7" width="376.4" height="18.2" fill="#1E40AF"/>
-<text x="553.4" y="228.8" fill="#d8d9da" font-size="12" font-weight="600">8.5</text>
-<text x="158" y="219.7" fill="#d8d9da" font-size="13" text-anchor="end">Prefix filter</text>
-<rect x="170" y="257.2" width="101.9" height="18.2" fill="#60A5FA"/>
-<text x="278.9" y="270.3" fill="#d8d9da" font-size="12" font-weight="600">2.3</text>
-<rect x="170" y="276.3" width="385.3" height="18.2" fill="#1E40AF"/>
-<text x="562.3" y="289.4" fill="#d8d9da" font-size="12" font-weight="600">8.7</text>
-<text x="158" y="280.3" fill="#d8d9da" font-size="13" text-anchor="end">Importer off</text>
-<rect x="170" y="317.9" width="106.3" height="18.2" fill="#60A5FA"/>
-<text x="283.3" y="331.0" fill="#d8d9da" font-size="12" font-weight="600">2.4</text>
-<rect x="170" y="337.0" width="327.7" height="18.2" fill="#1E40AF"/>
-<text x="504.7" y="350.1" fill="#d8d9da" font-size="12" font-weight="600">7.4</text>
-<text x="158" y="341.0" fill="#d8d9da" font-size="13" text-anchor="end">Exp off + imp off</text>
-<rect x="170" y="378.6" width="106.3" height="18.2" fill="#60A5FA"/>
-<text x="283.3" y="391.7" fill="#d8d9da" font-size="12" font-weight="600">2.4</text>
-<rect x="170" y="397.7" width="407.4" height="18.2" fill="#1E40AF"/>
-<text x="584.4" y="410.8" fill="#d8d9da" font-size="12" font-weight="600">9.2</text>
-<text x="158" y="401.7" fill="#d8d9da" font-size="13" text-anchor="end">Exporter var off</text>
-<rect x="170" y="50" width="12" height="12" fill="#60A5FA"/>
-<text x="188" y="60" fill="#d8d9da" font-size="12">Realistic (~1 PI/s)</text>
-<rect x="347" y="50" width="12" height="12" fill="#1E40AF"/>
-<text x="365" y="60" fill="#d8d9da" font-size="12">Max (300 PI/s)</text>
+<rect x="175" y="75.5" width="287.6" height="17.3" fill="#60A5FA"/>
+<text x="469.6" y="88.9" fill="#d8d9da" font-size="12" font-weight="600">6.6</text>
+<rect x="175" y="94.3" width="549.0" height="17.3" fill="#1E40AF"/>
+<text x="731.0" y="107.7" fill="#d8d9da" font-size="12" font-weight="600">12.6</text>
+<text x="163" y="98.3" fill="#d8d9da" font-size="13" text-anchor="end">Baseline</text>
+<rect x="175" y="136.2" width="100.2" height="17.3" fill="#60A5FA"/>
+<text x="282.2" y="149.6" fill="#d8d9da" font-size="12" font-weight="600">2.3</text>
+<rect x="175" y="155.0" width="379.1" height="17.3" fill="#1E40AF"/>
+<text x="561.1" y="168.4" fill="#d8d9da" font-size="12" font-weight="600">8.7</text>
+<text x="163" y="159.0" fill="#d8d9da" font-size="13" text-anchor="end">Importer off</text>
+<rect x="175" y="196.9" width="200.4" height="17.3" fill="#60A5FA"/>
+<text x="382.4" y="210.3" fill="#d8d9da" font-size="12" font-weight="600">4.6</text>
+<rect x="175" y="215.7" width="370.4" height="17.3" fill="#1E40AF"/>
+<text x="552.4" y="229.1" fill="#d8d9da" font-size="12" font-weight="600">8.5</text>
+<text x="163" y="219.7" fill="#d8d9da" font-size="13" text-anchor="end">Prefix filter</text>
+<rect x="175" y="257.5" width="104.6" height="17.3" fill="#60A5FA"/>
+<text x="286.6" y="270.9" fill="#d8d9da" font-size="12" font-weight="600">2.4</text>
+<rect x="175" y="276.3" width="400.9" height="17.3" fill="#1E40AF"/>
+<text x="582.9" y="289.7" fill="#d8d9da" font-size="12" font-weight="600">9.2</text>
+<text x="163" y="280.3" fill="#d8d9da" font-size="13" text-anchor="end">Exporter var off</text>
+<rect x="175" y="318.2" width="104.6" height="17.3" fill="#60A5FA"/>
+<text x="286.6" y="331.6" fill="#d8d9da" font-size="12" font-weight="600">2.4</text>
+<rect x="175" y="337.0" width="322.4" height="17.3" fill="#1E40AF"/>
+<text x="504.4" y="350.4" fill="#d8d9da" font-size="12" font-weight="600">7.4</text>
+<text x="163" y="341.0" fill="#d8d9da" font-size="13" text-anchor="end">Exp off + imp off</text>
+<rect x="175" y="378.9" width="217.9" height="17.3" fill="#60A5FA"/>
+<text x="399.9" y="392.3" fill="#d8d9da" font-size="12" font-weight="600">5</text>
+<rect x="175" y="397.7" width="562.1" height="17.3" fill="#1E40AF"/>
+<text x="744.1" y="411.1" fill="#d8d9da" font-size="12" font-weight="600">12.9</text>
+<text x="163" y="401.7" fill="#d8d9da" font-size="13" text-anchor="end">Optimize mode</text>
+<rect x="175" y="50" width="12" height="12" fill="#60A5FA"/>
+<text x="193" y="60" fill="#d8d9da" font-size="12">Realistic (~1 PI/s)</text>
+<rect x="350" y="50" width="12" height="12" fill="#1E40AF"/>
+<text x="368" y="60" fill="#d8d9da" font-size="12">Max (300 PI/s)</text>
 </svg>
