@@ -45,7 +45,7 @@
 <circle cx="664.0" cy="202" r="8" fill="#161b21" stroke="#16A34A" stroke-width="2"/><path d="M660.5,202 L663.0,205 L668.0,198.5" stroke="#16A34A" stroke-width="1.8" fill="none"/>
 <line x1="646" y1="200" x2="646" y2="174" stroke="#3a4049" stroke-width="3" stroke-dasharray="4,4"/>
 <path d="M642,164 L650,172 M650,164 L642,172" stroke="#ef4444" stroke-width="1.8"/>
-<text x="658" y="172" fill="#8e9297" font-size="9">jobs / non-variable records dropped</text>
+<text x="658" y="172" fill="#8e9297" font-size="9">job records dropped</text>
 <rect x="700" y="180" width="84" height="44" rx="6" fill="#0f1419" stroke="#3B82F6" stroke-width="1.2"/>
 <text x="742.0" y="199" fill="#d8d9da" font-size="10" font-weight="600" text-anchor="middle">Elasticsearch</text>
 <text x="742.0" y="212" fill="#8e9297" font-size="8.5" text-anchor="middle">zeebe-record*</text>

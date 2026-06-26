@@ -135,7 +135,7 @@ The most interesting result is the *amplification*. The same variables that occu
 
 In other words, the lever that matters is keeping variables *out of Optimize*; trimming the export alone barely dents the total.
 
-The Optimize-mode result leaves the Optimize index essentially unchanged (244 vs 239 GiB) but **halves the Zeebe export** (86 → 45 GiB). Those ~41 GiB it strips are *non-variable* records (jobs, etc.) that Optimize never imports: pure dead weight in an Optimize-only export, but irrelevant to the Optimize index itself. This is worth enabling by default, since it has no negative impact on Optimize features.
+The Optimize-mode result leaves the Optimize index essentially unchanged (244 vs 239 GiB) but **halves the Zeebe export** (86 → 45 GiB). Those ~41 GiB it strips are job records that Optimize never imports: pure dead weight in an Optimize-only export, but irrelevant to the Optimize index itself. This is worth enabling by default, since it has no negative impact on Optimize features.
 
 #### Realistic workload: CPU and memory
 
@@ -190,7 +190,7 @@ For each knob: what it controls, the measured effect, and when to use it. (Stora
 - **Optimize amplifies variable storage ~14x over the raw export** (≈29x for high-cardinality string variables), so trimming the export alone barely helps; the variables must be kept out of Optimize.
 - **Importer-off ≈ exporter-off for storage**, but only **export-side** removal recovers throughput at max load (the exporter write path is the max-load bottleneck).
 - **Exporter-var-off gives back the throughput Optimize costs.** It reaches ~261 PI/s vs baseline ~225, back at the previous post's no-Optimize level (274), while Optimize stays enabled. Optimize's ~22% max-load penalty was almost entirely variable handling.
-- **Optimize mode reduces noise.** It shrinks the exported indices (jobs etc.) to the subset Optimize needs, without impacting Optimize features. It is a good default for customers who don't need the full Zeebe record export.
+- **Optimize mode reduces noise.** It shrinks the exported indices (job records) to the subset Optimize needs, without impacting Optimize features. It is a good default for customers who don't need the full Zeebe record export.
 - **Tested configurations only affect Optimize.** The Camunda Exporter keeps Operate/Tasklist variables intact (~90 GiB, flat across all configs). Camunda broker CPU and memory are unaffected; this is an Elasticsearch-side lever.
 
 ### Possible Improvements / Recommendations
