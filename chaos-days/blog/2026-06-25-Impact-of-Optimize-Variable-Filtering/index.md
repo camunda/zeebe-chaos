@@ -14,8 +14,9 @@ authors:
 ---
 
 <!--
-Chart images (real-*.png / max-*.png) are still TODO — capture from Grafana before publishing.
-All numbers are filled from the definitive steady-state measurement; see the team analysis for raw data.
+Charts: storage-by-family.png and es-cpu-by-config.png are rendered from measured data (committed).
+Still TODO — capture from Grafana before publishing: real-general.png, max-general.png, max-throughput.png
+(dashboard overviews + throughput-over-time, which show run-to-run variance naturally).
 -->
 
 # Chaos Day Summary
@@ -126,9 +127,9 @@ And the Optimize-mode result, often assumed to be a storage win, is not: it leav
 
 #### Realistic workload: CPU and memory
 
-![CPU — realistic scenario](real-cpu.png)
+![Elasticsearch CPU per configuration, realistic vs max](es-cpu-by-config.png)
 
-ES CPU tracks the storage story almost exactly:
+ES CPU tracks the storage story almost exactly (the chart above shows both workloads; the max bars are discussed below):
 
 | Metric (cores) | Baseline | Importer off | Prefix filter | Exporter var off | Exp off + imp off | Optimize mode |
 |---|---|---|---|---|---|---|
@@ -154,8 +155,9 @@ The robust signal: **baseline is consistently the worst** (~205–224 PI/s with 
 
 One subtlety worth calling out: at max load, **only export-side removal recovers throughput**. Importer-off barely helps (235 vs 222) — it leaves the export write load unchanged, and at max load the Zeebe→Elasticsearch write path is the bottleneck, not Optimize's downstream import.
 
-![CPU — max scenario](max-cpu.png)
-![Disk — max scenario](max-disk.png)
+On resources, the ES CPU chart above tells the max story too: the variable-reduced configurations run **cheaper** (~7–9 cores) than baseline and Optimize mode (~13 cores) — and they do so while sustaining *higher* throughput, so the lever wins on both axes at once.
+
+(We deliberately don't show a max-load storage breakdown: at 300 PI/s each configuration completes a *different* number of instances, so the Zeebe and Camunda index sizes there reflect differing throughput rather than the variable setting. Only the equal-rate realistic decomposition above is a clean apples-to-apples comparison.)
 
 ES CPU and disk at max mirror the realistic picture — the variable-reduced configs run materially cheaper (ES CPU ~7–9 vs ~13 cores; less than half the ES disk) — with the same caveat that baseline and Optimize mode are the heaviest.
 
