@@ -39,6 +39,8 @@ All disk figures below are **total store size (primary + replica)** as reported 
 
 Each configuration changes only how process **variables** are exported to Elasticsearch and/or imported by Optimize:
 
+![How each configuration changes the variable flow into Optimize](data-flow.svg)
+
 | Name | What it changes | Key setting |
 |---|---|---|
 | Baseline | Default — all variables exported and imported | _(none)_ |
