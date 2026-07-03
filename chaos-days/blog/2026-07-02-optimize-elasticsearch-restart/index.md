@@ -1,7 +1,7 @@
 ---
 layout: posts
-title:  "optimize elasticsearch restart"
-date:   2026-07-02
+title: Impact of Elasticsearch restarts on Optimize
+date: 2026-07-02
 categories: 
   - chaos_experiment 
   - bpmn
@@ -14,103 +14,90 @@ authors:
 
 # Chaos Day Summary
 
-In today's Chaos Day, we continued our experiment on Optimize and assessed its behavior with the default configuration when the underlying Elasticsearch cluster restarts.
+In today's Chaos Day, we continued our experiments with Optimize and its behavior with the default configuration, when the underlying Elasticsearch cluster has nodes restarting.
 
-This exercise is the continuation of the recent improvements and clarification we added to our documentation concerning the scaling and impact of Optimize.
+This exercise is the continuation of the recent improvements and clarifications we added to our documentation regarding the configuration, impact and scaling of Camunda clusters running Optimize.
 
-**TL;DR;** 
-1. Default configuration not OK: missing replicas
-2. Affected replica
+**TL;DR;**
+1. The default Camunda configuration does not create replica shards for the `zeebe-record-*` indices, making them unavailable during any Elasticsearch node restart.
+2. Due to how Zeebe routes records using partition IDs (low-cardinality values hashed with Murmur3), some shards end up completely empty while others hold all the data.
+3. When one of the `zeebe-record-*` indices becomes unavailable, Optimize's single importer thread stalls all other imports — not just the affected resource type — and takes up to 45 minutes to fully recover.
 
 <!--truncate-->
 
-## Chaos Experiment: Optimize behavior when Elasticsearch nodes restart
+## Chaos Experiment
 
-Our [minimal default recommendation to deploy Elasticsearch as Camunda's secondary storage](https://docs.camunda.io/docs/self-managed/concepts/secondary-storage/managing-secondary-storage/) is to deploy:
+Before starting our experiment, we were aware of 2 issues that we recently uncovered. Although we agreed that they should be fixed and are not representative of a "production setup" of a Camunda cluster, we still wanted to assess their effect and how fixing them would help Optimize or not.
 
-1. A 3 nodes Elasticsearch cluster
-2. 1 or more primary shards per indices
-3. At least one replica shard per indices
+These 2 known issues are:
 
-As it turns out, our default configuration doesn't exactly follow these recommendations and is not [always creating replica shards for all the
-indices](https://github.com/camunda/camunda/issues/55366). Although Elasticsearch's documentation is relatively clear about what to expect when shards
-are (temporarily) unavailable (for instance, because one of the Elasticsearch node has been restarted), we wanted to confirm the effects missing
-shards would have on Optimize: during one of the internal load tests we are regularly conducting, we TODO
+1. The `zeebe-record_*` indices are configured with 3 primary shards *but* not replicas ([#55366](https://github.com/camunda/camunda/issues/55366))
+2. In addition, the indices are not storing data evenly inside their configured shards ([#54601](https://github.com/camunda/camunda/issues/54601))
 
+> It turns out that the 1st issue conflicts with our [minimal default recommendation to deploy Elasticsearch as Camunda's secondary storage](https://docs.camunda.io/docs/self-managed/concepts/secondary-storage/managing-secondary-storage/):
+> 
+> 1. A 3 nodes Elasticsearch cluster
+> 2. 1 or more primary shards per indices
+> 3. At least one replica shard per indices
+> 
+> [Elasticsearch's
+> documentation](https://www.elastic.co/docs/troubleshoot/monitoring/unavailable-shards)
+> is relatively clear about what to expect when a shard is temporarily
+> unavailable (for instance, because one of the Elasticsearch nodes has been
+> restarted), we wanted to confirm the effects of missing shards on Optimize.
 
-TODO
-We recently investigated 
+So for this experiment, we were interested to test 2 behaviors and verify how Optimize keeps a steady state when we restart an Elasticsearch node hosting either:
 
+1. An empty shard of an index used by Optimize ;
+2. Or actually used shards.
 
-Most of the time, Optimize correctly recovers when Elasticsearch nodes restart.
+#### Additional details on #54601
 
-We found some cases where Optimize doesn't, and we want to undertand these edge cases.
+To understand a bit better why we were interested to test "the restart of a node with an empty shard", we need to explain a bit more the issue ([#54601](https://github.com/camunda/camunda/issues/54601)).
 
+We recently discovered a misconfiguration where some of the shards used to store the Zeebe
+records are completely empty: we realized that Zeebe exports its records to
+multiple `zeebe-record-$resourceType` indices and routes them to Elasticsearch
+shards using the Zeebe partition ID, which causes some shards to be empty and other shards to be overused.
 
-hypothesis:
-
-1. Size of the shards (too big, slow ES)
-2. OK: restart node with no shard
-3. to test: restart node with at least one shard used by Optimize
-    with / without replication
-4. to test: restart the node holding the shard containing partition 2 and 3 (routing bug)
-
-
-to test: how adding replicas help?
-
-### Expected
-
-When one of the node of the Elasticsearch cluster restarts, we expect to see a short duration slow down of importing, while the Elasticsearch cluster readjust, follow by a short spike when Optimize catches up, and eventually a return to the same steady state as before the restart in a short amount of time (couple of minutes).
-
-
-### Actual
-
-During the experiment, we tried to reproduce the issue we saw in our internal weekly load tests, where an Elasticsearch node holding one or more
-primary shards for the `zeebre-record-*` indices, used by Optimize to import its own data, and configured without any replica, restarts.
-
-1. The current `zeebe-record_process-instance` index is configured with 3 primary shards *but* not replicas.
-
-
-In addition, we recently discovered a bug where some of the shards used to store the Zeebe records are completely empty. We realized that Zeebe
-exports its records to the `zeebe-record-$objectType` indices and routes them to Elasticsearch shards using the partition ID.
-
-> By default, Zeebe organizes its data into [partitions](https://docs.camunda.io/docs/components/zeebe/technical-concepts/partitions/) and we usually
-> configure Zeebe with 3 partitions ([default value for our Helm
+> By default, Zeebe organizes its data into
+> [partitions](https://docs.camunda.io/docs/components/zeebe/technical-concepts/partitions/)
+> and we usually configure Zeebe with 3 partitions ([default value for our Helm
 > Chart](https://github.com/camunda/camunda-platform-helm/blob/7ca27f1eb2ae094af80d6e9189d4f163d5fc03d5/charts/camunda-platform-8.9/values.yaml#L2661-L2662),
 > default value provided on Camunda SaaS).
 
-
 As the number of values for "partition ID" is really low (a handful of values), the possibilities of routing the same partitions to the same shards
-and/or to no shard at is very high. This can be very quickly experimented using Murmur3 (this is [the algorithm Elasticsearch uses](https://artifacts.elastic.co/javadoc/org/elasticsearch/elasticsearch/9.4.3/org.elasticsearch.server/org/elasticsearch/cluster/routing/Murmur3HashFunction.html):
+and/or to no shard at all is very high. This can be quickly verified using Murmur3 (this is [the algorithm Elasticsearch uses](https://artifacts.elastic.co/javadoc/org/elasticsearch/elasticsearch/9.4.3/org.elasticsearch.server/org/elasticsearch/cluster/routing/Murmur3HashFunction.html)):
 
-```python3
+```python
 >>> import mmh3
 >>> number_of_shards = 3
 >>> for partition_id in {b"1", b"2", b"3"}:
 ...     hash = mmh3.hash(partition_id)
 ...     shard_number = hash % number_of_shards
 ...     print(f"Partition {partition_id} ⇒ shard {shard_number}")
+
 Partition b'1' ⇒ shard 2
 Partition b'2' ⇒ shard 0
 Partition b'3' ⇒ shard 0
 ```
 
-We can also confirm this directly using [Elasticsearch `_search_shards`
+For a more realistic test, we can also confirm this directly using [Elasticsearch `_search_shards`
 API](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search-shards):
 
 1. We give to the API the number of the index and the routing key (here, the Zeebe partition ID)
 2. Elasticsearch returns (in particular) the node(s) and shard(s) that will be used by a search query.
 
 For instance, we can ask which shard would be used by partition ID `3` with:
-```shell
+```bash
 curl "localhost:9200/zeebe-record_process-instance_8.10.0_2026-07-02/_search_shards?routing=3" | jq .shards
 ```
 
 This gives:
 ```json
 {
-  "nodes": {...}
-  "shards: [
+  "nodes": {...},
+  "shards": [
     [
       {
         "state": "STARTED",
@@ -131,9 +118,9 @@ This gives:
 }
 ```
 
-With all our partition ID, we observe a similar type of response as in our example using Python:
+With all our partition IDs, we observe a similar type of response as in our example using Python:
 
-```shell
+```bash
 $ for partitionID in 1 2 3
 do
     shard=$(curl -s "localhost:9200/zeebe-record_process-instance_8.10.0_2026-07-02/_search_shards?routing=$partitionID" | jq '.shards[][].shard')
@@ -148,16 +135,30 @@ Partition ID 2 ⇒ shard=1
 Partition ID 3 ⇒ shard=1
 ```
 
+What does it mean in practice? On `zeebe-record-$resourceType` indices, shards are unevenly used:
 
-#### Actual test
+1. One shard is never used and will always be empty.
+2. One shard will store about 1/3 of the documents saved into that index.
+3. The last shard will store the last 2/3 of the documents.
 
-In any case, we initially wanted to check that, if we restart the node that holds the empty shard, with no replica, the impact on Optimize would be
-null.
+With that detour concluded, let's check our chaos experiment of the day!
 
-First, we confirmed our routing findings and that shard 0 doesn't have any document, by checking the Elasticsearch content itself:
+
+### Expected
+
+When one of the nodes of the Elasticsearch cluster restarts, we expect to see a short-duration slowdown of importing while the Elasticsearch cluster readjusts, followed by a short spike when Optimize catches up, and eventually a return to the same steady state as before the restart in a short amount of time (a couple of minutes).
+
+
+### Actual
+
+We initially wanted to check that, if we restart the node holding our first empty shard, the impact on Optimize would be null.
+
+#### Initial state
+
+First, we confirmed the routing misconfiguration from [#54601](https://github.com/camunda/camunda/issues/54601) and that shard `0` doesn't have any document by checking the Elasticsearch content itself:
 
 1. Shard 0 is completely empty (`docs=0`)
-2. Shard 1 and 2 contain many documents (and shard 1 is twice the size of shard 2, confirming the routing tests did above)
+2. Shard 1 and 2 contain many documents (and shard 1 is twice the size of shard 2, confirming the routing tests done above)
 
 ```
 $ curl -s "localhost:9200/_cat/shards/zeebe-record_process-instance*?v=true"
@@ -167,20 +168,20 @@ zeebe-record_process-instance_8.10.0_2026-07-02 1     p      STARTED 708701 108.
 zeebe-record_process-instance_8.10.0_2026-07-02 2     p      STARTED 353889  47.1mb  47.1mb 10.152.70.198 elastic-1
 ```
 
-This index really has no replicas! (with [Elasticvue](https://elasticvue.com/))
+We also confirmed that the index really has no replicas! (with [Elasticvue](https://elasticvue.com/))
 
 ![01-shards-no-replicas.png](01-shards-no-replicas.png)
 
 
-We also confirmed that we have a steady state:
+In this initial configuration, without disruption, we have our steady state:
 
-1. The green line indicates the amount of exported Process Instance by Camunda: ~4000 records/second
-2. The blue line indicates the amount of imported Process Instance by Optimize: a bit less at ~3800 records/second (it's actually unclear why we don't
+1. 🟩 The green line indicates the amount of exported Process Instance by Camunda: ~4000 records/second
+2. 🟦 The blue line indicates the amount of imported Process Instance by Optimize: a bit less at ~3800 records/second (it's actually unclear why we don't
    import all the documents at the moment :) )
 
 ![02-steady-state.png](02-steady-state.png)
 
-And that all the Optimize indices have replica shards configured (`rep=1`):
+And that all the Optimize indices have replica shards configured (`rep=1`): we want to make sure here that Optimize itself is correctly configured (something we also [fixed recently in our load tests](https://github.com/camunda/camunda/pull/52958)):
 
 ```
 $ curl -s "localhost:9200/_cat/indices/optimize*?v=true"
@@ -223,14 +224,16 @@ kubectl delete pod elastic-0
 
 After the restart, we start to see different unexpected behaviors.
 
-First, we quickly start to see error logs from Optimize and mentions that it starts to throttle requests to Elasticsearch:
+First, we quickly see new error logs from Optimize indicating that it started to throttle requests to Elasticsearch:
 
 ![04-backing-off](04-backing-off.png)
 
-This is unexpected ... but actually expected: the logs mention the `process` datatype, not the `process instance` datatype, which was the only one we
-actually cared about before the experiment.
+On one hand, this was unexpected because we purposely restarted the node holding the *empty* shard!
+On the other hand, this is also *not* unexpected: looking more closely at the logs, they mention the `process` resource type, not the `process instance` resource type, which was the only one we
+actually cared about before starting the experiment.
 
-We quickly checked how the Zeebe record index was configured for the `process` datatype:
+
+We quickly checked how the Zeebe record index was configured for the `process` resource type:
 
 ```
 $ curl -s "localhost:9200/_cat/shards/zeebe-record_process_*?v=true"
@@ -238,13 +241,15 @@ index                                  shard prirep state   docs   store dataset
 zeebe-record_process_8.10.0_2026-07-02 0     p      STARTED    6 845.3kb 845.3kb 10.152.18.137 elastic-0
 ```
 
+This shows that:
+
 1. There's a single primary shard configured for this index
 2. There are no replica shards configured at all
 3. The single primary shard is hosted on `elastic-0`, which is the node we restarted.
 
 So obviously, when the node is not available, Optimize is not able to read data from the index and it reports the errors we can see in the logs.
 
-However, this index is very small (6 documents!) and there are no errors logs for our `process instance` records, which is what we were expecting! ✅
+However, this index is very small (6 documents!) and there are no error logs for our `process instance` records, which is what we were expecting! ✅
 
 After a few minutes (to give time to come back to a steady state and for Prometheus to collect the metrics), we looked again at our export/import
 metrics:
@@ -252,49 +257,52 @@ metrics:
 ![03-impact](03-impact.png)
 
 
-On the Camunda export side (green line), we see an expected behavior:
-1. When the node is unavailable: TODO
+##### Impact on Camunda exporting
 
-===== TODO
-exporting: a drop followed by spike:
+On the Camunda export side (🟩 green line), we start from our previous steady state at about 4000 events/s, then after the restart:
 
-* 4k -> 3.4k -> 4.5k -> back to 4k
+1. A short drop to 3400 events/s
+2. Shortly followed by a spike at 4500 events/s
+3. Returning back to the 4000 events/s steady state after a few minutes.
 
+This behavior can be explained by the lack of replicas on all the Zeebe records indices:
 
-hypothesis: an index in which we write in had a primary shard without replica hosted on elastic-0. Confirmed at least with job index:
+1. For the `zeebe-record-process_instance` index we looked until now, this should not have any impact, since we are not writing any data into the shard we restarted.
+2. But Camunda exports other data to other indices, that may have different shard allocations.
+
+We looked at the `zeebe-record_job` index: it suffers from the same routing issue, but the shards were allocated on other nodes:
 
 ```
 $ curl -s "localhost:9200/_cat/shards/zeebe-record_job_*?v=true" 
 index                              shard prirep state     docs   store dataset ip            node
 zeebe-record_job_8.10.0_2026-07-02 0     p      STARTED      0    249b    249b 10.152.70.198 elastic-1
-zeebe-record_job_8.10.0_2026-07-02 1     p      STARTED 614165 106.7mb 106.7mb 10.152.18.137 elastic-0      <===========
+zeebe-record_job_8.10.0_2026-07-02 1     p      STARTED 614165 106.7mb 106.7mb 10.152.18.137 elastic-0      
 zeebe-record_job_8.10.0_2026-07-02 2     p      STARTED 307064  42.8mb  42.8mb 10.152.4.5    elastic-2
 ```
-===== TODO
 
-2. When the nodes come back online, Camunda process the short accumulated backlog of record until it returns to its steady state, in less than 3
-   minutes.
+Here, we see the same routing issue where shard `0` is not used. However, shard `1` is our 60%-used shard and it was on the node we just restarted. While the node restarted, it prevented Camunda from exporting these records, resulting in the short drop of events. Once the node came back online, Camunda caught up with its backlog, explaining the short spike afterwards.
 
-However, on the Optimize import side, we observe a much large impact than anticipated. If we zoom in only on Optimize imports throughput:
 
-===== TODO
-importing: small drop: 
-* 3.8k -> 3.3kk then back to 3.8k
+##### Impact on Optimize importing
 
-===== TODO
+However, on the Optimize import side, we observe a much larger impact than anticipated. If we zoom in only on Optimize imports throughput:
 
+1. A longer drop from 3800 events/s to 3300 events/s
+2. It comes back to 3800 events/s
 
 ![06-impact details](06-impact-details.png)
 
 
-We started to formulate our hypothesis:
+Although the drop is small, we originally anticipated no impact at all since we restarted a shard that is not used by Optimize.
+
+Based on the logs regarding the `process` resource type, we started to formulate our hypothesis:
 
 1. Importing from the `zeebe-record-process` index was not possible because of the missing single shard
 2. Optimize started to backoff importing (just for this index, or generally)
-3. Did optimize start to backoff all the activity with elasticsearch?
+3. Did Optimize start to backoff all the activity with Elasticsearch?
 
 
-##### Impact from `zeebe-record-process`
+###### Impact from `zeebe-record-process`
 
 We quickly found out the issue for this specific index as the logs were very clear.
 
@@ -326,21 +334,22 @@ We quickly found out the issue for this specific index as the logs were very cle
      "status": 503
    }
    ```
-   This matches our hypothesis: the single shard is not availabe, Optimize can't read from the index.
-2. After that, Optimize's logs continue to mention about the unavailability and that it's throttling the imports for this datatype. All the backoffs
-   accumulate to about 30 seconds:
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 10000ms.`
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 7595ms.`
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 5063ms.`
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 3375ms.`
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 2250ms.`
-   * `not able to retrieve zeebe records of type process [...] retrying after sleeping for 1500ms.`
+   This matches our hypothesis: the single shard is not available, Optimize can't read from the index.
+2. After that, Optimize's logs continue to mention the unavailability and that it's throttling the imports for this resource type. All the backoffs accumulate to about 30 seconds:
+   ```
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 10000ms.
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 7595ms.
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 5063ms.
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 3375ms.
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 2250ms.
+   not able to retrieve zeebe records of type process [...] retrying after sleeping for 1500ms.
+   ```
 
 
-What was NOT expect through where the debug logs regarding Zeebe `process instance`: as we mentioned earlier, our assumption was that as the shard on
-the node we restarted was completely empty, it should not have any impact on Optimize `process import` importer.
+What was NOT expected, though, were the debug logs regarding Zeebe `process instance`: as we mentioned earlier, our assumption was that as the shard on
+the node we restarted was completely empty, it should not have any impact on Optimize's `process import` importer.
 
-However, we can also clearly see the same 30 seconds gap within the `process instance` importer:
+However, we can also clearly see the same 30-second gap within the `process instance` importer:
 
 ![08-process-instance-gap](08-pi-gap.png)
 
@@ -356,7 +365,7 @@ However, we can also clearly see the same 30 seconds gap within the `process ins
 ```
 
 
-We started to be suspicious about the multi-threading behavior: we were originally assuming that all the importers would be running independently from each other, but having one importer (for `process` records) having an influence on another importer (for `process-instance` records) made us think that they were perhaps run only on a single thread?
+We started to be suspicious about the multi-threading behavior: we were originally assuming that all the importers would be running independently from each other, but having one importer (for `process` records) having an influence on another importer (for `process-instance` records) made us think that they were perhaps run only on a single thread.
 
 This was also quickly found out: the Optimize logs already report which thread is responsible for the event logs and we have a single thread that
 seems to read from all the Zeebe record indices, with `threadID=57` and `threadName=ZeebeImportScheduler-1`:
@@ -395,11 +404,16 @@ However, this is the accumulation of several factors that are leading to all the
 
 
 
+## Conclusion
 
 
----
+During this experiment, we started with a purposely *misconfigured* environment from which we wanted to understand the effects a bit better.
 
-Notes:
+We managed to discover how Optimize importers can affect each other, and how busy importers (for "process instances", for which we have thousands of records) can be affected negatively by less busy ones (like "process" which only had 6 events).
 
+We were not able to test the other scenarios we originally planned due to the lack of time:
 
-note for the DL team: if they change the routing mechanism, they should also sync with the data consumers (optimize?)
+1. How Optimize reacts when the shards holding the large "process instance" records are unavailable?
+2. How Optimize behavior changes after adding the (recommended for production ;) ) missing Elasticsearch shard replicas?
+
+This may be tested in another chaos day experiment!
