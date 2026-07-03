@@ -4,6 +4,7 @@
 chaostoolkit.log
 journal.json
 
+go-chaos/go-chaos
 
 target/
 .classpath
