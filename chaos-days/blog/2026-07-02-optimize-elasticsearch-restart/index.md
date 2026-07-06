@@ -148,10 +148,10 @@ With that detour concluded, let's check our chaos experiment of the day!
 
 When one of the nodes of the Elasticsearch cluster restarts, we expect to see a short-duration slowdown of importing while the Elasticsearch cluster readjusts, followed by a short spike when Optimize catches up, and eventually a return to the same steady state as before the restart in a short amount of time (a couple of minutes).
 
+In addition, considering the Elasticsearch routing issue mentioned before, if we restart the node holding the empty shard, we expect the impact on Optimize to be null.
+
 
 ### Actual
-
-We initially wanted to check that, if we restart the node holding our first empty shard, the impact on Optimize would be null.
 
 #### Initial state
 
@@ -176,8 +176,11 @@ We also confirmed that the index really has no replicas! (with [Elasticvue](http
 In this initial configuration, without disruption, we have our steady state:
 
 1. 🟩 The green line indicates the amount of exported Process Instance by Camunda: ~4000 records/second
-2. 🟦 The blue line indicates the amount of imported Process Instance by Optimize: a bit less at ~3800 records/second (it's actually unclear why we don't
-   import all the documents at the moment :) )
+2. 🟦 The blue line indicates the amount of imported Process Instance by Optimize: a bit less at ~3800 records/second.
+   The difference between the 2 values is easily explained:
+   * The exporter measure *all* the records exporter
+   * However, Optimize only imports some of them: for instance, it doesn't import the `job` records ; this contributes to this slight difference between the 2 totals.
+
 
 ![02-steady-state.png](02-steady-state.png)
 
@@ -222,7 +225,7 @@ kubectl delete pod elastic-0
 #### Observations
 
 
-After the restart, we start to see different unexpected behaviors.
+After the restart, we start to see unexpected behaviors.
 
 First, we quickly see new error logs from Optimize indicating that it started to throttle requests to Elasticsearch:
 
