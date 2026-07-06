@@ -373,19 +373,25 @@ seems to read from all the Zeebe record indices, with `threadID=57` and `threadN
 ![09-log-thread](09-log-thread.png)
 
 
-We continued the session by diving into the source code for the Optimize Zeebe records importers.
+We continued the session by diving into the source code for the Optimize Zeebe records importers. The Optimize importer is divided into "mediators" to read from the indices and then import them into the Optimize indices. 
 
-====== TODO
-however importing is affected for ~3 minutes (in the metrics)
+The following two design properties we have observed that compound each other:
 
-summary:
+1. All record type mediators (process instance, variable, incident, user task, process definition)
+   run sequentially on a **single shared scheduler thread** ([`ThreadPoolTaskScheduler`](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/concurrent/ThreadPoolTaskScheduler.html#%3Cinit%3E():~:text=The%20default%20number%20of%20scheduler%20threads%20is%201%3B)
+   with pool size = 1 by default) — see [`AbstractScheduledService.java#L31-L44`](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/AbstractScheduledService.java#L31-L44)
+   and [`AbstractImportScheduler.java#L74-L119`](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/importing/AbstractImportScheduler.java#L74-L119)
+2. The retry loop in [`PositionBasedImportMediator.importNextPageWithRetries()`](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/importing/PositionBasedImportMediator.java#L87)
+   calls [`Thread.sleep()`](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/importing/PositionBasedImportMediator.java#L103) directly on that scheduler thread while backing off on errors
 
-1. "process" importer is backed off because single shard unavailable
-2. other importers are also impacted: single thread importer?
-====== TODO
 
-Eventually, Optimize seems to recover completely but only 45 minutes after the beginning of the incident, by slowly (every 5 minutes) removing the
-throttling mechanism put in place just after Elasticsearch restarted:
+The result is that a failure in **any one mediator** sleeps the only available thread, preventing
+all other mediators from running at all until the error backoff cycle completes.
+
+![importer-error-loop]|(importer-error-loop.png)
+
+Eventually, Optimize seems to recover completely, but only 45 minutes after the beginning of the incident, by slowly (every 5 minutes) removing the 
+throttling mechanism was put in place just after Elasticsearch restarted:
 
 ![05-unbacking-off](05-unbacking-off.png)
 
