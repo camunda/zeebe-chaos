@@ -386,9 +386,9 @@ The following two design properties we have observed that compound each other:
 
 
 The result is that a failure in **any one mediator** sleeps the only available thread, preventing
-all other mediators from running at all until the error backoff cycle completes.
+all other mediators from running at all until the error backoff cycle completes. See the drawing below for a visual representation of the problem:
 
-![importer-error-loop]|(importer-error-loop.png)
+![importer-error-loop](importer-error-loop.png)
 
 Eventually, Optimize seems to recover completely, but only 45 minutes after the beginning of the incident, by slowly (every 5 minutes) removing the 
 throttling mechanism was put in place just after Elasticsearch restarted:
