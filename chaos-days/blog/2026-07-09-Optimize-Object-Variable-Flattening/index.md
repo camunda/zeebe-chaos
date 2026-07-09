@@ -118,6 +118,8 @@ The per-instance variable counts and value bytes also match the earlier SaaS-vs-
 | `bankDisputeHandling` sampled instance: vars / value bytes | 1,222 / 59,144 | 208 / 1,828 | 5.9x / 32.4x |
 | `refundingProcess` sampled instance: vars / value bytes | 15 / 629 | 2 / 13 | 7.5x / 48.4x |
 
+The same dashboard screenshot above also breaks this down by component, and it's worth pointing out directly: Optimize's own share of a root PI's secondary storage is **3.92 MiB with flattening on vs. 212 KiB with it off, an ~18.9x reduction**. Operate's and Tasklist's shares stay flat within noise (~950 KiB vs. ~1.11 MiB, and ~325 KiB vs. ~370 KiB) since this flag doesn't touch either component. That's the 8.3x disk-share ratio above expressed per unit of work instead of as a percentage, and it's visible directly on the dashboard without any manual calculation.
+
 The per-instance ratios are nearly identical to the earlier SaaS-vs-Self-Managed numbers (5.9x/31.5x and 7.5x/48.8x there, vs. 5.9x/32.4x and 7.5x/48.4x here) despite this test controlling away every other difference between those two environments. That upgrades the finding from "strongly correlated" to **causally confirmed**: this one flag, in isolation, fully explains the SaaS-vs-Self-Managed Optimize disk gap.
 
 Total Elasticsearch disk usage over the ~6h test window climbed at ~1.52%/hour with flattening on, vs. ~0.58%/hour with it off.
@@ -142,8 +144,6 @@ sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumecla
 | Total PVC bytes used | 167 GiB | 69.4 GiB | 2.4x |
 
 This is the direct answer to "how much more disk do I need to provision for the same workload?" It's smaller than the 8.3x Optimize-specific disk-share ratio because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision.
-
-The same dashboard screenshot above also breaks this down by component, and it's worth pointing out directly: Optimize's own share of a root PI's secondary storage is **3.92 MiB with flattening on vs. 212 KiB with it off, an ~18.9x reduction**. Operate's and Tasklist's shares stay flat within noise (~950 KiB vs. ~1.11 MiB, and ~325 KiB vs. ~370 KiB) since this flag doesn't touch either component. That's the 8.3x disk-share ratio expressed per unit of work instead of as a percentage, and it's visible directly on the dashboard without any manual calculation.
 
 ### A closer look at the variables
 
