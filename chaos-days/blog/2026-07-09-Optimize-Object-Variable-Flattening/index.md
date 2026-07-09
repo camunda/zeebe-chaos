@@ -119,7 +119,6 @@ The per-instance variable counts and value bytes also match the earlier SaaS-vs-
 | `bankDisputeHandling` sampled instance: vars / value bytes | 1,222 / 59,144 | 208 / 1,828 | 5.9x / 32.4x |
 | `refundingProcess` sampled instance: vars / value bytes | 15 / 629 | 2 / 13 | 7.5x / 48.4x |
 
-
 The per-instance ratios are nearly identical to the earlier SaaS-vs-Self-Managed numbers (5.9x/31.5x and 7.5x/48.8x there, vs. 5.9x/32.4x and 7.5x/48.4x here) despite this test controlling away every other difference between those two environments. That upgrades the finding from "strongly correlated" to **causally confirmed**: this one flag, in isolation, fully explains the SaaS-vs-Self-Managed Optimize disk gap.
 
 Total Elasticsearch disk usage over the ~6h test window climbed at ~1.52%/hour with flattening on, vs. ~0.58%/hour with it off.
