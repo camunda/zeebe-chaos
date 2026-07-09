@@ -14,18 +14,18 @@ authors:
 ---
 
 <!--
-TODO before publishing: add charts. Good candidates:
-- Bar chart: Optimize's % share of total ES disk, flatten=true vs flatten=false (62.8% vs 7.6%)
-- Bar chart: variable count and variable-value bytes per instance, both processes, both configs
-- Time series: total ES disk usage %, both namespaces, over the ~3h measurement window
-Raw numbers for all three are in the "Actual" section below.
+Charts: screenshots from the `chvrsl2` "Camunda Performance - Optimize investigation" dashboard
+(dashboard.benchmark.camunda.cloud), both namespaces:
+- Panel 81 "Data size in secondary Storage" (piechart) — Optimize/Zeebe/Camunda disk split, both configs
+- Panels 85/86/88 (root PI / PI / variables created) alongside panel 81, to show the sizing-per-unit-of-work numbers
+Raw numbers for all of these are in the "Actual" and "Cross-validating with Grafana" sections below.
 -->
 
 # Chaos Day Summary
 
 In a [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/) and its [variable-filtering follow-up](https://camunda.github.io/zeebe-chaos/2026/06/25/Impact-of-Optimize-Variable-Filtering/), we measured Optimize's Elasticsearch overhead against Self-Managed load tests. Running the same kind of test against a Camunda SaaS cluster turned up something we didn't expect: Optimize's disk footprint there looks nothing like what we'd measured on Self-Managed. This Chaos Day tracks that discovery down to its root cause and confirms it with a controlled experiment.
 
-**TL;DR;** A week-long test against a SaaS Advanced 4x cluster showed Optimize's indices taking up only ~7-10% of total Elasticsearch disk, versus ~59-100% on our Self-Managed weekly load test running the exact same workload. The cause: Optimize's `includeObjectVariableValue` flag (env `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE`) defaults to `true` and **flattens every JSON object variable into one stored variable per property, plus the raw serialized object itself**. Camunda SaaS explicitly disables this; the public Self-Managed Helm chart does not, so any Self-Managed deployment that hasn't touched this setting silently pays for it. We confirmed this is the *entire* explanation, not just a correlation, with an isolated A/B test that changes only this one flag: **Optimize's ES disk share dropped from 62.8% to 7.6%, an 8.3x reduction**, for the same workload. We're disabling it in our own load tests, and there's an open discussion about changing Optimize's shipped default to match SaaS.
+**TL;DR;** A week-long test against a SaaS Advanced 4x cluster showed Optimize's indices taking up only ~7-10% of total Elasticsearch disk, versus ~59-100% on our Self-Managed weekly load test running the exact same workload. The cause: Optimize's `includeObjectVariableValue` flag (env `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE`) defaults to `true` and **flattens every JSON object variable into one stored variable per property, plus the raw serialized object itself**. Camunda SaaS explicitly disables this; the public Self-Managed Helm chart does not, so any Self-Managed deployment that hasn't touched this setting silently pays for it. We confirmed this is the *entire* explanation, not just a correlation, with an isolated A/B test that changes only this one flag: **Optimize's ES disk share dropped from 62.8% to 7.6%, an 8.3x reduction**, for the same workload. The number that matters most for capacity planning: **total secondary storage per root process instance dropped from 5.85 MB to 2.62 MB, a 2.24x reduction** — that's the actual "how much more disk do I need to buy" answer, net of the Zeebe/Camunda storage this flag doesn't touch. We're disabling it in our own load tests, and there's an open discussion about changing Optimize's shipped default to match SaaS.
 
 <!--truncate-->
 
@@ -75,14 +75,14 @@ We deployed two namespaces on the `realistic` scenario, identical except for one
 |---|---|---|
 | `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE` | unset (Optimize's shipped default, `true`) | `false` (matches SaaS) |
 
+![general-overview](general-overview.png)
+
 Same `realistic` scenario, same 1 root-PI/s rate (confirmed via `zeebe_process_instance_creations_total`), same `historyCleanup` config (`ttl=P1D`, cleanup enabled), same partition count, same age (~3h) at measurement time.
 
- <!-- TODO
- 
- GENERAL
- 
-  -->
+![disk-consumption](disk-consumption.png)
 
+
+Based on the disk consumption we can see that with the default behavior of flattening object variables, Optimize's share of total ES disk is ~65%, while with flattening disabled it drops to ~7.6%. The per-instance variable counts and value bytes also match the earlier SaaS-vs-Self-Managed ratios almost exactly. The data was taken from Elasticsearch directly.
 
 **Result:**
 
@@ -97,6 +97,51 @@ Same `realistic` scenario, same 1 root-PI/s rate (confirmed via `zeebe_process_i
 The per-instance ratios are nearly identical to the earlier SaaS-vs-Self-Managed numbers (5.9x/31.5x and 7.5x/48.8x there, vs. 5.9x/32.4x and 7.5x/48.4x here) despite this test controlling away every other difference between those two environments. That upgrades the finding from "strongly correlated" to **causally confirmed**: this one flag, in isolation, fully explains the SaaS-vs-Self-Managed Optimize disk gap.
 
 Total Elasticsearch disk usage over the ~3h test window climbed at ~1.52%/hour with flattening on, vs. ~0.58%/hour with it off (~2.6x — smaller than the 8.3x Optimize-share figure because this measure includes non-Optimize indices, which are identical between the two and dilute the ratio).
+
+### Cross-validating with live Grafana metrics
+
+We also added four new panels to our internal ["Camunda Performance - Optimize investigation" dashboard](https://dashboard.benchmark.camunda.cloud/d/chvrsl2/camunda-performance-optimize-investigation): root process instances created, (child) process instances created, service tasks created, and variables created — each an `increase()` over the dashboard's time range on the relevant Zeebe metric. Worth checking whether these agree with what we measured directly in Elasticsearch, since if they do, they replace a manual `kubectl port-forward` + `curl` audit with a live, reusable dashboard.
+
+| Panel | Prometheus (window matching each namespace's age) | Elasticsearch | Agreement |
+|---|---|---|---|
+| Root PI created | 23,457 | 22,130 (`bankDisputeHandling` top-level count) | Real ~6% gap — see below |
+| PI created (call-activity spawns) | 1,096,185 | 1,096,855 (`refundingProcess` top-level count) | Matches, within elapsed-time noise |
+| Service tasks created | 2,224,784 | — | Query bug, see below |
+| Variables created | 14,578,993 | 14,639,146 (`intent=CREATED` only, via a terms aggregation on `zeebe-record_variable`) | Matches almost exactly |
+
+Three of four check out well. Two things worth calling out:
+
+- **The root-PI gap is real, not noise, and it's a finding in its own right.** Prometheus counts instances the moment Zeebe creates them; Elasticsearch counts instances Optimize has actually imported. Those track closely for `refundingProcess`, but `bankDisputeHandling` — the process with the far heavier per-instance document (1,358 nested Lucene docs/instance with flattening on, vs. 6-17 for `refundingProcess`) — runs a persistent ~1,300-instance import backlog. Object variable flattening doesn't just cost disk; it visibly slows Optimize's import for the processes it hits hardest.
+- **The "Service tasks created" panel has a bug**: its query hardcodes `[24h]` instead of `[$__range]`, so it ignores the dashboard's time-range picker entirely. Not yet fixed.
+
+The dashboard also already had a panel doing the exact disk-share breakdown we'd been computing by hand: "Data size in secondary Storage" splits primary ES disk into Optimize/Zeebe-export/Camunda-exporter shares. It matched our manual `_cat/indices` calculation within ~1% (61.5% vs. 62.8%).
+
+Combining the creation-count panels with that disk breakdown gives population-wide bytes-per-unit numbers, computed from the *entire* cluster's history rather than one sampled instance:
+
+- **Optimize bytes / root PI created:** 1.74 MB (flatten on) vs. 91.7 KB (flatten off) → **19.4x**
+- **Optimize bytes / variable created:** 2,924 B (flatten on) vs. 147.6 B (flatten off) → **19.8x**
+
+Both land in the same range as the single-sampled-instance ~21x ratio measured directly in Elasticsearch above — a useful cross-check, since these two methods (population-wide Prometheus counters vs. one sampled ES document) are independent of each other.
+
+#### The number that actually matters for sizing
+
+Optimize's disk share explains *why* the gap exists, but it's not the number to size a cluster against — it doesn't net out the storage that this flag never touches (Zeebe's raw export, the Camunda Exporter's Operate/Tasklist indices). The number that does:
+
+```promql
+sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumeclaim=~"elastic.*"})
+/
+(sum(increase(zeebe_element_instance_events_total{namespace=~"$namespace", action="activated", type="PROCESS"}[$__range]))
+ - sum(increase(zeebe_element_instance_events_total{namespace=~"$namespace", action="activated", type="CALL_ACTIVITY"}[$__range])))
+```
+
+Total *actual on-disk* Elasticsearch bytes (via `kubelet_volume_stats_used_bytes`, which includes the replica — cross-checked against `elasticsearch_indices_store_size_bytes_primary` × 2, agreeing within ~2%), divided by root process instances created:
+
+| | flatten=`true` | flatten=`false` | Ratio |
+|---|---|---|---|
+| Total secondary storage / root PI | **5.85 MB** | **2.62 MB** | **2.24x** |
+| Total PVC bytes used | 136.1 GiB | 59.0 GiB | 2.31x |
+
+This is the direct answer to "how much more disk do I need to provision for the same workload" — smaller than the 8.3-19.8x Optimize-specific ratios because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision. We sanity-checked it against the component breakdown above: Optimize + Zeebe-export + Camunda-exporter per root PI sums to 5.93 MB (flatten on) and 2.72 MB (flatten off), both within rounding of the directly-measured figures.
 
 ### A closed-form formula for the variable-count multiplier
 
@@ -188,6 +233,8 @@ What would actually work: a dedicated benchmark with exactly one process, one va
 - **Variables can reach a process instance's scope through paths you won't find in explicit input mappings.** The multi-instance loop item variable reaching the child process despite both propagation flags being `false` is exactly this kind of thing — worth remembering the next time a variable count doesn't match what the io mappings alone would predict.
 - **SaaS already runs with this disabled; Self-Managed customers who haven't touched this setting are silently paying for it**, and our own load tests were one of them until now.
 - **Object variable flattening has no depth limit, which makes it a genuinely open-ended cost, not just a fixed multiplier.** It's not "objects cost ~6x more" — it recurses through arbitrarily nested JSON, so cost scales with the *payload's own shape* (depth × branching factor), something Camunda's server-side config has no say over. Arrays are the exception (they collapse to one marker regardless of length), but a deeply nested object with no arrays at all has nothing to cap it. That makes this a sizing risk that's hard to bound in advance for any given customer's process design, not just a config knob to flip.
+- **The Optimize-specific ratios (8.3-19.8x) explain the mechanism; the total-disk-per-root-PI ratio (2.24x) is the number to size against.** Diagnosing *why* is different from sizing *how much* — the second question needs the denominator netted against everything the flag doesn't touch.
+- **A dashboard's "increase over this Zeebe metric" panels can replace a lot of manual `kubectl port-forward` + `curl` auditing, but they're not a free substitute for reading ES directly.** They matched well here, and even surfaced a real finding we wouldn't have otherwise seen this clearly (Optimize's import lag on the heavier process) — but only because we cross-checked them against ES first and caught one panel with a query bug the same way.
 
 ### Possible Improvements / Recommendations
 
@@ -195,3 +242,4 @@ What would actually work: a dedicated benchmark with exactly one process, one va
 - Disable object variable flattening in our own load tests by default: [camunda/camunda#57190](https://github.com/camunda/camunda/pull/57190).
 - Sizing guide already updated with this mechanism and the controlled measurement: [camunda-docs#9326](https://github.com/camunda/camunda-docs/pull/9326).
 - Extend `A_per_value` from an empirical range into a per-field-type table with a dedicated synthetic benchmark.
+- Fix the "Service tasks created" panel's hardcoded `[24h]` range on the `chvrsl2` dashboard.
