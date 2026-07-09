@@ -1,0 +1,146 @@
+---
+layout: posts
+title:  "Confirming Optimize's Object Variable Flattening Cost With a Controlled A/B Test"
+date:   2026-07-09
+categories:
+  - chaos_experiment
+  - bpmn
+tags:
+  - performance
+  - optimize
+  - elasticsearch
+authors:
+  - zell
+---
+
+<!--
+TODO before publishing: add charts. Good candidates:
+- Bar chart: Optimize's % share of total ES disk, flatten=true vs flatten=false (62.8% vs 7.6%)
+- Bar chart: variable count and variable-value bytes per instance, both processes, both configs
+- Time series: total ES disk usage %, both namespaces, over the ~3h measurement window
+Raw numbers for all three are in the "Actual" section below.
+-->
+
+# Chaos Day Summary
+
+In a [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/) and its [variable-filtering follow-up](https://camunda.github.io/zeebe-chaos/2026/06/25/Impact-of-Optimize-Variable-Filtering/), we measured Optimize's Elasticsearch overhead against Self-Managed load tests. Running the same kind of test against a Camunda SaaS cluster turned up something we didn't expect: Optimize's disk footprint there looks nothing like what we'd measured on Self-Managed. This Chaos Day tracks that discovery down to its root cause and confirms it with a controlled experiment.
+
+**TL;DR;** A week-long test against a SaaS Advanced 4x cluster showed Optimize's indices taking up only ~7-10% of total Elasticsearch disk, versus ~59-100% on our Self-Managed weekly load test running the exact same workload. The cause: Optimize's `includeObjectVariableValue` flag (env `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE`) defaults to `true` and **flattens every JSON object variable into one stored variable per property, plus the raw serialized object itself**. Camunda SaaS explicitly disables this; the public Self-Managed Helm chart does not, so any Self-Managed deployment that hasn't touched this setting silently pays for it. We confirmed this is the *entire* explanation, not just a correlation, with an isolated A/B test that changes only this one flag: **Optimize's ES disk share dropped from 62.8% to 7.6%, an 8.3x reduction**, for the same workload. We're disabling it in our own load tests, and there's an open discussion about changing Optimize's shipped default to match SaaS.
+
+<!--truncate-->
+
+## Chaos Experiment
+
+### How we got here
+
+While setting up a SaaS test comparable to our Self-Managed weekly load test (Advanced 4x, closest match to our Self-Managed hardware), we expected similar behavior to what we'd already measured: Optimize being the dominant Elasticsearch disk consumer, eventually filling the disk without a tighter ILM policy than SaaS's defaults (30 days for Operate/Tasklist, 180 for Optimize, vs. our load test's 1-3 days).
+
+What we found instead, after a week:
+
+| | SaaS (Advanced 4x) | Self-Managed (weekly load test) |
+|---|---|---|
+| Optimize's share of total ES disk | ~7-10% | ~59-100% |
+
+Same realistic workload (~1 root PI/s, 50 sub-process instances per root), same process definitions, wildly different Optimize disk footprint. The batch size and page-fetch metrics also differed between the two, hinting at a configuration gap somewhere, but nothing obviously explained a footprint difference this large.
+
+### Finding the flag
+
+A teammate's hunch pointed at object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature — controlled by `includeObjectVariableValue` — turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
+
+Checking the code confirmed it:
+- Optimize's own shipped default ([`service-config.yaml`](https://github.com/camunda/camunda/blob/main/optimize/util/optimize-commons/src/main/resources/service-config.yaml)) is `true`.
+- `camunda-operator`, which deploys SaaS, explicitly overrides it to `false` ([camunda-operator#1354](https://github.com/camunda/camunda-operator/pull/1354), tracked in [Jira OPT-6690](https://jira.camunda.com/browse/OPT-6690)) — a deliberate scalability decision made for C8 SaaS, apparently inherited from a feature originally built for Camunda 7.
+- The public Self-Managed Helm chart sets no equivalent override, so it silently inherits `true` — including our own load tests, which never touched this setting either.
+
+A first live comparison (SaaS cluster vs. a Self-Managed weekly load test cluster running the identical scenario) measured the impact directly:
+
+| Process | Metric | Self-Managed | SaaS | Ratio |
+|---|---|---|---|---|
+| `bankDisputeHandling` | variables / instance | 1,221 | 208 | 5.9x |
+| `bankDisputeHandling` | variable value bytes / instance | 59,174 | 1,880 | **31.5x** |
+| `refundingProcess` | variables / instance | 15 | 2 | 7.5x |
+| `refundingProcess` | variable value bytes / instance | 635 | 13 | **48.8x** |
+
+Strong evidence, but not yet proof: the Self-Managed and SaaS environments differ in more than just this one flag (hardware, ILM/retention policy, exporter batch config). We opened [camunda/camunda#57127](https://github.com/camunda/camunda/issues/57127) to track changing Optimize's shipped default, and a [load-test PR](https://github.com/camunda/camunda/pull/57190) to stop our own load tests from silently paying this cost — but wanted a cleaner experiment before calling the root cause confirmed.
+
+### Expected
+
+If object variable flattening is really the *entire* explanation, then toggling only that one flag — everything else held identical — should reproduce the same magnitude of difference we saw between the very differently-configured SaaS and Self-Managed environments.
+
+### Actual: the controlled A/B test
+
+We deployed two namespaces on the `realistic` scenario, identical except for one environment variable:
+
+| | `default-flatten-obj` | `no-flatten-obj` |
+|---|---|---|
+| `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE` | unset (Optimize's shipped default, `true`) | `false` (matches SaaS) |
+
+Same `realistic` scenario, same 1 root-PI/s rate (confirmed via `zeebe_process_instance_creations_total`), same `historyCleanup` config (`ttl=P1D`, cleanup enabled), same partition count, same age (~3h) at measurement time.
+
+**Result:**
+
+| Metric | flatten=`true` | flatten=`false` | Ratio |
+|---|---|---|---|
+| Optimize's share of total ES disk | 62.8% | 7.6% | **8.3x** |
+| `bankDisputeHandling` index size (per instance) | 3.07 MB | 145 KB | ~21x |
+| `refundingProcess` index size (per instance) | 25.1 KB | 1.18 KB | ~21x |
+| `bankDisputeHandling` sampled instance: vars / value bytes | 1,222 / 59,144 | 208 / 1,828 | 5.9x / 32.4x |
+| `refundingProcess` sampled instance: vars / value bytes | 15 / 629 | 2 / 13 | 7.5x / 48.4x |
+
+The per-instance ratios are nearly identical to the earlier SaaS-vs-Self-Managed numbers (5.9x/31.5x and 7.5x/48.8x there, vs. 5.9x/32.4x and 7.5x/48.4x here) despite this test controlling away every other difference between those two environments. That upgrades the finding from "strongly correlated" to **causally confirmed**: this one flag, in isolation, fully explains the SaaS-vs-Self-Managed Optimize disk gap.
+
+Total Elasticsearch disk usage over the ~3h test window climbed at ~1.52%/hour with flattening on, vs. ~0.58%/hour with it off (~2.6x — smaller than the 8.3x Optimize-share figure because this measure includes non-Optimize indices, which are identical between the two and dilute the ratio).
+
+### A closed-form formula for the variable-count multiplier
+
+Pulling the raw `variables[]` array from a sampled `refundingProcess` document in each namespace (the simpler of our two processes — one service task, no nested sub-processes) let us go one step further than an empirical ratio.
+
+With flattening **on**, the document has 15 variables:
+```
+disputePosition.name, disputePosition.transactionDate, disputePosition._id, disputePosition,
+customer.lastname, loopCounter, disputeId, customer.address, disputePosition.amount, customer,
+disputePosition.currency, customer.email, disputePosition.index, customer.firstname, customer.phone
+```
+With flattening **off**, it has 2:
+```
+disputeId, loopCounter
+```
+
+The extra variables aren't job-completion noise — the `refunding` worker completes with an empty payload. They come from the BPMN model: the call activity invoking `refundingProcess` is a multi-instance construct over `disputeDetails.disputePositions`, with `propagateAllChildVariables="false"` and `propagateAllParentVariables="false"`, and only two explicit input mappings (`customer`, `disputeId`). Even so, the multi-instance loop's own local variables — `disputePosition` (the loop item, itself a 6-field object) and `loopCounter` — are visible in the child process instance's scope. Those propagation flags only govern parent↔child *output* propagation, not the loop's local scope; it's an easy thing to miss if you only read the explicit `zeebe:input` mappings.
+
+So `refundingProcess`'s real variable set is two primitives (`disputeId`, `loopCounter`) and two object variables (`customer`, 5 fields; `disputePosition`, 6 fields). That gives a formula that matches both documents exactly:
+
+```
+StoredVariables(flatten=false) = P                      (object variables dropped entirely — not even stored unflattened)
+StoredVariables(flatten=true)  = P + O + ΣF_i            (each object variable → 1 raw + F_i child-field variables)
+```
+
+where `P` = primitive variable count, `O` = object/JSON variable count, `F_i` = field count of object variable `i`.
+
+For `refundingProcess`: `P=2`, `O=2`, `ΣF = 5 + 6 = 11`.
+- flatten=`true`: `2 + 2 + 11 = 15` — matches the live document exactly.
+- flatten=`false`: `2` — matches exactly.
+- Ratio: `15 / 2 = 7.5x` — matches the measured ratio exactly.
+
+Combined with the per-value storage overhead established in the [variable-filtering post](https://camunda.github.io/zeebe-chaos/2026/06/25/Impact-of-Optimize-Variable-Filtering/) (nested-doc indexing + up to 6 secondary representations per stored value, empirically ~5-11x depending on field type), this gives a two-layer sizing model:
+
+```
+Total disk multiplier ≈ A_flatten × A_per_value
+A_flatten = (P + O + ΣF_i) / P
+```
+
+The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema — no load test required — as long as object variables reachable through multi-instance loop scope are counted, not just the ones in explicit `zeebe:input` mappings. `A_per_value` is still an empirical range rather than a closed form; a synthetic single-variable-type benchmark (one process, one variable, sweeping string/number/date/boolean) would be the natural next step to turn it into a per-type table.
+
+## What We Learned
+
+- **A correlation across two differently-configured environments can look identical to full causation, and it's worth checking.** The SaaS-vs-Self-Managed comparison was already compelling (5.9x-7.5x variable count, 31.5x-48.8x bytes), but those two environments differ in hardware, retention policy, and exporter config too. The isolated A/B test reproduced the same numbers almost exactly while controlling all of that away — the stronger and cheaper experiment to run when you can.
+- **Optimize's object variable flattening, not cardinality, drove our earlier "~29x" figure.** We'd previously attributed a large Optimize storage multiplier to high-cardinality string variables; re-checking the actual benchmark payload showed the variables involved are constants repeated across every instance. The real driver is the same flattening mechanism confirmed here.
+- **Variables can reach a process instance's scope through paths you won't find in explicit input mappings.** The multi-instance loop item variable reaching the child process despite both propagation flags being `false` is exactly this kind of thing — worth remembering the next time a variable count doesn't match what the io mappings alone would predict.
+- **SaaS already runs with this disabled; Self-Managed customers who haven't touched this setting are silently paying for it**, and our own load tests were one of them until now.
+
+### Possible Improvements / Recommendations
+
+- Change Optimize's shipped default for `includeObjectVariableValue` to `false`, matching what SaaS already runs at scale: [camunda/camunda#57127](https://github.com/camunda/camunda/issues/57127).
+- Disable object variable flattening in our own load tests by default: [camunda/camunda#57190](https://github.com/camunda/camunda/pull/57190).
+- Sizing guide already updated with this mechanism and the controlled measurement: [camunda-docs#9326](https://github.com/camunda/camunda-docs/pull/9326).
+- Extend `A_per_value` from an empirical range into a per-field-type table with a dedicated synthetic benchmark.
