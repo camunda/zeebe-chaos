@@ -45,12 +45,12 @@ Same realistic workload (~1 root PI/s, 50 sub-process instances per root), same 
 
 ### Finding the flag
 
-A teammate's hunch pointed at object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature — controlled by `includeObjectVariableValue` — turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
+During investigation we detected the object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature, controlled by `includeObjectVariableValue`, turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
 
 Checking the code confirmed it:
 - Optimize's own shipped default ([`service-config.yaml`](https://github.com/camunda/camunda/blob/main/optimize/util/optimize-commons/src/main/resources/service-config.yaml)) is `true`.
-- `camunda-operator`, which deploys SaaS, explicitly overrides it to `false` ([camunda-operator#1354](https://github.com/camunda/camunda-operator/pull/1354), tracked in [Jira OPT-6690](https://jira.camunda.com/browse/OPT-6690)) — a deliberate scalability decision made for C8 SaaS, apparently inherited from a feature originally built for Camunda 7.
-- The public Self-Managed Helm chart sets no equivalent override, so it silently inherits `true` — including our own load tests, which never touched this setting either.
+- In our SaaS environment this is explicitly overriden to `false`, a deliberate scalability decision made for C8 SaaS, apparently inherited from a feature originally built for Camunda 7.
+- The public Self-Managed Helm chart sets no equivalent override, so it silently inherits `true`, including our own load tests, which never touched this setting either.
 
 A first live comparison (SaaS cluster vs. a Self-Managed weekly load test cluster running the identical scenario) measured the impact directly:
 
@@ -61,11 +61,11 @@ A first live comparison (SaaS cluster vs. a Self-Managed weekly load test cluste
 | `refundingProcess` | variables / instance | 15 | 2 | 7.5x |
 | `refundingProcess` | variable value bytes / instance | 635 | 13 | **48.8x** |
 
-Strong evidence, but not yet proof: the Self-Managed and SaaS environments differ in more than just this one flag (hardware, ILM/retention policy, exporter batch config). We opened [camunda/camunda#57127](https://github.com/camunda/camunda/issues/57127) to track changing Optimize's shipped default, and a [load-test PR](https://github.com/camunda/camunda/pull/57190) to stop our own load tests from silently paying this cost — but wanted a cleaner experiment before calling the root cause confirmed.
+Strong evidence, but not yet proof: the Self-Managed and SaaS environments differ in more than just this one flag (hardware, ILM/retention policy, exporter batch config). We opened [camunda/camunda#57127](https://github.com/camunda/camunda/issues/57127) to track changing Optimize's shipped default, and a [load-test PR](https://github.com/camunda/camunda/pull/57190) to stop our own load tests from silently paying this cost, but wanted a cleaner experiment before calling the root cause confirmed.
 
 ### Expected
 
-If object variable flattening is really the *entire* explanation, then toggling only that one flag — everything else held identical — should reproduce the same magnitude of difference we saw between the very differently-configured SaaS and Self-Managed environments.
+If object variable flattening is really the *entire* explanation, then toggling only that one flag (everything else held identical) should reproduce the same magnitude of difference we saw between the very differently-configured SaaS and Self-Managed environments.
 
 ### Actual: the controlled A/B test
 
@@ -76,6 +76,13 @@ We deployed two namespaces on the `realistic` scenario, identical except for one
 | `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE` | unset (Optimize's shipped default, `true`) | `false` (matches SaaS) |
 
 Same `realistic` scenario, same 1 root-PI/s rate (confirmed via `zeebe_process_instance_creations_total`), same `historyCleanup` config (`ttl=P1D`, cleanup enabled), same partition count, same age (~3h) at measurement time.
+
+ <!-- TODO
+ 
+ GENERAL
+ 
+  -->
+
 
 **Result:**
 
@@ -149,20 +156,22 @@ The useful part: `A_flatten` is computable directly from a process's BPMN model 
 | **Primitives subtotal** | | | | | | **208** | **P = 208** |
 | `customer` | root (×1) + call-activity input mapping per iteration (×50) | 51 | object | 5 | 1+5=6 | 306 | no (dropped) |
 | `disputePosition` | MI loop item, 2 constructs × 50 iterations | 100 | object | 6 | 1+6=7 | 700 | no (dropped) |
-| `disputeDetails` family | root object: raw + `disputePositions._listSize` + `disputeId` + `disputeAmount.{amount,currency}` + `disputeStartDate` | 1 | object (nested + 1 list field) | — | 6 (fixed, doesn't fit `1+F`) | 6 | no (dropped) |
+| `disputeDetails` family | root object: raw + `disputePositions._listSize` + `disputeId` + `disputeAmount.{amount,currency}` + `disputeStartDate` | 1 | object (nested + 1 list field) | — | 6 | 6 | no (dropped) |
 | `fraud_score_result` | top-level list variable: raw + `_listSize` | 1 | list | — | 2 | 2 | no (dropped) |
 | **Total** | | | | | | **1222** | **208** |
 
 `1222 / 208 = 5.875 ≈ 5.9x` — matches the measured ratio exactly.
 
-The `6` and `7` per-occurrence figures are just `1 + F`: `customer` has 5 fields (`firstname`/`lastname`/`email`/`phone`/`address`) → `1+5=6`; `disputePosition` has 6 fields (`_id`/`index`/`name`/`amount`/`currency`/`transactionDate`) → `1+6=7`. The two additions this process required:
+The `6` and `7` per-occurrence figures are `1 + F`: `customer` has 5 fields (`firstname`/`lastname`/`email`/`phone`/`address`) → `1+5=6`; `disputePosition` has 6 fields (`_id`/`index`/`name`/`amount`/`currency`/`transactionDate`) → `1+6=7`. The two additions this process required:
 
 1. **Scope repetition.** A variable set inside a multi-instance loop occurs once *per iteration*, not once. This process has two independent 50-iteration multi-instance constructs both looping over `disputeDetails.disputePositions` (an embedded sub-process and the call activity spawning `refundingProcess`), so `loopCounter` and `disputePosition` each occur 100 times (50+50). Generalized, the formula sums over every variable-defining *scope* `s`, weighted by how many times that scope executes (`n_s`):
    ```
    StoredVariables(flatten=false) = Σ_s n_s × P_s
    StoredVariables(flatten=true)  = Σ_s n_s × (P_s + O_s + ΣF_i,s)
    ```
-2. **List-typed variables don't flatten element-by-element.** A list variable, or a list-typed property inside an object (like `disputeDetails.disputePositions`, a 50-item array), gets a `_listSize` marker variable instead of one entry per element. `disputeDetails` itself doesn't cleanly fit the `1+F` shape — it's a mix of a list field (→ `_listSize` only), a nested object field (`disputeAmount`, which recurses to its 2 leaf fields with no intermediate raw kept), and two plain primitive fields — that one is read off the live data rather than predicted by a simple rule.
+2. **`F_i` is a recursive leaf count, and flattening has no depth limit.** `disputeDetails` looked like it didn't fit `1+F` — a mix of a list field, a nested object, and two plain fields — until reading `ObjectVariableService.flattenJsonObjectVariableAndAddToResult` ([source](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/importing/engine/service/ObjectVariableService.java#L156-L169)): it delegates to a generic `JsonFlattener` (`FlattenMode.KEEP_ARRAYS`) that recurses through nested JSON to arbitrary depth, emitting one entry per *leaf* — a primitive, or an array (arrays are never expanded element-by-element; any array, at any depth, collapses into a single `_listSize` marker instead). `flattenAsMap()` only ever emits leaves, never intermediate object nodes — which is why the 2-level-nested `disputeDetails.disputeAmount` recurses straight to `disputeDetails.disputeAmount.{amount,currency}` with no separate entry for `disputeAmount` itself. Redefine `F_i` as "recursive leaf count, where an array at any depth counts as one leaf" and `disputeDetails` fits perfectly: `disputePositions` (1) + `disputeId` (1) + `disputeAmount.{amount,currency}` (2) + `disputeStartDate` (1) = 5 leaves, `1+5=6`.
+
+   **That also means there's no ceiling on how expensive one object variable can get.** Optimize's flattening cost isn't bounded by any config on Optimize's side — it's determined entirely by the shape of whatever JSON the process happens to pass in. A deeply nested object with several fields at each level multiplies out combinatorially (depth × branching factor), with nothing in this code path to stop it. Arrays are the one shape that doesn't compound this way — a `_listSize` marker costs the same one entry whether the array has 5 elements or 5,000 — but a payload built from deeply nested plain objects, with no arrays at all, has no equivalent protection. The customer's payload shape, not anything Camunda controls server-side, determines the worst case here.
 
 ### Why `A_per_value` resists a code-only answer
 
@@ -178,6 +187,7 @@ What would actually work: a dedicated benchmark with exactly one process, one va
 - **Optimize's object variable flattening, not cardinality, drove our earlier "~29x" figure.** We'd previously attributed a large Optimize storage multiplier to high-cardinality string variables; re-checking the actual benchmark payload showed the variables involved are constants repeated across every instance. The real driver is the same flattening mechanism confirmed here.
 - **Variables can reach a process instance's scope through paths you won't find in explicit input mappings.** The multi-instance loop item variable reaching the child process despite both propagation flags being `false` is exactly this kind of thing — worth remembering the next time a variable count doesn't match what the io mappings alone would predict.
 - **SaaS already runs with this disabled; Self-Managed customers who haven't touched this setting are silently paying for it**, and our own load tests were one of them until now.
+- **Object variable flattening has no depth limit, which makes it a genuinely open-ended cost, not just a fixed multiplier.** It's not "objects cost ~6x more" — it recurses through arbitrarily nested JSON, so cost scales with the *payload's own shape* (depth × branching factor), something Camunda's server-side config has no say over. Arrays are the exception (they collapse to one marker regardless of length), but a deeply nested object with no arrays at all has nothing to cap it. That makes this a sizing risk that's hard to bound in advance for any given customer's process design, not just a config knob to flip.
 
 ### Possible Improvements / Recommendations
 
