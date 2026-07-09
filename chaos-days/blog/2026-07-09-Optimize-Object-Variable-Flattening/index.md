@@ -51,7 +51,7 @@ Same realistic workload (~1 root PI/s, 50 sub-process instances per root), same 
 
 ### Finding the flag
 
-During the investigation, we detected the object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature, controlled by `includeObjectVariableValue`, turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
+During the investigation, we detected the object variable handling. Our [`realisticPayload.json`](https://github.com/camunda/camunda/blob/main/load-tests/load-tester/src/main/resources/bpmn/realistic/realisticPayload.json) load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature, controlled by `includeObjectVariableValue`, turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
 
 Checking the code confirmed it:
 - Optimize's own shipped default ([`service-config.yaml`](https://github.com/camunda/camunda/blob/main/optimize/util/optimize-commons/src/main/resources/service-config.yaml)) is `true`.
@@ -62,9 +62,9 @@ A first live comparison (SaaS cluster vs. a Self-Managed weekly load test cluste
 
 | Process | Metric | Self-Managed | SaaS | Ratio |
 |---|---|---|---|---|
-| `bankDisputeHandling` | variables / instance | 1,221 | 208 | 5.9x |
+| [`bankDisputeHandling`](https://github.com/camunda/camunda/blob/main/load-tests/load-tester/src/main/resources/bpmn/realistic/bankCustomerComplaintDisputeHandling.bpmn) | variables / instance | 1,221 | 208 | 5.9x |
 | `bankDisputeHandling` | variable value bytes / instance | 59,174 | 1,880 | **31.5x** |
-| `refundingProcess` | variables / instance | 15 | 2 | 7.5x |
+| [`refundingProcess`](https://github.com/camunda/camunda/blob/main/load-tests/load-tester/src/main/resources/bpmn/realistic/refundingProcess.bpmn) | variables / instance | 15 | 2 | 7.5x |
 | `refundingProcess` | variable value bytes / instance | 635 | 13 | **48.8x** |
 
 Strong evidence, but not yet proof: the Self-Managed and SaaS environments differ in more than just this one flag (hardware, ILM/retention policy, exporter batch config). We opened [camunda/camunda#57127](https://github.com/camunda/camunda/issues/57127) to track changing Optimize's shipped default, and a [load-test PR](https://github.com/camunda/camunda/pull/57190) to stop our own load tests from silently paying this cost, but wanted a cleaner experiment before calling the root cause confirmed.
@@ -143,7 +143,7 @@ sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumecla
 
 This is the direct answer to "how much more disk do I need to provision for the same workload?" It's smaller than the 8.3x Optimize-specific disk-share ratio because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision.
 
-### A closed-form formula for the variable-count multiplier
+### A closer look at the variables
 
 Pulling the raw `variables[]` array from a sampled `refundingProcess` document in each namespace (the simpler of our two processes: one service task, no nested sub-processes) let us go one step further than an empirical ratio.
 
@@ -183,6 +183,8 @@ A_flatten = (P + O + ΣF_i) / P
 The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema, no load test required. Long term, we should come up with something even more generic for general disk usage (not just scoped to Optimize).
 
 ### Validating the formula against the bigger process
+
+![alt text](realistic-process-model.png)
 
 `refundingProcess` is the simple case: one service task, no nesting. `bankDisputeHandling` is far more complex (24 unique flow node ids, nested sub-processes, its own multi-instance constructs), and reconciling it exactly needed two additions that the simple case didn't exercise. Pulling the exact variable names (not just counts) from both namespaces' sampled documents:
 
