@@ -143,6 +143,8 @@ sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumecla
 
 This is the direct answer to "how much more disk do I need to provision for the same workload?" It's smaller than the 8.3x Optimize-specific disk-share ratio because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision.
 
+The same dashboard screenshot above also breaks this down by component, and it's worth pointing out directly: Optimize's own share of a root PI's secondary storage is **3.92 MiB with flattening on vs. 212 KiB with it off, an ~18.9x reduction**. Operate's and Tasklist's shares stay flat within noise (~950 KiB vs. ~1.11 MiB, and ~325 KiB vs. ~370 KiB) since this flag doesn't touch either component. That's the 8.3x disk-share ratio expressed per unit of work instead of as a percentage, and it's visible directly on the dashboard without any manual calculation.
+
 ### A closer look at the variables
 
 Pulling the raw `variables[]` array from a sampled `refundingProcess` document in each namespace (the simpler of our two processes: one service task, no nested sub-processes) let us go one step further than an empirical ratio.
