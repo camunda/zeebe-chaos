@@ -17,7 +17,7 @@ authors:
 Charts: screenshots from the `chvrsl2` "Camunda Performance - Optimize investigation" dashboard
 (dashboard.benchmark.camunda.cloud), both namespaces:
 - Panel 81 "Data size in secondary Storage" (piechart) — Optimize/Zeebe/Camunda disk split, both configs
-- Panels 85/86/88 (root PI / PI / variables created) alongside panel 81, to show the sizing-per-unit-of-work numbers
+- Panels 85/86/88 (root PI / PI/variables created) alongside panel 81, to show the sizing-per-unit-of-work numbers
 Raw numbers for all of these are in the "Actual" and "Cross-validating with Grafana" sections below.
 -->
 
@@ -45,11 +45,11 @@ Same realistic workload (~1 root PI/s, 50 sub-process instances per root), same 
 
 ### Finding the flag
 
-During investigation we detected the object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature, controlled by `includeObjectVariableValue`, turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
+During the investigation, we detected the object variable handling. Our `realisticPayload.json` load-test payload includes a `customer` variable that's a JSON object (five string fields: `firstname`, `lastname`, `email`, `phone`, `address`) and a `disputeDetails` variable, also an object. Optimize's [object variable flattening](https://docs.camunda.io/docs/next/self-managed/components/optimize/configuration/object-variables/) feature, controlled by `includeObjectVariableValue`, turns each object variable into one stored Optimize variable per property, plus the raw serialized value. That's a plausible source of a large, silent multiplier.
 
 Checking the code confirmed it:
 - Optimize's own shipped default ([`service-config.yaml`](https://github.com/camunda/camunda/blob/main/optimize/util/optimize-commons/src/main/resources/service-config.yaml)) is `true`.
-- In our SaaS environment this is explicitly overriden to `false`, a deliberate scalability decision made for C8 SaaS, apparently inherited from a feature originally built for Camunda 7.
+- In our SaaS environment, this is explicitly overridden to `false`, a deliberate scalability decision made for C8 SaaS, apparently inherited from a feature originally built for Camunda 7.
 - The public Self-Managed Helm chart sets no equivalent override, so it silently inherits `true`, including our own load tests, which never touched this setting either.
 
 A first live comparison (SaaS cluster vs. a Self-Managed weekly load test cluster running the identical scenario) measured the impact directly:
@@ -73,7 +73,7 @@ We deployed two namespaces on the `realistic` scenario, identical except for one
 
 ![general-overview](general-overview.png)
 
-Already, in the general overview we can see that the load test with the default flatten behavior has some issues with the data availability latency. This is explained by the much larger exporting backlog, which limits in general the throughput and affects the latency.
+Already, in the general overview, we can see that the load test with the default flatten behavior has some issues with the data availability latency. This is explained by the much larger exporting backlog, which limits in general the throughput and affects the latency.
 
 ![backlog-prim-sec-storage](backlog-prim-sec-storage.png)
 
@@ -93,15 +93,15 @@ sum(increase(zeebe_element_instance_events_total{namespace=~"$namespace",partiti
 sum(increase(zeebe_element_instance_events_total{namespace=~"$namespace", partition=~"$partition",pod=~"$pod", action="activated", type="CALL_ACTIVITY"}[$__range]))
 ```
 
-The result was cross checked against Elasticsearch data and naive calculations of `1 (instance per second) * 60 (Seconds) * 60 (Minutes) * 6 (hours) = 21600` root process instances created over the ~6h test window, which matched the Prometheus query result exactly. This number can be used for further calculations, for example to compute the per-root-PI disk and index usage for each namespace (which we will see later).
+The result was cross-checked against Elasticsearch data and naive calculations of `1 (instance per second) * 60 (Seconds) * 60 (Minutes) * 6 (hours) = 21600` root process instances created over the ~6h test window, which matched the Prometheus query result exactly. This number can be used for further calculations, for example to compute the per-root-PI disk and index usage for each namespace (which we will see later).
 
-Looking at the disk consumption we can see that with the default behavior of flattening object variables, Optimize's share of total ES disk is ~62%, while with flattening disabled it drops to ~7%.
+Looking at the disk consumption, we can see that with the default behavior of flattening object variables, Optimize's share of total ES disk is ~62%, while with flattening disabled, it drops to ~7%.
 
 ![disk-consumption](disk-consumption.png)
 
-We were able to create some new panels on our dashboard based on secondary storage disk and index sizes and the root process instance count, which let us compute an estimante of the per-root-PI disk and index usage for each namespace.
+We were able to create new panels on our dashboard based on secondary storage disk and index sizes and the root process instance count, which let us estimate the per-root-PI disk and index usage for each namespace.
 
-The per-instance variable counts and value bytes also match the earlier SaaS-vs-Self-Managed ratios almost exactly. We cross checked the data against Elasticsearch directly and come to the following results.
+The per-instance variable counts and value bytes also match the earlier SaaS-vs-Self-Managed ratios almost exactly. We cross-checked the data against Elasticsearch and obtained the following results.
 
 **Result:**
 
@@ -120,9 +120,9 @@ Total Elasticsearch disk usage over the ~6h test window climbed at ~1.52%/hour w
 
 #### The number that actually matters for sizing
 
-The above metrics helped us to explain how the configuration change affects the system and what the general estimation of process instance disk/index usage is. We can see the direct effect.
+The above metrics helped us explain how the configuration change affects the system and provide a general estimate of process instance disk/index usage. We can see the direct effect.
 
-The number that does really matter is the size of a root process instance in the secondary storage (Elasticsearch). This is the number that will drive a capacity planning decision. We can compute this number by taking the total actual on-disk Elasticsearch bytes (via `kubelet_volume_stats_used_bytes`, which includes the replica — cross-checked against `elasticsearch_indices_store_size_bytes_primary` × 2, agreeing within ~2%), divided by root process instances created:
+The number that really matters is the size of a root process instance in the secondary storage (Elasticsearch). This is the number that will drive a capacity planning decision. We can compute this number by taking the total actual on-disk Elasticsearch bytes (via `kubelet_volume_stats_used_bytes`, which includes the replica — cross-checked against `elasticsearch_indices_store_size_bytes_primary` × 2, agreeing within ~2%), divided by root process instances created:
 
 ```promql
 sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumeclaim=~"elastic.*"})
@@ -136,7 +136,7 @@ sum(kubelet_volume_stats_used_bytes{namespace=~"$namespace", persistentvolumecla
 | Total secondary storage / root PI | **6.34 MB** | **2.97 MB** | **2.13x** |
 | Total PVC bytes used | 167 GiB | 69.4 GiB | 2.4x |
 
-This is the direct answer to "how much more disk do I need to provision for the same workload". — smaller than the 8.3-19.8x Optimize-specific ratios because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision.
+This is the direct answer to "how much more disk do I need to provision for the same workload?" — smaller than the 8.3-19.8x Optimize-specific ratios because it's diluted by the fixed Zeebe/Camunda baseline, but it's the number that actually drives a capacity-planning decision.
 
 ### A closed-form formula for the variable-count multiplier
 
@@ -175,11 +175,11 @@ Total disk multiplier ≈ A_flatten × A_per_value
 A_flatten = (P + O + ΣF_i) / P
 ```
 
-The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema — no load test required. Long term, we should come up with some even more generic for the general disk size consumption (not only scoped to Optimize).
+The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema — no load test required. Long term, we should come up with something even more generic for general disk usage (not just scoped to Optimize).
 
 ### Validating the formula against the bigger process
 
-`refundingProcess` is the simple case: one service task, no nesting. `bankDisputeHandling` is far more complex (24 unique flow node ids, nested sub-processes, its own multi-instance constructs), and reconciling it exactly needed two additions the simple case didn't exercise. Pulling the exact variable names (not just counts) from both namespaces' sampled documents:
+`refundingProcess` is the simple case: one service task, no nesting. `bankDisputeHandling` is far more complex (24 unique flow node ids, nested sub-processes, its own multi-instance constructs), and reconciling it exactly needed two additions that the simple case didn't exercise. Pulling the exact variable names (not just counts) from both namespaces' sampled documents:
 
 | Variable | Where it's set | Occurrences (N) | Type | Fields (F) | Per-occurrence count | Total stored (flatten=`true`) | Contributes to P (flatten=`false`)? |
 |---|---|---|---|---|---|---|---|
@@ -206,7 +206,7 @@ The `6` and `7` per-occurrence figures are `1 + F`: `customer` has 5 fields (`fi
 
 The two additions this process required:
 
-1. **Scope repetition.** A variable set inside a multi-instance loop occurs once *per iteration*, not once. This process has two independent 50-iteration multi-instance constructs both looping over `disputeDetails.disputePositions` (an embedded sub-process and the call activity spawning `refundingProcess`), so `loopCounter` and `disputePosition` each occur 100 times (50+50). Generalized, the formula sums over every variable-defining *scope* `s`, weighted by how many times that scope executes (`n_s`):
+1. **Scope repetition.** A variable set inside a multi-instance loop occurs once *per iteration*, not once. This process has two independent 50-iteration multi-instance constructs, both looping over `disputeDetails.disputePositions` (an embedded sub-process and the call activity spawning `refundingProcess`), so `loopCounter` and `disputePosition` each occur 100 times (50+50). Generalized, the formula sums over every variable-defining *scope* `s`, weighted by how many times that scope executes (`n_s`):
    ```
    StoredVariables(flatten=false) = Σ_s n_s × P_s
    StoredVariables(flatten=true)  = Σ_s n_s × (P_s + O_s + ΣF_i,s)
@@ -214,16 +214,16 @@ The two additions this process required:
 2. **`F_i` is a recursive leaf count, and flattening has no depth limit.** `disputeDetails` looked like it didn't fit `1+F` — a mix of a list field, a nested object, and two plain fields. After checking the [source](https://github.com/camunda/camunda/blob/main/optimize/backend/src/main/java/io/camunda/optimize/service/importing/engine/service/ObjectVariableService.java#L156-L169): we detected that the flattening is recursive through nested JSON to arbitrary depth, emitting one entry per *leaf*, a primitive, or an array (arrays are never expanded element-by-element; any array, at any depth, collapses into a single `_listSize` marker instead).
 
 
-**That also means there's no ceiling on how expensive one object variable can get.** Optimize's flattening cost isn't bounded by any config on Optimize's side, it's determined entirely by the shape of whatever JSON the process happens to pass in. A deeply nested object with several fields at each level multiplies out combinatorially (depth × branching factor), with nothing in this code path to stop it. Arrays are the one shape that doesn't compound this way, a `_listSize` marker costs the same one entry whether the array has 5 elements or 5,000, but a payload built from deeply nested plain objects, with no arrays at all, has no equivalent protection. The customer's payload shape, not anything Camunda controls server-side, determines the worst case here.
+**That also means there's no ceiling on how expensive one object variable can get.** Optimize's flattening cost isn't bounded by any config on Optimize's side; it's determined entirely by the shape of whatever JSON the process happens to pass in. A deeply nested object with several fields at each level multiplies out combinatorially (depth × branching factor), with nothing in this code path to stop it. Arrays are the one shape that doesn't compound this way; a `_listSize` marker costs the same one entry whether the array has 5 elements or 5,000, but a payload built from deeply nested plain objects, with no arrays at all, has no equivalent protection. The customer's payload shape, not anything Camunda controls server-side, determines the worst case here.
 
 ## What We Learned
 
-- **A correlation across two differently-configured environments can look identical to full causation, and it's worth checking.** The SaaS-vs-Self-Managed comparison was already compelling (5.9x-7.5x variable count, 31.5x-48.8x bytes), but those two environments differ in hardware, retention policy, and exporter config too. The isolated A/B test reproduced the same numbers almost exactly while controlling all of that away — the stronger and cheaper experiment to run when you can.
-- **Optimize's object variable flattening, not cardinality, drove our earlier "~29x" figure.** We'd previously attributed a large Optimize storage multiplier to high-cardinality string variables (different values); re-checking the actual benchmark payload showed the variables involved are constants repeated across every instance. The real driver is the same flattening mechanism confirmed here.
+- **A correlation across two differently-configured environments can look identical to full causation, and it's worth checking.** The SaaS-vs-Self-Managed comparison was already compelling (5.9x-7.5x variable count, 31.5x-48.8x bytes), but those two environments differ in hardware, retention policy, and exporter configuration as well. The isolated A/B test reproduced the same numbers almost exactly while controlling for all of that — the stronger and cheaper experiment to run when you can.
+- **Optimize's object variable flattening, not cardinality, drove our earlier "~29x" figure.** We'd previously attributed a large Optimize storage multiplier to high-cardinality string variables (with different values); re-checking the actual benchmark payload showed that the variables involved are constants repeated across every instance. The real driver is the same flattening mechanism confirmed here.
 - **SaaS already runs with this disabled; Self-Managed customers who haven't touched this setting are silently paying for it**, and our own load tests were one of them until now.
 - **Object variable flattening has no depth limit, which makes it a genuinely open-ended cost, not just a fixed multiplier.** It's not "objects cost ~6x more" — it recurses through arbitrarily nested JSON, so cost scales with the *payload's own shape* (depth × branching factor), something Camunda has no control over. Arrays are the exception (they collapse to one marker regardless of length), but a deeply nested object with no arrays at all has nothing to cap it. That makes this a sizing risk that's hard to bound in advance for any given customer's process design, not just a config knob to flip.
 - **The Optimize-specific ratios (8.3-19.8x) explain the mechanism; the total-disk-per-root-PI ratio (2.24x) is the number to size against.** Diagnosing *why* is different from sizing *how much* — the second question needs the denominator netted against everything the flag doesn't touch.
-- New dashboard panels can save several manual work, and give direct feedback
+- New dashboard panels can save several hours of manual work, and give direct feedback
 
 ### Possible Improvements / Recommendations
 
