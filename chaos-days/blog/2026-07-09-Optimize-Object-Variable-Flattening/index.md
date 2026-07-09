@@ -90,7 +90,7 @@ Example query for the root instances (something interesting to share):
 
 ```promql
 # All process instances created over the selected time range
-# Subtracted by child process instances 
+# Subtracted by child process instances
 # = Root process instances
 
 sum(increase(zeebe_element_instance_events_total{namespace=~"$namespace",partition=~"$partition",pod=~"$pod", action="activated", type="PROCESS"}[$__range]))
@@ -184,7 +184,7 @@ The useful part: `A_flatten` is computable directly from a process's BPMN model 
 
 ### Validating the formula against the bigger process
 
-![alt text](realistic-process-model.png)
+![Realistic benchmark process model](realistic-process-model.png)
 
 `refundingProcess` is the simple case: one service task, no nesting. `bankDisputeHandling` is far more complex (24 unique flow node ids, nested sub-processes, its own multi-instance constructs), and reconciling it exactly needed two additions that the simple case didn't exercise. Pulling the exact variable names (not just counts) from both namespaces' sampled documents:
 
@@ -208,7 +208,7 @@ The useful part: `A_flatten` is computable directly from a process's BPMN model 
 
 `1222 / 208 = 5.875 ≈ 5.9x` (matches the measured ratio exactly).
 
-The `6` and `7` per-occurrence figures are `1 + F`: `customer` has 5 fields (`firstname`/`lastname`/`email`/`phone`/`address`) → `1+5=6`; `disputePosition` has 6 fields (`_id`/`index`/`name`/`amount`/`currency`/`transactionDate`) → `1+6=7`. 
+The `6` and `7` per-occurrence figures are `1 + F`: `customer` has 5 fields (`firstname`/`lastname`/`email`/`phone`/`address`) → `1+5=6`; `disputePosition` has 6 fields (`_id`/`index`/`name`/`amount`/`currency`/`transactionDate`) → `1+6=7`.
 
 
 The two additions this process required:
