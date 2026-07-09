@@ -25,7 +25,10 @@ Raw numbers for all of these are in the "Actual" and "Cross-validating with Graf
 
 In a [previous Chaos Day](https://camunda.github.io/zeebe-chaos/2026/06/10/Impact-of-Optimize-on-Camunda/) and its [variable-filtering follow-up](https://camunda.github.io/zeebe-chaos/2026/06/25/Impact-of-Optimize-Variable-Filtering/), we measured Optimize's Elasticsearch overhead against Self-Managed load tests. Running the same kind of test against a Camunda SaaS cluster turned up something we didn't expect: Optimize's disk footprint there looks nothing like what we'd measured on Self-Managed. This Chaos Day tracks that discovery down to its root cause and confirms it with a controlled experiment.
 
-**TL;DR;** A week-long test against a SaaS Advanced 4x cluster showed Optimize's indices taking up only ~7-10% of total Elasticsearch disk, versus ~59-100% on our Self-Managed weekly load test running the exact same workload. The cause: Optimize's `includeObjectVariableValue` flag (env `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE`) defaults to `true` and **flattens every JSON object variable into one stored variable per property, plus the raw serialized object itself**. Camunda SaaS explicitly disables this; the public Self-Managed Helm chart does not, so any Self-Managed deployment that hasn't touched this setting silently pays for it. We confirmed this is the *entire* explanation, not just a correlation, with an isolated A/B test that changes only this one flag: **Optimize's ES disk share dropped from 62.8% to 7.6%, an 8.3x reduction**, for the same workload. The number that matters most for capacity planning: **total secondary storage per root process instance dropped from 6.34 MB to 2.97 MB, a 2.13x reduction** — that's the actual "how much more disk do I need to buy" answer, net of the Zeebe/Camunda storage this flag doesn't touch. We're disabling it in our own load tests, and there's an open discussion about changing Optimize's shipped default to match SaaS.
+**TL;DR;** A week-long test against a SaaS Advanced 4x cluster showed Optimize's indices taking up only ~7-10% of total Elasticsearch disk, versus ~59-100% on our Self-Managed weekly load test running the exact same workload. The cause: Optimize's `includeObjectVariableValue` flag (env `CAMUNDA_OPTIMIZE_ZEEBE_INCLUDE_OBJECT_VARIABLE`) defaults to `true` and **flattens every JSON object variable into one stored variable per property, plus the raw serialized object itself**. Camunda SaaS explicitly disables this; the public Self-Managed Helm chart does not, so any Self-Managed deployment that hasn't touched this setting silently pays for it. We confirmed this with an isolated A/B test that changes only this one flag: **Optimize's ES disk share dropped from 62.8% to 7.6%, an 8.3x reduction**, for the same workload. The number that matters most for capacity planning: **total secondary storage per root process instance dropped from 6.34 MB to 2.97 MB, a 2.13x reduction**
+
+![alt text](disk-consumption.png)
+
 
 <!--truncate-->
 
@@ -40,6 +43,9 @@ What we found instead, after a week:
 | | SaaS (Advanced 4x) | Self-Managed (weekly load test) |
 |---|---|---|
 | Optimize's share of total ES disk | ~7-10% | ~59-100% |
+
+![saas](seven-days-saas-disk-es.png)
+![self-managed](seven-days-sm-disk-es.png)
 
 Same realistic workload (~1 root PI/s, 50 sub-process instances per root), same process definitions, wildly different Optimize disk footprint. The batch size and page-fetch metrics also differed between the two, hinting at a configuration gap somewhere, but nothing obviously explained a footprint difference this large.
 
@@ -78,8 +84,7 @@ Already, in the general overview, we can see that the load test with the default
 ![backlog-prim-sec-storage](backlog-prim-sec-storage.png)
 
 
-
-*Side note: We were able to improve our dashboard to show the actual created root process instances, general process instances (child included), service tasks and variables over time.*
+*Side note: As you might have recognized, we were able to improve our dashboard to show the actual created root process instances, general process instances (child included), service tasks and variables over time.*
 
 Example query for the root instances (something interesting to share):
 
