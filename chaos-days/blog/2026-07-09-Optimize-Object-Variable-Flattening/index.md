@@ -129,7 +129,48 @@ Total disk multiplier ≈ A_flatten × A_per_value
 A_flatten = (P + O + ΣF_i) / P
 ```
 
-The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema — no load test required — as long as object variables reachable through multi-instance loop scope are counted, not just the ones in explicit `zeebe:input` mappings. `A_per_value` is still an empirical range rather than a closed form; a synthetic single-variable-type benchmark (one process, one variable, sweeping string/number/date/boolean) would be the natural next step to turn it into a per-type table.
+The useful part: `A_flatten` is computable directly from a process's BPMN model and payload schema — no load test required — as long as object variables reachable through multi-instance loop scope are counted, not just the ones in explicit `zeebe:input` mappings.
+
+### Validating the formula against the bigger process
+
+`refundingProcess` is the simple case: one service task, no nesting. `bankDisputeHandling` is far more complex (24 unique flow node ids, nested sub-processes, its own multi-instance constructs), and reconciling it exactly needed two additions the simple case didn't exercise. Pulling the exact variable names (not just counts) from both namespaces' sampled documents:
+
+| Variable | Where it's set | Occurrences (N) | Type | Fields (F) | Per-occurrence count | Total stored (flatten=`true`) | Contributes to P (flatten=`false`)? |
+|---|---|---|---|---|---|---|---|
+| `loopCounter` | MI loop counter, 2 constructs × 50 iterations | 100 | primitive | — | 1 | 100 | yes (100) |
+| `correlationKey` | "Vendor fraud claim validation" (MI, ×50) + "Document Request Process" (×1) | 51 | primitive | — | 1 | 51 | yes (51) |
+| `disputeId` | call activity input mapping, per iteration | 50 | primitive | — | 1 | 50 | yes (50) |
+| `type` | send-task local input, path-dependent | 2 | primitive | — | 1 | 2 | yes (2) |
+| `vendor_claim_frequency` | fraud subprocess output | 1 | primitive | — | 1 | 1 | yes (1) |
+| `isRefund` | DMN/gateway output | 1 | primitive | — | 1 | 1 | yes (1) |
+| `isHighFraudRatingConfidence` | DMN/gateway output | 1 | primitive | — | 1 | 1 | yes (1) |
+| `customerId` | root start variable | 1 | primitive | — | 1 | 1 | yes (1) |
+| `customer_claim_frequency` | fraud subprocess output | 1 | primitive | — | 1 | 1 | yes (1) |
+| **Primitives subtotal** | | | | | | **208** | **P = 208** |
+| `customer` | root (×1) + call-activity input mapping per iteration (×50) | 51 | object | 5 | 1+5=6 | 306 | no (dropped) |
+| `disputePosition` | MI loop item, 2 constructs × 50 iterations | 100 | object | 6 | 1+6=7 | 700 | no (dropped) |
+| `disputeDetails` family | root object: raw + `disputePositions._listSize` + `disputeId` + `disputeAmount.{amount,currency}` + `disputeStartDate` | 1 | object (nested + 1 list field) | — | 6 (fixed, doesn't fit `1+F`) | 6 | no (dropped) |
+| `fraud_score_result` | top-level list variable: raw + `_listSize` | 1 | list | — | 2 | 2 | no (dropped) |
+| **Total** | | | | | | **1222** | **208** |
+
+`1222 / 208 = 5.875 ≈ 5.9x` — matches the measured ratio exactly.
+
+The `6` and `7` per-occurrence figures are just `1 + F`: `customer` has 5 fields (`firstname`/`lastname`/`email`/`phone`/`address`) → `1+5=6`; `disputePosition` has 6 fields (`_id`/`index`/`name`/`amount`/`currency`/`transactionDate`) → `1+6=7`. The two additions this process required:
+
+1. **Scope repetition.** A variable set inside a multi-instance loop occurs once *per iteration*, not once. This process has two independent 50-iteration multi-instance constructs both looping over `disputeDetails.disputePositions` (an embedded sub-process and the call activity spawning `refundingProcess`), so `loopCounter` and `disputePosition` each occur 100 times (50+50). Generalized, the formula sums over every variable-defining *scope* `s`, weighted by how many times that scope executes (`n_s`):
+   ```
+   StoredVariables(flatten=false) = Σ_s n_s × P_s
+   StoredVariables(flatten=true)  = Σ_s n_s × (P_s + O_s + ΣF_i,s)
+   ```
+2. **List-typed variables don't flatten element-by-element.** A list variable, or a list-typed property inside an object (like `disputeDetails.disputePositions`, a 50-item array), gets a `_listSize` marker variable instead of one entry per element. `disputeDetails` itself doesn't cleanly fit the `1+F` shape — it's a mix of a list field (→ `_listSize` only), a nested object field (`disputeAmount`, which recurses to its 2 leaf fields with no intermediate raw kept), and two plain primitive fields — that one is read off the live data rather than predicted by a simple rule.
+
+### Why `A_per_value` resists a code-only answer
+
+It's tempting to read `A_per_value` straight off the code: `addValueMultifields` creates up to 6 field mappings per stored variable (exact keyword, lowercase keyword, n-gram text, best-effort date/long/double). But that's a *mapping count*, not a *byte multiplier* — the 6 mappings don't cost equally. A numeric value's date/long/double attempts succeed cheaply; a long string's n-gram field emits roughly 10x its length in tokens, which is the dominant cost. Elasticsearch/Lucene also compresses repeated values, so the real byte cost depends on the indexed *data* (length, cardinality) as much as the mapping count — information the code alone doesn't give you.
+
+We tried to shortcut this with data we already had, by comparing the raw `zeebe-record_variable` index against Optimize's index in the same two clusters. That doesn't give a clean number either: `zeebe-record_variable` is an **append-only log of every variable update** over the test's lifetime, while Optimize's variable array is a **snapshot** of the latest value per instance — a whole-index comparison conflates "how many updates happened" with "cost per stored value." For what it's worth, both namespaces' `zeebe-record_variable` indices were nearly identical in size (~7.7-7.9M docs, ~1.1-1.2GB primary each), confirming the flag doesn't touch the raw exporter — useful as a sanity check, but not for deriving `A_per_value`.
+
+What would actually work: a dedicated benchmark with exactly one process, one variable, no other noise, run once per type (string of known length, number, boolean, date) — isolating the byte delta to purely the storage mechanism for that type, the same way this post's A/B test isolated `A_flatten` from a range into an exact number. Not yet run.
 
 ## What We Learned
 
