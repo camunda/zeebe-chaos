@@ -105,7 +105,7 @@ Looking at the disk consumption, we can see that with the default behavior of fl
 ![disk-consumption](disk-consumption.png)
 
 We were able to create new panels on our dashboard based on secondary storage disk and index sizes and the root process instance count, which let us estimate the per-root-PI disk and index usage for each namespace.
-The dashboard screenshot above also breaks this down by component, and it's worth pointing out directly: Optimize's own share of a root PI's secondary storage is **3.92 MiB with flattening on vs. 212 KiB with it off, an ~18.9x reduction**. Operate's and Tasklist's shares stay flat within noise (~950 KiB vs. ~1.11 MiB, and ~325 KiB vs. ~370 KiB) since this flag doesn't touch either component.
+The dashboard above breaks this down by component, and it's worth pointing out directly: Optimize's own share of a root PI's secondary storage is **3.92 MiB with flattening on vs. 212 KiB with it off, an ~18.9x reduction**. Operate's and Tasklist's shares stay flat within noise (~950 KiB vs. ~1.11 MiB, and ~325 KiB vs. ~370 KiB) since this flag doesn't touch either component.
 
 The per-instance variable counts and value bytes also match the earlier SaaS-vs-Self-Managed ratios almost exactly. We cross-checked the data against Elasticsearch and obtained the following results.
 
