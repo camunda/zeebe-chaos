@@ -1,0 +1,218 @@
+{
+    "version": "0.1.0",
+    "title": "Coordinated leadership rebalance with a leader lost mid-rebalance",
+    "description": "A rebalance whose leader is restarted while it runs neither hangs nor leaves a partition frozen, and a later rebalance still transfers.",
+    "contributions": {
+        "reliability": "high",
+        "availability": "high"
+    },
+    "steady-state-hypothesis": {
+        "title": "Zeebe is alive",
+        "probes": [
+            {
+                "name": "All pods should be ready",
+                "type": "probe",
+                "tolerance": 0,
+                "provider": {
+                    "type": "process",
+                    "path": "zbchaos",
+                    "arguments": [
+                        "verify",
+                        "readiness"
+                    ],
+                    "timeout": 900
+                }
+            },
+            {
+                "name": "Should be able to create a process instance",
+                "type": "probe",
+                "tolerance": 0,
+                "provider": {
+                    "type": "process",
+                    "path": "zbchaos",
+                    "arguments": [
+                        "verify",
+                        "instance-creation",
+                        "--awaitResult"
+                    ],
+                    "timeout": 900
+                }
+            }
+        ]
+    },
+    "method": [
+        {
+            "name": "Deploy process model",
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "deploy",
+                    "process"
+                ]
+            }
+        },
+        {
+            "name": "Deploy workers, so that the instances started below complete",
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "deploy",
+                    "worker"
+                ]
+            }
+        },
+        {
+            "name": "Restart the leader of partition two, so a lower-priority replica takes over",
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "restart",
+                    "broker",
+                    "--role",
+                    "LEADER",
+                    "--partitionId",
+                    "2"
+                ],
+                "timeout": 900
+            }
+        },
+        {
+            "name": "All pods should be ready again before rebalancing",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "verify",
+                    "readiness"
+                ],
+                "timeout": 900
+            }
+        },
+        {
+            "name": "Leadership should have drifted off the highest-priority replicas",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "verify",
+                    "leadership",
+                    "--expectUnbalanced",
+                    "--timeoutInSec",
+                    "120"
+                ],
+                "timeout": 300
+            }
+        },
+        {
+            "name": "Rebalance, accepting partitions it cannot move because their leader went away",
+            "background": true,
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "cluster",
+                    "rebalance",
+                    "--allowFailedPartitions",
+                    "--timeoutInSec",
+                    "300"
+                ],
+                "timeout": 600
+            }
+        },
+        {
+            "name": "Restart the leader of partition one while the rebalance is working through the cluster",
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "restart",
+                    "broker",
+                    "--role",
+                    "LEADER",
+                    "--partitionId",
+                    "1"
+                ],
+                "timeout": 900
+            }
+        },
+        {
+            "name": "All pods should be ready after the restart",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "verify",
+                    "readiness"
+                ],
+                "timeout": 900
+            }
+        },
+        {
+            "name": "A rebalance run afterwards should still transfer, so no leader is stuck refusing transfers",
+            "type": "action",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "cluster",
+                    "rebalance",
+                    "--timeoutInSec",
+                    "300"
+                ],
+                "timeout": 600
+            }
+        },
+        {
+            "name": "Every partition should be led by its highest-priority replica",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "verify",
+                    "leadership",
+                    "--timeoutInSec",
+                    "180"
+                ],
+                "timeout": 300
+            }
+        },
+        {
+            "name": "Instances should still complete, so no partition was left frozen",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": [
+                    "verify",
+                    "instance-creation",
+                    "--awaitResult"
+                ],
+                "timeout": 900
+            }
+        }
+    ],
+    "rollbacks": []
+}

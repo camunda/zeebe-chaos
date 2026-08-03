@@ -71,6 +71,14 @@ experiments:
     clusterPlans:
       - g3-s
     minVersion: 8.8
+  - path: rebalance/experiment.json
+    clusterPlans:
+      - g3-s
+    minVersion: 8.10
+  - path: rebalance/leader-restart-during-rebalance.json
+    clusterPlans:
+      - g3-s
+    minVersion: 8.10
   # only for testing
   - path: test/experiment.json
     clusterPlans:
