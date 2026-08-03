@@ -3,10 +3,7 @@ name: Go CI
 on:
   push:
     branches: [ main ]
-  pull_request:
-    paths: 
-      - go-chaos/**
-      - .github/workflows/go-ci.yml
+  pull_request: { }
 
 env:
   GO_VERSION: 1.26
