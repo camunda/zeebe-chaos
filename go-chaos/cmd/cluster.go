@@ -63,6 +63,7 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	}
 
 	rootCmd.AddCommand(clusterCommand)
+	addRebalanceCommand(clusterCommand, flags)
 	clusterCommand.AddCommand(statusCommand)
 	clusterCommand.AddCommand(waitCommand)
 	clusterCommand.AddCommand(forceFailoverCommand)

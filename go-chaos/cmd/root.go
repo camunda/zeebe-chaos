@@ -85,6 +85,18 @@ type Flags struct {
 	replicationFactor int32
 	partitionCount    int32
 
+	// rebalance
+	rebalanceDryRun                bool
+	rebalanceTimeoutSec            int
+	rebalanceCancelAfterSec        int
+	rebalanceOutputPath            string
+	rebalanceAllowFailedPartitions bool
+	rebalanceLagThreshold          int64
+	rebalanceReplicationTimeout    string
+	rebalanceMaxTransferAttempts   int32
+	rebalanceLeaderWaitTimeout     string
+	expectUnbalanced               bool
+
 	// dataloss
 	awaitReadiness bool
 

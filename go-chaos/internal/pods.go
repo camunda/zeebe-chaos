@@ -291,6 +291,34 @@ func (c K8Client) MustGatewayPortForward(localPort int, remotePort int) (int, fu
 	}
 }
 
+// MustPodPortForward creates a port forwarding to the given pod's port, for what
+// only one specific node can answer - such as a broker's own view of the
+// partitions it replicates. Panics when port forwarding fails.
+// localPort can be 0 to let the OS choose a random, free port.
+// Returns the exposed local port and a function to close the port forwarding.
+func (c K8Client) MustPodPortForward(podName string, localPort int, remotePort int) (int, func()) {
+	portForwardCreateURL := c.createPortForwardUrlForPod(podName)
+	portForwarder, err := c.createPortForwarder(localPort, remotePort, portForwardCreateURL)
+	if err != nil {
+		panic(err)
+	}
+	errChan := make(chan error)
+	go func() { errChan <- portForwarder.ForwardPorts() }()
+	select {
+	case err = <-errChan:
+		LogVerbose("\nError starting port forwarding tunnel: %s", err)
+		panic(err)
+	case <-portForwarder.Ready:
+		ports, err := portForwarder.GetPorts()
+		if err != nil {
+			panic(err)
+		}
+		exposedLocalPort := ports[0].Local
+		LogVerbose("Successfully created port forwarding tunnel from %d (local) to %d (container) via pod %s", exposedLocalPort, remotePort, podName)
+		return int(exposedLocalPort), func() { portForwarder.Close() }
+	}
+}
+
 // mustResolveGatewayServiceTarget resolves and validates the gateway service, returning chosen pod name,
 // service name, selector string, and target container port. It panics on any failure, mirroring Must* semantics.
 func (c K8Client) mustResolveGatewayServiceTarget(remotePort int) (podName, serviceName, selector string, targetContainerPort int) {

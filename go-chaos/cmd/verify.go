@@ -133,6 +133,7 @@ Process instances are created until the required partition is reached.`,
 	}
 
 	rootCmd.AddCommand(verifyCmd)
+	addVerifyLeadershipCommand(verifyCmd, flags)
 	verifyCmd.AddCommand(verifyReadinessCmd)
 	verifyCmd.AddCommand(verifyInstanceCreation)
 	verifyCmd.AddCommand(verifyInstanceCount)
