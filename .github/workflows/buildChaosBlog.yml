@@ -8,6 +8,10 @@ on:
     paths:
       - chaos-days/**
       - .github/workflows/buildChaosBlog.yml
+  pull_request:
+    paths:
+      - chaos-days/**
+      - .github/workflows/buildChaosBlog.yml
 
 jobs:
   build:
