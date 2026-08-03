@@ -108,7 +108,7 @@ If followers are slow, they lag behind the leader even more than they would natu
 
 We were able to demonstrate the negative impact that slow disks can have. We were able to reproduce significant performance degradation and increased latency when using simple HDDs. With this, it is visible that not only disk throughput is important, but also disk latency.
 
-This is why we [recommend using SSDs](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements) for the primary storage in Camunda clusters, as they significantly improve performance and availability.
+This is why we [recommend using SSDs](https://docs.camunda.io/docs/next/self-managed/reference-architecture/kubernetes/#minimum-cluster-requirements) for the primary storage in Camunda clusters, as they significantly improve performance and availability. We have opened a [documentation PR](https://github.com/camunda/camunda-docs/pull/9154) to better explain this requirement in our sizing guide.
 
 ## Chaos experiment: Slow disk on secondary storage
 
