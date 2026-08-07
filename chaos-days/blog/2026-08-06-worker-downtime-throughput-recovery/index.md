@@ -215,11 +215,21 @@ The single-worker view above understates the problem.
 
 **Detect.** All of these work today, without new instrumentation:
 
-* The clearest signal is a divergence between the client's [`jobActivated` and `jobHandled` counters](https://github.com/camunda/camunda/blob/dc62083c576e4acbc956e1abb068edc25fbae5d5/clients/java/src/main/java/io/camunda/client/impl/worker/metrics/MicrometerJobWorkerMetrics.java#L42-L49). `jobActivated` is incremented [as soon as a job arrives](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L255-L258), `jobHandled` only when its handler returns, so a sustained gap between them is the count of jobs that were dropped before they ever ran. Compare the counters cumulatively rather than as rates. We first plotted the rate difference, where the signal is buried in scrape noise around zero:
+* Watch the gap between the client's [`jobActivated` and `jobHandled` counters](https://github.com/camunda/camunda/blob/dc62083c576e4acbc956e1abb068edc25fbae5d5/clients/java/src/main/java/io/camunda/client/impl/worker/metrics/MicrometerJobWorkerMetrics.java#L42-L49), and read it as a fill level rather than an error count. `jobActivated` is incremented [as soon as a job arrives](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L255-L258) and `jobHandled` only when its handler returns, so the cumulative difference is how many jobs the worker is holding right now, plus any it has dropped for good.
+
+  Plot it as a rate and all of that disappears into scrape noise around zero, which is how we first looked at it and saw nothing:
 
   ![dropping-request-overtime](dropping-request-overtime.png)
 
-* Note what that pair does *not* catch. Because `jobHandled` counts handler returns and not accepted completions, a job that runs past its deadline and has its completion rejected is counted as handled. Wasted work looks identical to useful work in this metric, so pair it with the broker-side view below.
+  Plot the same two counters cumulatively and it becomes very legible:
+
+  ![dropping-request-overtime-no-rate](dropping-request-overtime-no-rate.png)
+
+  `dispute_process_request_proof_from_vendor` pins to 60 from 11:00 onwards, which is exactly its `maxJobsActive`. That worker was completely full, continuously, for five hours. When we raised the capacity at 14:52 the ceiling simply moved with it, to 100. A worker parked on its configured ceiling indefinitely is one that is permanently in the regime where the semaphore has nothing to hand out, which is the precondition for all three client defects, so this is a good thing to alert on.
+
+  It is not, by itself, evidence that jobs were dropped: a held job and a dropped job look identical in that number. The gap only proves drops when it climbs *above* `maxJobsActive`, or when it fails to fall back toward zero after the work stops.
+
+* Note what the pair does not catch at all. Because `jobHandled` counts handler returns and not accepted completions, a job that runs past its deadline and has its completion rejected is counted as handled. Wasted work looks identical to useful work in this metric, so pair it with the broker-side view below.
 * Broker side, `zeebe_log_appender_record_appended_total{recordType="COMMAND_REJECTION"}` broken down by intent gives you the other half. Rising `JOB.TIME_OUT` rejections mean jobs are finishing right at their deadline boundary; rejected `JOB.COMPLETE` commands mean they finished past it and the work was thrown away. Neither is visible from the client's own counters.
 * Alert on the client log line [`reached maximum capacity (maxJobsActive)`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L55-L58). It currently reads like a benign tuning hint. It is not.
 * A worker that has hit defect 2 emits no `ActivateJobs` requests at all while still holding a healthy stream. Absence of poll traffic from a live worker is an unambiguous signature.
