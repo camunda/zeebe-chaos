@@ -26,9 +26,9 @@ In today's Chaos Day, we simulated an extended outage of a job worker in our rea
 
 ![](realistic.png)
 
-This is the process our load test drives end to end; we will come back to the two multi-instance subprocesses in it further down.
+This is the process our load test drives end to end; we will come back to its two multi-instance activities further down.
 
-We run our realistic load test in the `c8-chaos-w32` namespace: The setup is as follows: a 3-partition Zeebe cluster with a set of dedicated job worker Deployments (one per job type) driving the "Bank: Customer complaint/dispute handling" process, plus a `starter` Deployment continuously creating new process instances.
+We run our realistic load test in the `c8-chaos-w32` namespace. The setup: a 3-partition Zeebe cluster with a set of dedicated job worker Deployments (one per job type) driving the "Bank: Customer complaint/dispute handling" process, plus a `starter` Deployment continuously creating new process instances.
 
 Each worker is configured independently in the [`camunda-load-tests-helm`](https://github.com/camunda/camunda-load-tests-helm) chart, via a values file that this scenario mirrors in-repo ([`load-tester-values-realistic-benchmark.yaml`](https://github.com/camunda/camunda/blob/53c704ef5e146d9c4867d1827a8597409ffd5bcc/load-tests/setup/scenarios/load-tester-values-realistic-benchmark.yaml)), for example:
 
@@ -86,10 +86,12 @@ Once the worker came back, every job type's handled rate jumped back up within s
 
 ![03-fanout-cascade](03-fanout-cascade.png)
 
+Look closer, though, and the job types split into two groups that behave nothing alike. The one
+whose worker we actually killed is the well-behaved one.
 
 ![](extract-task.png)
 
-`extract_data_from_document` is a task which has a 1:1 mapping to the root process instances. This means we have ~4,000 jobs in the backlog, and it drains whatever backlog it had within about 10 minutes and settles right back to its steady 1/s. 
+`extract_data_from_document` maps 1:1 to root process instances, so its backlog was roughly 4,000 jobs, one for each instance that piled up. It drains that within about 10 minutes and settles straight back to its steady 1/s.
 
 ![extract-data-handled](extract-data-handled.png)
 
@@ -98,11 +100,11 @@ In contrast: `dispute_process_request_proof_from_vendor`, `dispute_process_reque
 
 ![](realistic.png)
 
-If we look at our process model again, we can see we have two multi-instance tasks, which means that for each process instance, we have multiple jobs created for these tasks.  That is the fan-out: e.g. the "Vendor fraud claim validation" subprocess runs as a multi-instance activity over `disputeDetails.disputePositions`, and our load test's payload always sets that collection to 50 entries.
+If we look at our process model again, we can see two multi-instance activities, which means each process instance creates many jobs for the tasks inside them. Both iterate over `disputeDetails.disputePositions`, and our load test's payload always sets that collection to 50 entries. One is the "Vendor fraud claim validation" subprocess, which contains `dispute_process_request_proof_from_vendor` and `dispute_process_request_get_vendor_info`. The other is the "Initiate credit and clawback action" call activity, which starts a `refundingProcess` instance per entry.
 
 ![](dispute-job.png)
 
-The moment the earlier worker recovers its backlog the following job workers jump in the execution and then stay pinned near their ceiling for hours. So every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job but 50 `dispute_process_request_proof_from_vendor` jobs downstream. The roughly 4,000 process instances that piled up during the outage were not a 4,000-job backlog for that worker, they were on the order of 200,000 jobs, all of which still have to complete before the root process instances can finish.
+The moment the earlier worker recovers its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,000 process instances that piled up during the outage were never a 4,000-job backlog. They were on the order of 600,000 jobs, about 150 per instance across three job types, all of which still have to complete before the root instances can finish.
 
 This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15 we can see that turn happen:
 
@@ -221,8 +223,8 @@ The single-worker view above understates the problem.
 
 ## Conclusion
 
-Coming back online after a dependency outage is the easy part to verify: throughput bounced back and even overshot within minutes. What is harder to see, and what we only caught because we happened to have the active process instances panel open next to it, is that the backlog kept growing underneath that healthy-looking throughput number for hours.
+Coming back online after a dependency outage is the easy part to verify: every job type's throughput bounced back within seconds. What is harder to see, and what we only caught because we happened to have the active process instances panel open next to it, is that the backlog kept growing underneath that healthy-looking throughput number for hours.
 
 The mechanism turned out to have two layers. Architecturally, job push has no concept of a standing backlog: a pushed job never enters the queue the backlog lives in, so an outage-induced backlog can only be drained by a path that is competing for the capacity push keeps taking. That alone would make recovery slow. What made it never finish is a set of client-side accounting bugs, the worst of which permanently stops a worker from polling after a single bad batch, and which every recovery path in the system funnels straight into.
 
-The reminder for us is that "throughput recovered" is not "fully recovered", and that backlog age and record processing duration deserve a panel next to throughput in every future chaos day. We will pick this back up in a follow-up experiment covering the open questions above.
+The reminder for us is that "throughput recovered" is not "fully recovered", and that backlog age and active process instances deserve a panel next to throughput in every future chaos day. We will pick this back up in a follow-up experiment covering the open questions above.
