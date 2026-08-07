@@ -210,6 +210,10 @@ Defect 2 needs that `RejectedExecutionException` to fire repeatedly, and that tu
 
 So there are two clocks, and they do not start together. Job N in a batch, when its turn finally comes, gets a fresh full 1800ms to acquire a permit, measured from that moment. The broker's deadline clock for that same job started much earlier, when the batch was built. A job can therefore be far past its real deadline, producing exactly the `JOB.TIME_OUT` and `JOB.COMPLETE` rejections we saw, while still acquiring its permit comfortably inside its own locally reset window. Nothing throws, nothing gets logged, nothing leaks.
 
+The whole batch, end to end, with both clocks drawn against each other:
+
+![09-two-clocks-sequence](09-two-clocks-sequence.svg)
+
 The metrics say that is what happened here. On the single `dispute-process-request-proof-from-vendor` pod that ran from 11:04 to 14:52, the cumulative `jobActivated` minus `jobHandled` gap moves up and down all afternoon and touches **0** at 13:50 CEST. A leaked job is never handled, so any accumulated leak puts a permanent floor under that difference. A gap that returns to zero means the leak was zero. And poll traffic never stopped: `JOB_BATCH#ACTIVATE` requests to the gateway ran at 10 to 18/s through the afternoon, and were still at 4 to 8/s between 16:02 and 16:08, when five of the six job workers were scaled to zero and this one was doing nearly all of the polling.
 
 So the stall we actually observed is explained by the architectural inversion plus defects 1 and 3, with defect 2 never triggering. Defect 2 is still a real bug, and it is the worst of the three when it does fire, but we found it by reading the code and reproduced it in a test, not by watching it happen.
