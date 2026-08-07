@@ -227,14 +227,28 @@ The single-worker view above understates the problem.
 
 **Prevent.**
 
-* Size `maxJobsActive` against what the handler pool can actually retire inside a job's deadline, rather than raising it reactively when things look slow. A worker with `execution-threads` threads retires roughly one job per handler duration per thread, so the last job admitted to a full worker waits about `maxJobsActive x handlerDuration / executionThreads` before it even starts. Keeping that under the job `timeout` gives an upper bound:
+* **Size `maxJobsActive` so that a full worker can still meet its deadlines**, rather than raising it reactively when things look slow.
+
+  Picture the worker completely full: it has accepted `maxJobsActive` jobs and every thread is busy. A job at the back of that queue has to wait for everything ahead of it to finish first. The threads work in parallel, so the queue drains in rounds of `execution-threads` jobs, each round taking one handler duration:
+
+  ```
+  waitForTheLastJob = (maxJobsActive / executionThreads) x handlerDuration
+  ```
+
+  For our load test that is 60 jobs over 10 threads, so 6 rounds, and 6 x 300ms is 1800ms. Turn it around so it bounds the capacity instead, and you get:
 
   ```
   maxJobsActive < executionThreads x (timeout / handlerDuration)
+                = 10 x (1800 / 300)
+                = 60
   ```
 
-  Our load test ran 10 threads, a 300ms handler and an 1800ms timeout, which puts the ceiling at exactly 60. We were configured at 60, sitting precisely on the boundary, and our first instinct when the backlog would not drain was to raise it to 100. That moved us past the point where the tail of a full batch can be served inside its deadline at all, which is the condition defect 3 turns into rejected completions. Treat the result as a ceiling rather than a target, and leave room below it: with streaming enabled, pushed jobs consume the same permits, so the real capacity available to the poll path is lower than the formula assumes.
-* Keep the job `timeout` comfortably above worst-case handler duration, and remember it doubles as the semaphore acquire timeout.
+  **Why the job `timeout` is what the wait has to fit inside.** That one configured value is quietly doing two different things. On the broker it is the job's deadline: once it expires the broker takes the job back and hands it to someone else. In the client it is *also* the longest a job will sit waiting for a free thread, because the same value is passed to the [`BlockingExecutor`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L273) and used as its [semaphore acquire timeout](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41).
+
+  Both clocks start at the same moment, when the broker hands the batch out, and they are the same length, so they run down together. A job that spends its entire waiting allowance has therefore spent its entire deadline. At the instant it finally gets a thread it has already expired, and it runs anyway, and the completion is rejected at the end. Waiting the full timeout can never pay off, which is why the wait has to be a fraction of the timeout rather than equal to it.
+
+  Which is exactly the trap we were in. At `maxJobsActive` of 60 we were sitting on the boundary, so the last job of a full batch expired at the moment it started. Raising it to 100 when the backlog would not drain made it worse rather than better: 100 jobs over 10 threads is 10 rounds, 10 x 300ms is 3000ms, so anything admitted past the first 60 was already dead before it began. Treat the number as a ceiling and leave room underneath it, especially with streaming enabled, where pushed jobs take permits from the same pool and the poll path gets less than this formula assumes.
+* Keep the job `timeout` comfortably above your *worst-case* handler duration, not just the average. The bound above assumes every job takes about the same time, so a long tail quietly eats the waiting budget of every job queued behind it.
 
 **Recover.**
 
