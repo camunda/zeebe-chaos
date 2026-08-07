@@ -1,0 +1,216 @@
+<svg viewBox="0 0 1320 1080" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="End-to-end diagram of the path a job takes from the Zeebe broker's partition log, through the gateway, to a worker, for both push and polling. Push fires the instant a job becomes activatable and the gateway relays it to the worker's open stream, with no backlog check anywhere in the chain, so a pushed job never enters the ACTIVATABLE pool at all. Polling is an explicit request relayed by the same gateway down to the broker and back, and it is the only path that serves the ACTIVATABLE backlog, which is drawn as accumulated state rather than a log position. Both push and poll-delivered jobs share one capacity-limited pool on the worker. A push that gets blocked is failed immediately at the gateway and yielded straight back into the backlog state, recovering in roughly one log write. A poll-delivered job that loses the same race is silently dropped client-side, its poll budget is never returned, and the worker then stops polling permanently, which is what turns a slow drain into a stalled one.">
+  <style>
+    svg {
+      --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
+      --panel:#ffffff; --panel-border:#c7ccd6; --band-border:#dfe2e8;
+      --push:#c9711f; --push-soft:rgba(201,113,31,0.14);
+      --pull:#2f5f8a; --pull-soft:rgba(47,95,138,0.12);
+      --warn:#a23b2e; --warn-soft:rgba(162,59,46,0.12);
+      --ghost-border:#c7ccd6; --ghost-text:#9aa2af;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg:#12151c; --ink:#e6e9ef; --muted:#9aa4b2;
+        --panel:#1b1f29; --panel-border:#333a48; --band-border:#242938;
+        --push:#e6a24f; --push-soft:rgba(230,162,79,0.18);
+        --pull:#7ea3cc; --pull-soft:rgba(126,163,204,0.16);
+        --warn:#d97a63; --warn-soft:rgba(217,122,99,0.16);
+        --ghost-border:#333a48; --ghost-text:#6b7280;
+      }
+    }
+    .bgrect { fill: var(--bg); }
+    .title { fill: var(--ink); font-size: 21px; font-weight: 600; text-anchor: middle; }
+    .subtitle { fill: var(--muted); font-size: 12.5px; text-anchor: middle; }
+    .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace; }
+    .band { fill: none; stroke: var(--band-border); stroke-width: 1.5; rx: 14; }
+    .band-label { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+    .spine { stroke: var(--ink); stroke-width: 2; }
+    .divider { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 5 5; opacity: .55; }
+    .divider-label { fill: var(--muted); font-size: 10.5px; text-anchor: middle; font-weight: 600; }
+    .box { fill: var(--panel); stroke: var(--panel-border); stroke-width: 1.5; rx: 8; }
+    .box-warn { fill: var(--panel); stroke: var(--warn); stroke-width: 2; rx: 8; }
+    .box-pull { fill: var(--panel); stroke: var(--pull); stroke-width: 2; rx: 8; }
+    .box-push { fill: var(--panel); stroke: var(--push); stroke-width: 2; rx: 8; }
+    .box-ghost { fill: var(--panel); stroke: var(--ghost-border); stroke-width: 1.5; stroke-dasharray: 4 4; rx: 8; }
+    .box-neutral { fill: var(--panel); stroke: var(--ink); stroke-width: 1.5; rx: 10; }
+    .boxtitle { fill: var(--ink); font-size: 13px; text-anchor: middle; font-weight: 600; }
+    .boxsub { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+    .foot-push { fill: var(--push); font-size: 10px; text-anchor: middle; font-weight: 600; }
+    .foot-ghost { fill: var(--ghost-text); font-size: 10px; text-anchor: middle; font-weight: 600; }
+    .pointer { fill: var(--ink); }
+    .pointer-label { fill: var(--ink); font-size: 10px; text-anchor: middle; font-weight: 600; }
+    .push-line { stroke: var(--push); stroke-width: 2.5; fill: none; }
+    .pull-line { stroke: var(--pull); stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+    .warn-line { stroke: var(--warn); stroke-width: 2; fill: none; stroke-dasharray: 4 4; }
+    .arrowhead-push { fill: var(--push); }
+    .arrowhead-pull { fill: var(--pull); }
+    .arrowhead-warn { fill: var(--warn); }
+    .labelbg { fill: var(--bg); opacity: .92; rx: 5; }
+    .lbl-push { fill: var(--push); font-size: 10.5px; text-anchor: middle; }
+    .lbl-pull { fill: var(--pull); font-size: 10.5px; text-anchor: middle; }
+    .lbl-warn { fill: var(--warn); font-size: 10.5px; text-anchor: middle; }
+    .slot-full { fill: var(--push-soft); stroke: var(--push); stroke-width: 1.5; rx: 4; }
+    .slot-ghost { fill: var(--panel); stroke: var(--ghost-border); stroke-width: 1.5; stroke-dasharray: 3 3; rx: 4; }
+    .slot-glyph { fill: var(--push); font-size: 11px; text-anchor: middle; }
+    .chip-warn { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1.5; rx: 4; }
+    .chip-text { fill: var(--warn); font-size: 11px; text-anchor: middle; font-weight: 700; }
+    .reject-mark { fill: var(--warn); font-size: 15px; text-anchor: middle; font-weight: 700; }
+    .strip-label { fill: var(--muted); font-size: 10.5px; text-anchor: middle; }
+    .legend-text { fill: var(--ink); font-size: 11px; }
+    .legend-title { fill: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+  </style>
+
+  <defs>
+    <marker id="arrowPush" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrowhead-push" />
+    </marker>
+    <marker id="arrowPull" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrowhead-pull" />
+    </marker>
+    <marker id="arrowWarn" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrowhead-warn" />
+    </marker>
+  </defs>
+
+  <rect class="bgrect" x="0" y="0" width="1320" height="1080" />
+
+  <text class="title" x="660" y="34">Job push vs. poll, end to end: broker, gateway, worker</text>
+  <text class="subtitle" x="660" y="55">A pushed job never enters the ACTIVATABLE pool, so the backlog it skips can only be drained by the poll path</text>
+
+  <!-- ================= WORKER BAND ================= -->
+  <rect class="band" x="40" y="80" width="1240" height="290" />
+  <text class="band-label" x="66" y="102">WORKER - Java client</text>
+
+  <rect class="box-push" x="90" y="120" width="260" height="60" />
+  <text class="boxtitle" x="220" y="144">Push stream (gRPC)</text>
+  <text class="boxsub" x="220" y="161">JobStreamerImpl - automatic gRPC flow control</text>
+
+  <rect class="box-pull" x="420" y="120" width="260" height="74" />
+  <text class="boxtitle" x="550" y="141">Poll loop (REST by default)</text>
+  <text class="boxsub" x="550" y="158">JobPollerImpl - ActivateJobs on a timer</text>
+  <text class="boxsub" x="550" y="176" style="font-size:9.5px;">its budget counts poll-delivered jobs only</text>
+
+  <text class="strip-label" x="400" y="206">shared capacity permits - one non-fair Semaphore(maxJobsActive) for both paths</text>
+  <rect class="slot-full" x="90" y="216" width="70" height="28" /><text class="slot-glyph" x="125" y="235">&#9889;</text>
+  <rect class="slot-full" x="170" y="216" width="70" height="28" /><text class="slot-glyph" x="205" y="235">&#9889;</text>
+  <rect class="slot-full" x="250" y="216" width="70" height="28" /><text class="slot-glyph" x="285" y="235">&#9889;</text>
+  <rect class="slot-full" x="330" y="216" width="70" height="28" /><text class="slot-glyph" x="365" y="235">&#9889;</text>
+  <rect class="slot-full" x="410" y="216" width="70" height="28" /><text class="slot-glyph" x="445" y="235">&#9889;</text>
+  <rect class="slot-ghost" x="490" y="216" width="70" height="28" />
+  <text class="reject-mark" x="525" y="234">&#10007;</text>
+  <rect class="slot-ghost" x="570" y="216" width="70" height="28" />
+  <rect class="slot-ghost" x="650" y="216" width="70" height="28" />
+  <rect class="slot-ghost" x="730" y="216" width="70" height="28" />
+
+  <rect class="box-warn" x="870" y="110" width="370" height="152" />
+  <text class="boxtitle" x="1055" y="136" style="fill:var(--warn);">Rejected client-side: no fast recovery</text>
+  <text class="boxsub" x="1055" y="156">poll-delivered job's semaphore acquire times out</text>
+  <text class="boxsub" x="1055" y="172">&#8594; RejectedExecutionException, silently dropped</text>
+  <text class="boxsub" x="1055" y="188">its poll budget is never given back, so this</text>
+  <text class="boxsub" x="1055" y="204" style="fill:var(--warn); font-weight:600;">worker then stops polling permanently</text>
+  <text class="boxsub" x="1055" y="228" style="font-style:italic;">contrast: a push blocked at the gateway yields</text>
+  <text class="boxsub" x="1055" y="242" style="font-style:italic;">back to ACTIVATABLE almost immediately (below)</text>
+
+  <path class="warn-line" d="M 560,230 C 700,300 780,260 868,190" marker-end="url(#arrowWarn)" />
+
+  <!-- ================= GATEWAY BAND ================= -->
+  <rect class="band" x="40" y="420" width="1240" height="190" />
+  <text class="band-label" x="66" y="442">GATEWAY</text>
+
+  <!-- ================= BROKER BAND ================= -->
+  <rect class="band" x="40" y="670" width="1240" height="290" />
+  <text class="band-label" x="66" y="692">BROKER - one partition, one stream-processor thread</text>
+
+  <line class="spine" x1="90" y1="800" x2="1230" y2="800" marker-end="url(#arrowPull)" />
+
+  <rect class="box-warn" x="110" y="770" width="220" height="60" />
+  <text class="boxtitle mono" x="220" y="792">Jobs A-D created</text>
+  <text class="boxsub" x="220" y="807">4 jobs, during the outage</text>
+
+  <line x1="220" y1="830" x2="220" y2="860" stroke="var(--ink)" stroke-width="1.5" marker-end="url(#arrowWarn)" />
+
+  <rect class="box-warn" x="95" y="862" width="250" height="78" />
+  <text class="boxtitle" x="220" y="884" style="fill:var(--warn);">ACTIVATABLE backlog</text>
+  <text class="boxsub" x="220" y="899" style="font-size:9.5px;">accumulated state, not a log position</text>
+  <rect class="chip-warn" x="118" y="907" width="42" height="22" /><text class="chip-text" x="139" y="922">A</text>
+  <rect class="chip-warn" x="172" y="907" width="42" height="22" /><text class="chip-text" x="193" y="922">B</text>
+  <rect class="chip-warn" x="226" y="907" width="42" height="22" /><text class="chip-text" x="247" y="922">C</text>
+  <rect class="chip-warn" x="280" y="907" width="42" height="22" /><text class="chip-text" x="301" y="922">D</text>
+
+  <line class="divider" x1="360" y1="740" x2="360" y2="945" />
+  <text class="divider-label" x="360" y="724">worker reconnects</text>
+  <text class="divider-label" x="360" y="737">stream registered</text>
+
+  <rect class="box-push" x="390" y="770" width="150" height="60" />
+  <text class="boxtitle mono" x="465" y="792">Job E created</text>
+  <text class="foot-push" x="465" y="809">&#10003; processed &amp; pushed</text>
+
+  <polygon class="pointer" points="720,738 740,738 730,754" />
+  <text class="pointer-label" x="730" y="724">processing head is here</text>
+
+  <rect class="box-pull" x="580" y="770" width="300" height="60" />
+  <text class="boxtitle mono" x="730" y="792">ActivateJobs</text>
+  <text class="boxsub" x="730" y="807">asks for A-D: priority first, then oldest key</text>
+
+  <rect class="box-ghost" x="920" y="770" width="150" height="60" />
+  <text class="boxtitle mono" x="995" y="792" style="fill:var(--ghost-text);">Job F created</text>
+  <text class="foot-ghost" x="995" y="809">queued - not yet processed</text>
+
+  <!-- ================= CROSS-BAND FLOWS ================= -->
+
+  <!-- PUSH: broker Job E -> through Push-forwarding -> worker capacity strip -->
+  <path class="push-line" d="M 465,770 V 680 L 260,680 V 390 L 445,390 V 244" marker-end="url(#arrowPush)" />
+  <rect class="labelbg" x="95" y="655" width="220" height="18" />
+  <text class="lbl-push" x="205" y="668">push - fires the instant this record is processed</text>
+  <rect class="labelbg" x="284" y="360" width="242" height="18" />
+  <text class="lbl-push" x="405" y="373">no backlog check: never enters ACTIVATABLE</text>
+
+  <!-- POLL REQUEST: worker poll loop -> through Poll-forwarding -> broker ActivateJobs box -->
+  <path class="pull-line" d="M 550,194 V 670 L 630,670 V 770" marker-end="url(#arrowPull)" />
+  <rect class="labelbg" x="435" y="645" width="185" height="18" />
+  <text class="lbl-pull" x="527" y="658">poll request - sent on a timer</text>
+
+  <!-- POLL RESPONSE: broker ActivateJobs box -> through Poll-forwarding -> worker capacity strip -->
+  <path class="pull-line" d="M 830,770 V 390 L 525,390 V 244" marker-end="url(#arrowPull)" />
+  <rect class="labelbg" x="640" y="397" width="270" height="18" />
+  <text class="lbl-pull" x="775" y="410">response - only once this log position is processed</text>
+
+  <!-- YIELD: gateway Push-forwarding box (blocked push) -> back into the ACTIVATABLE backlog state -->
+  <path class="warn-line" d="M 110,590 V 605 L 60,605 V 845 L 130,845 V 862" marker-end="url(#arrowWarn)" />
+  <rect class="labelbg" x="95" y="615" width="150" height="34" />
+  <text class="lbl-warn" x="170" y="628">blocked &#8594; YIELD</text>
+  <text class="lbl-warn" x="170" y="642">back to ACTIVATABLE, fast</text>
+
+  <!-- Gateway boxes drawn last so the crossing lines read as entering and exiting them -->
+  <rect class="box-neutral" x="90" y="460" width="340" height="130" />
+  <text class="boxtitle" x="260" y="486">Push forwarding</text>
+  <text class="boxsub" x="260" y="504">StreamJobsHandler</text>
+  <text class="boxsub" x="260" y="519">relays to the worker's open stream</text>
+  <text class="boxsub" x="260" y="534">only gate: gRPC isReady() (transport buffer,</text>
+  <text class="boxsub" x="260" y="548">not the worker's declared capacity)</text>
+  <text class="boxsub" x="260" y="565" style="fill:var(--warn);">not ready &#8594; fails now, no queue &#8594; YIELD</text>
+
+  <rect class="box-neutral" x="520" y="460" width="420" height="130" />
+  <text class="boxtitle" x="730" y="486">Poll forwarding</text>
+  <text class="boxsub" x="730" y="504">RoundRobinActivateJobsHandler</text>
+  <text class="boxsub" x="730" y="519">walks partitions sequentially, one request in flight</text>
+  <text class="boxsub" x="730" y="534">long-polls and waits if nothing is available yet</text>
+  <text class="boxsub" x="730" y="551">no readiness gate: the batch ships in one shot</text>
+
+  <!-- Legend -->
+  <text class="legend-title" x="66" y="990">LEGEND</text>
+  <line x1="66" y1="1008" x2="106" y2="1008" class="push-line" />
+  <text class="legend-text" x="116" y="1012">push - synchronous, on job create/retry/fail, no backlog check</text>
+  <line x1="66" y1="1028" x2="106" y2="1028" class="pull-line" />
+  <text class="legend-text" x="116" y="1032">poll - explicit request/response, served from the ACTIVATABLE index</text>
+  <rect x="520" y="1000" width="40" height="14" class="box-warn" />
+  <text class="legend-text" x="570" y="1011">stuck backlog / churn outcome</text>
+  <line x1="520" y1="1028" x2="560" y2="1028" class="warn-line" />
+  <text class="legend-text" x="570" y="1032">failure path - fast gateway YIELD, or slow client-side drop</text>
+  <rect x="940" y="1000" width="30" height="18" class="slot-ghost" />
+  <text class="legend-text" x="980" y="1013">free capacity permit</text>
+  <rect x="940" y="1022" width="30" height="18" class="slot-full" />
+  <text class="legend-text" x="980" y="1035">permit held by a pushed job</text>
+</svg>
