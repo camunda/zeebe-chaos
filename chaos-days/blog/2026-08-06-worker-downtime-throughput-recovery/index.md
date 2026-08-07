@@ -49,7 +49,7 @@ Three of these knobs matter a lot later, so it is worth being precise about what
 
 * `capacity` becomes `max-jobs-active`, the number of jobs a worker will accept concurrently.
 * `completionDelay` is how long our handler sleeps before completing, simulating real work.
-* the job `timeout` is a static `1800ms`, and worker pods run with `execution-threads: 10` by default ([worker profile](https://github.com/camunda/camunda/blob/c0cbe225642e0002a3bce445aaaa9cafd394f269/load-tests/load-tester/src/main/resources/application.yaml#L122-L128)).
+* the job `timeout` is a static `1800ms`, and worker pods run with `execution-threads: 10` by default ([worker profile](https://github.com/camunda/camunda/blob/c0cbe225642e0002a3bce445aaaa9cafd394f269/load-tests/load-tester/src/main/resources/application.yaml#L122-L128)), though the two busiest job types in this scenario, `dispute_process_request_proof_from_vendor` and `refunding`, override it to `30`. That override matters later.
 
 ### Expected
 
@@ -156,6 +156,8 @@ That check happens on job creation, on backoff-retry recurrence ([`JobRecurAfter
 
 The consequence is the whole story in one sentence: **a pushed job never enters the `ACTIVATABLE` pool at all**, so it never queues behind the backlog, because it is never in the same queue.
 
+The broker's own counters say this is not a partial effect. Across the whole afternoon, `zeebe_job_events_total` reports `pushed` and `created` as the same number at every sample, 163.5/s, 177.5/s, 165.4/s, matching to the decimal. Every job the engine created was pushed. Meanwhile `activated`, the poll path, sat flat at 48 to 50/s for four hours regardless of how large the backlog grew, and only moved once we scaled out. The backlog was not being drained slowly, it was being bypassed.
+
 That lines up exactly with what we saw. Jobs created while `extract-data-from-document` was down had no stream to go to, so they landed in `ACTIVATABLE`. The moment the worker came back and registered its stream, every subsequently created job, from the ongoing new instance creation and from completing whatever backlog items did get through, was pushed straight out. The pre-existing backlog could only be served by the polling path, `ActivateJobs`, and polling was now competing for the exact capacity that push was continuously consuming.
 
 ![07-job-push-end-to-end](07-job-push-end-to-end.svg)
@@ -218,7 +220,7 @@ sequenceDiagram
     participant P as Poll loop<br/>JobWorkerImpl
     participant B as Broker<br/>ACTIVATABLE backlog
     participant S as Semaphore<br/>BlockingExecutor
-    participant H as Handler pool<br/>executionThreads = 10
+    participant H as Handler pool<br/>executionThreads = 30
 
     P->>B: ActivateJobs(maxJobs = maxJobsActive - remainingJobs)
     Note over P,B: DEFECT 1: the budget counts only polled jobs,<br/>so the client asks for more than it can hold
@@ -300,7 +302,7 @@ sequenceDiagram
     Note over U,D: 14:52 and 15:26, we add capacity: backlog flat
     U->>D: maxJobsActive 60 to 100, replicas 1 to 3
     D-->>B: handled rate ~90/s to ~230/s
-    Note over D: now past executionThreads x (timeout / handlerDuration),<br/>so the tail of every batch expires before it starts
+    Note over D: maxJobsActive is queue depth, not throughput:<br/>the wait per job goes from 600ms to ~1300ms<br/>inside an unchanged 1800ms deadline
     B-->>D: JOB.TIME_OUT and JOB.COMPLETE rejections climb
     Note over B: backlog unchanged
     end
@@ -357,19 +359,21 @@ Reading it top to bottom, the uncomfortable part is the middle. Three of the six
   waitForTheLastJob = (maxJobsActive / executionThreads) x handlerDuration
   ```
 
-  For our load test that is 60 jobs over 10 threads, so 6 rounds, and 6 x 300ms is 1800ms. Turn it around so it bounds the capacity instead, and you get:
+  For our load test that is 60 jobs over 30 threads, so 2 rounds, and 2 x 300ms is 600ms. Turn it around so it bounds the capacity instead, and you get:
 
   ```
   maxJobsActive < executionThreads x (timeout / handlerDuration)
-                = 10 x (1800 / 300)
-                = 60
+                = 30 x (1800 / 300)
+                = 180
   ```
 
   **Why the job `timeout` is what the wait has to fit inside.** That one configured value is quietly doing two different things. On the broker it is the job's deadline: once it expires the broker takes the job back and hands it to someone else. In the client it is *also* the longest a job will sit waiting for a free thread, because the same value is passed to the [`BlockingExecutor`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L273) and used as its [semaphore acquire timeout](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41).
 
-  Both clocks start at the same moment, when the broker hands the batch out, and they are the same length, so they run down together. A job that spends its entire waiting allowance has therefore spent its entire deadline. At the instant it finally gets a thread it has already expired, and it runs anyway, and the completion is rejected at the end. Waiting the full timeout can never pay off, which is why the wait has to be a fraction of the timeout rather than equal to it.
+  The two do not run down together, which is what makes this hard to see. The broker's deadline starts when the batch is handed out; the client's wait starts per job, when `execute()` is finally called for it. A job can blow the broker's deadline while still acquiring its permit inside its own window, so nothing on the client ever throws.
 
-  Which is exactly the trap we were in. At `maxJobsActive` of 60 we were sitting on the boundary, so the last job of a full batch expired at the moment it started. Raising it to 100 when the backlog would not drain made it worse rather than better: 100 jobs over 10 threads is 10 rounds, 10 x 300ms is 3000ms, so anything admitted past the first 60 was already dead before it began. Treat the number as a ceiling and leave room underneath it, especially with streaming enabled, where pushed jobs take permits from the same pool and the poll path gets less than this formula assumes.
+  And `maxJobsActive` is not a throughput knob. Write the arithmetic out and it cancels: throughput is `executionThreads / handlerDuration`, full stop. For this worker, 30 threads at a 300ms handler is a hard ceiling of 100 jobs/s, and we measured 87 to 91/s on the single pod, already about 90% of it. What `maxJobsActive` actually sets is how long a job waits before it runs, `maxJobsActive x handlerDuration / executionThreads`. Raising it from 60 to 100 took that wait from 600ms to 1000ms inside an 1800ms deadline, and to about 1300ms at the 390ms handler duration we actually measured once three replicas were contending.
+
+  So we never crossed the bound. We spent the margin, from 3x down to 1.4x, and got nothing back for it, because throughput was never a function of that number. Broker-side timeouts went from 22/s before the change to 124/s after, and the share of job deliveries ending in a timeout rather than a completion went from 10% to 41%. Adding replicas is what actually raised the rate, from 90/s to 170/s. Treat the number as a margin to spend rather than a ceiling to approach, especially with streaming enabled, where pushed jobs take permits from the same pool and the poll path gets less than this formula assumes.
 * Keep the job `timeout` comfortably above your *worst-case* handler duration, not just the average. The bound above assumes every job takes about the same time, so a long tail quietly eats the waiting budget of every job queued behind it.
 
 **Recover.**
