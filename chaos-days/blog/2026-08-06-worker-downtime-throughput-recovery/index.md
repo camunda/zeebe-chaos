@@ -227,6 +227,12 @@ The single-worker view above understates the problem.
 * **Job types compete inside the broker.** There is one stream processor actor per partition handling every job type's records, so push traffic for unrelated job types eats the same processing budget your backlog drain needs. This throttles the drain, it does not starve it, and it is worth keeping separate from the push-versus-poll problem because the fixes differ.
 * **Job types also compete inside the client.** A single `CamundaClient` shares one handler thread pool across all its workers ([`CamundaClientImpl`](https://github.com/camunda/camunda/blob/d47275235bbc04f7b350f4931481d9e6bd1eafcf/clients/java/src/main/java/io/camunda/client/impl/CamundaClientImpl.java#L614-L652)). Each worker has its own semaphore, but they contend for the same threads, so one job type stuck in the reject-and-retry loop burns thread time its healthy siblings need.
 
+With all of that in place, here is the whole day back in one piece: what we did, what the system did in response, and which of those two was actually driving the backlog at each point.
+
+![10-incident-sequence](10-incident-sequence.svg)
+
+Reading it top to bottom, the uncomfortable part is the middle. Three of the six phases are us intervening, and none of those interventions moved the backlog. The two phases that changed its direction were the outage starting and the starter stopping, which is to say the arrival and departure of new work. Everything we did in between changed throughput numbers without changing the outcome.
+
 ## What you can actually do about it
 
 **Detect.** All of these work today, without new instrumentation:
