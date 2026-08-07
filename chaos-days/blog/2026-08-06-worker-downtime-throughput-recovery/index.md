@@ -18,7 +18,7 @@ We picked this scenario because it had already happened to us once, by accident:
 
 In today's Chaos Day, we simulated an extended outage of a job worker in our realistic "bank customer complaint/dispute handling" load test, to see how well the system recovers once the worker comes back.
 
-**TL;DR:** We took a job worker down for 75 minutes. Every job type's own throughput recovered within minutes, which looked like a clean recovery, but the backlog of process instances stuck behind it kept growing for two more hours, because the affected step fans out 1 instance into 50 downstream jobs. Adding worker capacity and replicas on the downstream job type did not meaningfully fix it on its own. Tracing the code afterwards gave us a mechanism: job push hands newly created jobs straight to a worker and they never enter the queue the backlog sits in, so the backlog can only be drained by the polling path, which is competing for the very capacity push keeps consuming. On top of that architectural inversion, we found three separate defects in the Java client's polling path, one of which permanently disables polling on a worker after a single bad batch.
+**TL;DR:** We took a job worker down for 80 minutes. Every job type's own throughput recovered within minutes, which looked like a clean recovery, but the backlog of process instances stuck behind it kept growing for two more hours, because the affected step fans out 1 instance into 50 downstream jobs. Adding worker capacity and replicas on the downstream job type did not meaningfully fix it on its own. Tracing the code afterwards gave us a mechanism: job push hands newly created jobs straight to a worker and they never enter the queue the backlog sits in, so the backlog can only be drained by the polling path, which is competing for the very capacity push keeps consuming. On top of that architectural inversion, we found three separate defects in the Java client's polling path, one of which permanently disables polling on a worker after a single bad batch.
 
 <!--truncate-->
 
@@ -66,13 +66,13 @@ Before starting our experiment the following expectations were set when a worker
 
 #### The outage
 
-Around 09:48 CEST, we scaled the `extract-data-from-document` worker Deployment down to 0 replicas, simulating a client-side outage. We kept it down for roughly 75 minutes before scaling it back up around 10:58 CEST.
+At 09:43 CEST we scaled the `extract-data-from-document` worker Deployment down to 0 replicas, simulating a client-side outage. We kept it down for 80 minutes, scaling it back up at 11:04 CEST.
 
 Here is the whole day at a glance, with every action we took marked directly on the chart:
 
 ![01-day-overview](01-day-overview.png)
 
-The top panel is active process instances for the namespace; the bottom panel is jobs handled per second, broken down by job type. Active instances climb in a straight line for the whole 75-minute outage, then keep climbing for another two hours past the point the worker was already back up, peak around 13:00. Once we stop the starter just after 16:15 we are able to clean up the backlog quickly.
+The top panel is active process instances for the namespace; the bottom panel is jobs handled per second, broken down by job type. Active instances climb in a straight line for the whole 80-minute outage, then keep climbing for another two hours past the point the worker was already back up, peak around 13:00. Once we stop the starter just after 16:15 we are able to clean up the backlog quickly.
 
 #### Recovery
 
@@ -91,7 +91,7 @@ whose worker we actually killed is the well-behaved one.
 
 ![](extract-task.png)
 
-`extract_data_from_document` maps 1:1 to root process instances, so its backlog was roughly 4,500 jobs, one for each instance that piled up (75 minutes of outage at one new instance per second). It drains that within about 10 minutes and settles straight back to its steady 1/s.
+`extract_data_from_document` maps 1:1 to root process instances, so its backlog was roughly 4,800 jobs, one for each instance that piled up (80 minutes of outage at one new instance per second). It drains that within about 10 minutes and settles straight back to its steady 1/s.
 
 ![extract-data-handled](extract-data-handled.png)
 
@@ -104,13 +104,13 @@ If we look at our process model again, we can see two multi-instance activities,
 
 ![](dispute-job.png)
 
-The moment the earlier worker recovers its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,500 process instances that piled up during the outage were never a 4,500-job backlog. They were on the order of 675,000 jobs, about 150 per instance across three job types, all of which still have to complete before the root instances can finish.
+The moment the earlier worker recovers its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,800 process instances that piled up during the outage were never a 4,800-job backlog. They were on the order of 720,000 jobs, about 150 per instance across three job types, all of which still have to complete before the root instances can finish.
 
 This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15 we can see that turn happen:
 
 ![04-active-process-instances](04-active-process-instances.png)
 
-Continuing the experiment, we tried different approaches to speed up the draining of the backlog. We checked the Operate web app to see where most instances were currently stuck (we didn't capture a screenshot at the time) and noticed `dispute-process-request-proof-from-vendor` was the most affected, and focused there. As a first step we increased its capacity from 60 to 100, then at 15:26 CEST scaled it out to 3 replicas instead of 1. The jobs-handled panel in the day-overview chart above shows a short dip as the pods rolled, then recovered, but it did not meaningfully help the backlog on its own.
+Continuing the experiment, we tried different approaches to speed up the draining of the backlog. We checked the Operate web app to see where most instances were currently stuck (we didn't capture a screenshot at the time) and noticed `dispute-process-request-proof-from-vendor` was the most affected, and focused there. As a first step, at 14:52 CEST, we increased its capacity from 60 to 100, then at 15:26 CEST scaled it out to 3 replicas instead of 1. The jobs-handled panel in the day-overview chart above shows a short dip as the pods rolled, then recovered, but it did not meaningfully help the backlog on its own.
 
 So we tried something blunter. If that one job type was the bottleneck, maybe every other worker was simply competing with it for cluster capacity, and taking them out of the picture would hand that capacity over. From 15:59 CEST we scaled almost every other worker to zero, `customer-notification`, `dispute-process-request-get-vendor-info`, `extract-data-from-document`, `refunding` and `inform-about-successful-claim`, and at 16:05 CEST pushed `dispute-process-request-proof-from-vendor` up to 5 replicas.
 
