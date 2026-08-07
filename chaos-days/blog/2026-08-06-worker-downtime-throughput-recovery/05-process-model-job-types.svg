@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1240 460" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="The relevant slice of the bank customer complaint and dispute handling process. A dispute is filed, then the Document Request Process subprocess runs the customer_notification job to request documents, waits for the customer to send them back, then runs the extract_data_from_document job to store the information. Only once that subprocess completes does the process move into the Fraud Claim Investigation subprocess, whose Vendor fraud claim validation subprocess runs the dispute_process_request_proof_from_vendor job followed by the dispute_process_request_get_vendor_info job, before continuing on to fraud rating, the refund decision, and informing the customer. The two job types are sequential stages of the same process, not independent parallel branches: a backlog that builds up in extract_data_from_document while its worker is down arrives at dispute_process_request_proof_from_vendor as a burst once the upstream worker comes back, which is why increasing that second worker's capacity looked like the right fix but was not.">
+     aria-label="The relevant slice of the bank customer complaint and dispute handling process. A dispute is filed, then the Document Request Process subprocess runs the customer_notification job to request documents, waits for the customer to send them back, then runs the extract_data_from_document job to store the information. Only once that subprocess completes does the process move into the Fraud Claim Investigation subprocess, whose Vendor fraud claim validation subprocess runs as a multi-instance activity over disputeDetails.disputePositions, which the load test's payload always sets to 50 entries: one dispute_process_request_proof_from_vendor job and one dispute_process_request_get_vendor_info job per entry, before continuing on to fraud rating, the refund decision, and informing the customer. The two job types are sequential stages of the same process, not independent parallel branches, and the second one fans out 50x: a backlog that builds up in extract_data_from_document while its worker is down arrives at dispute_process_request_proof_from_vendor as a 50x-multiplied burst once the upstream worker comes back, which is why increasing that second worker's capacity looked like the right fix but was not.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -69,6 +69,7 @@
 
   <rect class="subproc" x="550" y="125" width="260" height="160" />
   <text class="subproc-label" x="566" y="115" style="font-size:10px;">Vendor fraud claim validation</text>
+  <text class="jobtype-warn" x="566" y="140" style="font-size:10px; font-weight:700;">multi-instance x50 (disputePositions)</text>
 
   <rect class="box-warn" x="566" y="150" width="220" height="60" />
   <text class="boxtitle" x="676" y="173" style="fill:var(--warn);">Request proof from vendor</text>

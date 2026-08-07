@@ -18,13 +18,15 @@ We picked this scenario because it had already happened to us once, by accident:
 
 In today's Chaos Day, we simulated an extended outage of a job worker in our realistic "bank customer complaint/dispute handling" load test, to see how well the system recovers once the worker comes back.
 
-**TL;DR:** We took a job worker down for 75 minutes. Export throughput recovered within minutes and even overshot, but the backlog of jobs created during the outage never drained, and the broker's p99 batch processing duration stayed 9x higher for the rest of the day. Adding worker capacity and replicas made it worse, not better. Tracing the code afterwards gave us a mechanism: job push hands newly created jobs straight to a worker and they never enter the queue the backlog sits in, so the backlog can only be drained by the polling path, which is competing for the very capacity push keeps consuming. On top of that architectural inversion, we found three separate defects in the Java client's polling path, one of which permanently disables polling on a worker after a single bad batch.
+**TL;DR:** We took a job worker down for 75 minutes. Every job type's own throughput recovered within minutes, which looked like a clean recovery, but the backlog of process instances stuck behind it kept growing for two more hours, because the affected step fans out 1 instance into 50 downstream jobs. Adding worker capacity and replicas on the downstream job type did not meaningfully fix it on its own. Tracing the code afterwards gave us a mechanism: job push hands newly created jobs straight to a worker and they never enter the queue the backlog sits in, so the backlog can only be drained by the polling path, which is competing for the very capacity push keeps consuming. On top of that architectural inversion, we found three separate defects in the Java client's polling path, one of which permanently disables polling on a worker after a single bad batch.
 
 <!--truncate-->
 
 ## Chaos Experiment
 
-We used our `c8-chaos-w32` namespace running the realistic benchmark load test: a 3-partition Zeebe cluster with a set of dedicated job worker Deployments (one per job type) driving the "Bank: Customer complaint/dispute handling" process, plus a `starter` Deployment continuously creating new process instances.
+![](realistic.png)
+
+We run our realistic load test in the `c8-chaos-w32` namespace: The setup is as follows: a 3-partition Zeebe cluster with a set of dedicated job worker Deployments (one per job type) driving the "Bank: Customer complaint/dispute handling" process, plus a `starter` Deployment continuously creating new process instances.
 
 Each worker is configured independently in the [`camunda-load-tests-helm`](https://github.com/camunda/camunda-load-tests-helm) chart, via a values file that this scenario mirrors in-repo ([`load-tester-values-realistic-benchmark.yaml`](https://github.com/camunda/camunda/blob/53c704ef5e146d9c4867d1827a8597409ffd5bcc/load-tests/setup/scenarios/load-tester-values-realistic-benchmark.yaml)), for example:
 
@@ -47,9 +49,9 @@ Three of these knobs matter a lot later, so it is worth being precise about what
 * `completionDelay` is how long our handler sleeps before completing, simulating real work.
 * the job `timeout` is a static `1800ms`, and worker pods run with `execution-threads: 10` by default ([worker profile](https://github.com/camunda/camunda/blob/c0cbe225642e0002a3bce445aaaa9cafd394f269/load-tests/load-tester/src/main/resources/application.yaml#L122-L128)).
 
-Note that `capacity` and threads are not the same thing, which we got wrong during the experiment itself.
-
 ### Expected
+
+Before starting our experiment the following expectations were set when a worker goes down and comes back up:
 
 1. Throughput goes back to the previous steady state, or higher.
 2. Recovery takes at most as long as the outage did, ideally less.
@@ -62,56 +64,47 @@ Note that `capacity` and threads are not the same thing, which we got wrong duri
 
 Around 09:48 CEST, we scaled the `extract-data-from-document` worker Deployment down to 0 replicas, simulating a client-side outage. We kept it down for roughly 75 minutes before scaling it back up around 10:58 CEST.
 
-Looking at the export throughput for the namespace over the whole day confirms the timeline:
+Here is the whole day at a glance, with every action we took marked directly on the chart:
 
-![01-export-throughput](01-export-throughput.png)
+![01-day-overview](01-day-overview.png)
 
-Export throughput dropped from its ~7000-7300 records/s steady state to nearly zero for the whole outage window, then, within a few minutes of scaling the worker back up, shot up to almost 10,000 records/s as the broker caught up on the backlog, before settling into a new, noisier steady state around 7500-8500 records/s. By this measure alone, the system looked like it recovered well, even overshooting its previous throughput as expected.
+The top panel is active process instances for the namespace; the bottom panel is jobs handled per second, broken down by job type. Active instances climb in a straight line for the whole 75-minute outage, then keep climbing for another two hours past the point the worker was already back up, peak around 13:00. Once we stop the starter just after 16:15 we are able to clean up the backlog quickly.
 
-#### Recovery... but something's off
+#### Recovery
 
-Export throughput was not the only thing we had open, though. The count of active process instances tells a different story:
+Zooming into the outage window itself makes the mechanism obvious:
 
-![02-active-process-instances](02-active-process-instances.png)
+![02-outage-window](02-outage-window.png)
 
-Active instances climb steadily through the whole outage, as the starter keeps creating new instances at 1/s while the ones already stuck behind `extract-data-from-document` cannot finish. That much is expected. What is not expected is that the count keeps climbing for hours after the worker came back, past 7000, well beyond where it sat before the outage, and it does not meaningfully come down again until we stop the starter entirely just after 16:15 and let the backlog drain to zero. The two capacity changes around 14:45-15:30 do not show up as a turning point on this chart either.
+The moment `extract-data-from-document` goes to 0 replicas, every job type's handled rate drops to zero, not just the one whose worker we killed: `customer_notification`, `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info`, `refunding`, all of them. Every one of those job types sits downstream of the step we took out, so once nothing can get past it, nothing downstream has any work to do either. Active instances, meanwhile, starts climbing the instant the worker goes down, since the starter keeps creating new instances at 1/s and each one now has nowhere to go once it reaches that step.
 
-Looking more closely at the per-activity breakdown of current events at the time, we also noticed the distribution had shifted: a much larger share of activity was now going into things other than completing service tasks, and jobs for the affected process branch were being created faster than they were being completed. The backlog was not actually shrinking, it kept accumulating even though the headline export-throughput number looked recovered.
+Once the worker came back, every job type's handled rate jumped back up within seconds, which is exactly what would make this look like a clean recovery if all we were watching was a single aggregate number:
 
-This raised an obvious question: if a client can be down for an hour in production without us noticing anything worse than "throughput looks fine", is our configuration actually able to sustain and absorb that kind of failure, or are we just looking at a metric that hides the real problem?
+![03-fanout-cascade](03-fanout-cascade.png)
 
-#### Chasing worker capacity
 
-Our first hypothesis was that the `dispute-process-request-proof-from-vendor` worker's capacity was now a bottleneck, since it hadn't been sized for catching up on an hour of backlog. Looking at the process model made the two job types' relationship clear: they are not independent parallel branches, `extract-data-from-document` runs earlier in the same process instance, inside the "Document Request Process" subprocess, and only once that finishes does the instance reach the "Fraud Claim Investigation" subprocess where `dispute-process-request-proof-from-vendor` runs.
+![](extract-task.png)
 
-![03-process-model-job-types](03-process-model-job-types.svg)
+`extract_data_from_document` is a task which has a 1:1 mapping to the root process instances. This means we have ~4,000 jobs in the backlog, and it drains whatever backlog it had within about 10 minutes and settles right back to its steady 1/s. 
 
-That relationship matters: a backlog stuck in `extract-data-from-document` is invisible to `dispute-process-request-proof-from-vendor`, since none of those instances have reached it yet. The moment the upstream worker came back, that entire stuck backlog moved forward together and arrived at the vendor-proof stage as one burst, on top of the steady 1/s of freshly created instances. That looked exactly like a capacity problem on the second worker, so we did a quick calculation at the time that seemed to back it up, and increased the capacity from 60 to 100:
+![alt text](extract-data-handled.png)
 
-```
-$ k edit deployments.apps dispute-process-request-proof-from-vendor
-deployment.apps/dispute-process-request-proof-from-vendor edited
-```
 
-This caused a short dip in throughput (visible in the chart above, just before 15:00 CEST) as the pods rolled, then recovered. But it didn't meaningfully help the backlog. So we went further and scaled the worker out to 3 replicas instead of 1. That also didn't clearly fix things, throughput stayed in the same noisy 7500-8500 records/s band it had already settled into after the initial recovery.
+In contrast: `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info`, and `refunding` do the opposite.
 
-With hindsight, that calculation was wrong in a way that matters, and we come back to it in the analysis below. Raising `capacity` without raising threads does not add throughput. It adds queue depth in front of a fixed number of threads, and every job sitting in that queue is already counting down its `1800ms` timeout.
+![](realistic.png)
 
-#### The real anomaly: processing duration
+If we look at our process model again, we can see we have two multi-instance tasks, which means that for each process instance, we have multiple jobs created for these tasks.  That is the fan-out: e.g. the "Vendor fraud claim validation" subprocess runs as a multi-instance activity over `disputeDetails.disputePositions`, and our load test's payload always sets that collection to 50 entries.
 
-While debugging, we pulled up the broker's own record processing duration and noticed that some events were taking noticeably longer to process than before the outage, at the p90/p99 level. That pointed away from the worker entirely and toward the stream processor itself.
+![](dispute-job.png)
 
-Re-plotting the broker's p99 batch processing duration for the same day makes this much clearer than the throughput chart does:
+The moment the earlier worker recovers its backlog the following job workers jump in the execution and then stay pinned near their ceiling for hours. So every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job but 50 `dispute_process_request_proof_from_vendor` jobs downstream. The roughly 4,000 process instances that piled up during the outage were not a 4,000-job backlog for that worker, they were on the order of 200,000 jobs, all of which still have to complete before the root process instances can finish.
 
-![04-batch-processing-duration](04-batch-processing-duration.png)
+This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15 we can see that turn happen:
 
-Before the outage, p99 batch processing duration was a flat ~10ms. During the outage, it drops to the same baseline since there was almost nothing to process. But from the moment the worker came back up, it jumped to ~85-90ms, roughly nine times higher than before, and it stayed there. Neither the capacity increase nor the extra replicas moved this number at all; you can see both changes on the chart and neither one shows up as a dip in processing duration.
+![04-active-process-instances](04-active-process-instances.png)
 
-We do not think this is fully explained yet. The reject-and-timeout churn described in the root cause section below is our leading hypothesis, since it means every rejected job gets processed twice, once when the broker times it out and again when it is reactivated, which is extra record-processing work a clean run would not do. But we have not ruled out contributing factors on the state side: 7000+ concurrently active process instances is a much larger working set than steady state, and RocksDB iterator cost, overall column-family size, and the batching behaviour for the process's multi-instance elements could all independently make each batch more expensive to process, regardless of the push/poll mechanism. Separating these two effects needs instrumentation we did not have running on the day.
-
-#### Draining the backlog
-
-By late afternoon, we hadn't isolated the cause, and running out of time, we took a pragmatic path: stop generating new load entirely and let the system fully drain.
+Continuing the experiment, we tried different approaches to speed up the draining of the backlog. We checked the Operate web app to see where most instances were currently stuck (unfortunately we missed to create a screenshot here) and noticed `dispute-process-request-proof-from-vendor` was the most affected, and focused there. As a first step we increased its capacity from 60 to 100, then scaled it out to 3 replicas instead of 1. Both changes were made between 14:45 and 15:30 CEST. The chart above shows a short dip as the pods rolled, then recovered, but it did not meaningfully help the backlog on its own.
 
 ```
 $ timedatectl; k scale deployment starter --replicas=0
@@ -121,11 +114,15 @@ System clock synchronized: yes
 deployment.apps/starter scaled
 ```
 
-All three charts show this clearly: active instances and throughput both taper off over the following 40 minutes as the remaining backlog is processed, hit their floor once everything is drained ("All processed at 2026-08-06T16:55:59+02:00"), then climb back to their original baseline once the starter is scaled back to 1 replica. Interestingly, the p99 batch processing duration also settles to a somewhat lower ~75-85ms after this full drain and restart, still nowhere near the original ~10ms.
+Only scaling down the starter really freed up capacity for the backlog to drain. After scaling it down at 16:15 CEST, the backlog drained over the next ~40 minutes, hitting its floor once everything was processed at 16:55 CEST.
+
+## Conclusion of our experiment 
+
+The system is resilient to a worker outage in the sense that throughput recovers quickly once the worker comes back. However, the backlog of process instances that accumulated during the outage can continue to grow for hours after the worker has returned. Depending on the processes it might make things worse, like in our case, due to the fan-out nature of the "realistic" process we use and the way job push interacts with the backlog. Simply increasing worker capacity or adding replicas does not effectively address this issue on its own. The root cause lies in both architectural decisions and client-side bugs, which we will explore in detail in the next section.
 
 ## Root cause
 
-We picked this back up after the fact and traced the engine, gateway and client code, since "the backlog isn't shrinking while throughput looks fine" needed a mechanism, not just a description. We started from the metrics and a hypothesis that job push was being prioritised, then went looking for where that prioritisation actually lives.
+We picked this back up after the fact and traced the engine, gateway and client code, since "the backlog isn't shrinking while throughput looks fine". We started from the metrics and a hypothesis that job push was being prioritised, then went looking for where that prioritisation actually lives.
 
 It turned out to be two independent things stacked on top of each other. The first is architectural and is true of every Camunda cluster. The second is a set of client bugs that turn "the backlog drains slowly" into "the backlog never drains".
 
@@ -139,7 +136,7 @@ The consequence is the whole story in one sentence: **a pushed job never enters 
 
 That lines up exactly with what we saw. Jobs created while `extract-data-from-document` was down had no stream to go to, so they landed in `ACTIVATABLE`. The moment the worker came back and registered its stream, every subsequently created job, from the ongoing new instance creation and from completing whatever backlog items did get through, was pushed straight out. The pre-existing backlog could only be served by the polling path, `ActivateJobs`, and polling was now competing for the exact capacity that push was continuously consuming.
 
-![05-job-push-end-to-end](05-job-push-end-to-end.svg)
+![07-job-push-end-to-end](07-job-push-end-to-end.svg)
 
 We filed this as [camunda/camunda#59631](https://github.com/camunda/camunda/issues/59631). It is related to, but more specific than, the existing [camunda/camunda#15730](https://github.com/camunda/camunda/issues/15730), which already flagged in general terms that polling backfills jobs created before any streams existed.
 
@@ -157,27 +154,18 @@ That starts with the semaphore itself. It is constructed as [`new Semaphore(maxA
 
 That is exactly the shape we have. A pushed job arrives fresh on every `onNext`, so it can barge past a poll-delivered job that is already waiting. On top of that ordering asymmetry sit three separate accounting bugs in the poll path.
 
+
+![08-job-push-poll-mechanism](08-job-push-poll-mechanism.svg)
+
+
 **Defect 1: the poll budget cannot see pushed jobs.** [`JobWorkerImpl`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L204-L221) tracks in-flight work in `remainingJobs`, but only poll responses increment it and only `handleJobFinished` decrements it. Pushed jobs route to [`handleStreamJobFinished`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L282-L284), which touches metrics only. So when the worker sizes its next request as `maxJobsActive - remainingJobs` ([L195](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L185-L202)), it asks for the full capacity even when push already holds every permit. The client systematically requests jobs it cannot accept, and the broker has already marked every one of them `ACTIVATED` with a running deadline before the client discovers it.
 
 **Defect 2: rejected jobs are never given back, and polling stops for good.** A job that cannot get a permit within its timeout is dropped with a `RejectedExecutionException`, [logged, and forgotten](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L255-L272). Its runnable never runs, so `handleJobFinished` never fires, so its `+1` on `remainingJobs` is never returned. The counter ratchets upward permanently. Once the leak exceeds [`activationThreshold`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L96-L98), which is 30% of `maxJobsActive`, [`shouldPoll`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L156-L158) is false forever, and [`onScheduledPoll`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L147-L154) simply returns without rescheduling. Nothing re-arms the loop.
 
-We wrote a throwaway test against an in-process gateway to check this rather than trust the reading. Capacity 4, streaming on, handler blocked so permits stay held, counting polls at the gateway:
-
-```
-polls after the stream opens ................. 2
-polls after 4 pushed jobs take all permits ... 4
-+5s, poll now returning 4 backlog jobs ....... 5 polls, 4 handlers run
-+5s, after releasing ALL permits ............. 5 polls, 4 handlers run
-```
-
-One poll fetched four backlog jobs, all four were rejected, and the worker never polled again, with its entire capacity free and nothing pushing. That is a terminal state, not a race it keeps losing. It also explains why our mitigations failed: fresh pods poll, get poisoned within one poll round, and stop. Raising capacity only made the poison dose bigger.
 
 **Defect 3: a poll batch is dispatched sequentially, blocking on the semaphore.** [`JobPollerImpl`](https://github.com/camunda/camunda/blob/0e583a991bf6c37331e325b0268ac49b57d2803b/clients/java/src/main/java/io/camunda/client/impl/worker/JobPollerImpl.java#L145-L161) does `jobs.forEach(jobConsumer)` and only afterwards reports the count. Each of those calls parks on `tryAcquire(timeout)`, so job N in a batch waits for jobs 1 to N-1 to each burn their full timeout first. Every one of those jobs had its `1800ms` deadline started when the broker built the batch. The tail of a large batch is therefore guaranteed to be past its deadline before it even starts, which means the handler runs and completes a job the broker has already timed out and possibly re-activated. That is duplicate execution, and it is the same symptom family as [camunda/camunda#42244](https://github.com/camunda/camunda/issues/42244).
 
-![06-job-push-poll-mechanism](06-job-push-poll-mechanism.svg)
-
-All three are filed separately from the engine issue, since they are client bugs rather than engine
-behaviour, under the umbrella issue [camunda/camunda#59635](https://github.com/camunda/camunda/issues/59635):
+All three are filed separately from the engine issue, since they are client bugs under the umbrella issue [camunda/camunda#59635](https://github.com/camunda/camunda/issues/59635):
 
 * [camunda/camunda#59632](https://github.com/camunda/camunda/issues/59632), the blind poll budget.
 * [camunda/camunda#59633](https://github.com/camunda/camunda/issues/59633), the counter leak that stops polling permanently.
@@ -192,17 +180,6 @@ This is the part that turns a slowdown into a stall. Both failure modes recover 
 
 `ACTIVATABLE` is served by polling and nothing else. So once a worker has stopped polling, "the job goes back to the backlog for another attempt" is not a recovery, it is a dead letter. The result is a closed loop: activate, reject, wait out the deadline, time out, re-activate, which writes records on every lap and makes no forward progress. That is also our best current hypothesis for the 9x jump in p99 batch processing duration, though we have not yet correlated it against a rejection count or job-timeout rate from the actual run.
 
-### So does push always win?
-
-Not always, and the honest answer depends on the regime:
-
-* **Spare capacity is opening up continuously.** Push claims each freed slot the instant the record is processed, and the backlog gets whatever is left over. This is the worst case, and it is exactly the post-outage recovery regime we were testing.
-* **The worker is genuinely saturated.** Push stops winning. The client stops reading, flow control closes, `isReady()` goes false, and the pushed job yields into `ACTIVATABLE`. New work now joins the backlog too, and everything depends on the polling path, which is the fragile one.
-
-Both regimes disadvantage the backlog, for different reasons. And the asymmetry runs deeper than who gets the permit. The semaphore's non-fair ordering, described above, means push does not have to be first in line to win. Losing also costs the two paths very different amounts. A blocked push costs one failed attempt. A blocked poll costs a dropped job, a wasted broker activation, a burnt deadline, and a permanent decrement of that worker's willingness to poll ever again.
-
-One thing we want to be careful not to overclaim: we have shown that push is served ahead of the backlog, and that the client defects turn slow draining into no draining. We have *not* shown that a fully fixed client would fail to drain under sustained load. It might just drain slowly.
-
 ### It gets worse with more workers and more job types
 
 The single-worker view above understates the problem.
@@ -211,18 +188,6 @@ The single-worker view above understates the problem.
 * **Turning streaming off only helps if you do it everywhere.** Push eligibility is aggregated per job type across the cluster, so one opted-out replica changes nothing while a sibling still streams.
 * **Job types compete inside the broker.** There is one stream processor actor per partition handling every job type's records, so push traffic for unrelated job types eats the same processing budget your backlog drain needs. This throttles the drain, it does not starve it, and it is worth keeping separate from the push-versus-poll problem because the fixes differ.
 * **Job types also compete inside the client.** A single `CamundaClient` shares one handler thread pool across all its workers ([`CamundaClientImpl`](https://github.com/camunda/camunda/blob/d47275235bbc04f7b350f4931481d9e6bd1eafcf/clients/java/src/main/java/io/camunda/client/impl/CamundaClientImpl.java#L614-L652)). Each worker has its own semaphore, but they contend for the same threads, so one job type stuck in the reject-and-retry loop burns thread time its healthy siblings need.
-
-### Why raising capacity made things worse
-
-Coming back to the calculation we got wrong on the day. `maxJobsActive` is not throughput. It is how many jobs the client will *accept*, and accepted jobs land in the unbounded queue of an [`Executors.newFixedThreadPool`](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Executors.html#newFixedThreadPool(int)) ([`CamundaClientImpl`](https://github.com/camunda/camunda/blob/d47275235bbc04f7b350f4931481d9e6bd1eafcf/clients/java/src/main/java/io/camunda/client/impl/CamundaClientImpl.java#L636-L647)), in front of a fixed number of threads. With `execution-threads: 10` and a 300ms handler, a replica retires about 33 jobs/s. At `capacity: 60`, up to 50 accepted jobs sit in that queue, waiting about 1.5s before they start, against an `1800ms` deadline. At `capacity: 100`, 90 jobs queue, and the wait passes 2.7s, so the tail of every batch is guaranteed to expire before it runs.
-
-The useful rule that falls out of this:
-
-```
-maxJobsActive  <  executionThreads  x  (jobTimeout / handlerDuration)
-```
-
-With our numbers that ceiling is `10 x (1800 / 300) = 60`. We were already at it, and we raised it to 100. Raising capacity without raising threads or the timeout does not buy throughput, it buys timeouts.
 
 ## What you can actually do about it
 
@@ -246,14 +211,13 @@ With our numbers that ceiling is `10 x (1800 / 300) = 60`. We were already at it
 
 ## Open Questions
 
-* Does the 9x jump in p99 batch processing duration come from the reject-and-timeout churn described above, from state-side costs of running with 7000+ concurrently active instances (RocksDB iterator cost, column-family size, multi-instance batching), from exporter-side back-pressure, or from some combination? We now have concrete mechanisms to test against instrumentation, where before we only had a symptom.
 * Would the same jump happen with a shorter outage, or does it need a large enough backlog to trigger?
 * Can the system recover without intervention under sustained load, once the three client defects are fixed? This is the interesting re-run, because it isolates the architectural layer from the bugs.
 * Does starting a cluster with more partitions upfront change backlog recovery time? More partitions mean more independent stream-processor actors, so it may raise the aggregate ceiling, but it does nothing about the push-versus-poll inversion, which is per-partition independent.
 
 ## Conclusion
 
-Coming back online after a dependency outage is the easy part to verify: throughput bounced back and even overshot within minutes. What is harder to see, and what we only caught because we happened to have the active process instances panel open next to it, is that the backlog kept growing underneath that healthy-looking throughput number for hours, and that the broker's own processing latency quietly settled into a state roughly nine times worse than before, with no amount of worker-side tuning touching either problem.
+Coming back online after a dependency outage is the easy part to verify: throughput bounced back and even overshot within minutes. What is harder to see, and what we only caught because we happened to have the active process instances panel open next to it, is that the backlog kept growing underneath that healthy-looking throughput number for hours.
 
 The mechanism turned out to have two layers. Architecturally, job push has no concept of a standing backlog: a pushed job never enters the queue the backlog lives in, so an outage-induced backlog can only be drained by a path that is competing for the capacity push keeps taking. That alone would make recovery slow. What made it never finish is a set of client-side accounting bugs, the worst of which permanently stops a worker from polling after a single bad batch, and which every recovery path in the system funnels straight into.
 
