@@ -227,7 +227,13 @@ The single-worker view above understates the problem.
 
 **Prevent.**
 
-* Size `maxJobsActive` deliberately, relative to your worker's thread count and how long a job actually takes to complete, rather than raising it reactively when things look slow.
+* Size `maxJobsActive` against what the handler pool can actually retire inside a job's deadline, rather than raising it reactively when things look slow. A worker with `execution-threads` threads retires roughly one job per handler duration per thread, so the last job admitted to a full worker waits about `maxJobsActive x handlerDuration / executionThreads` before it even starts. Keeping that under the job `timeout` gives an upper bound:
+
+  ```
+  maxJobsActive < executionThreads x (timeout / handlerDuration)
+  ```
+
+  Our load test ran 10 threads, a 300ms handler and an 1800ms timeout, which puts the ceiling at exactly 60. We were configured at 60, sitting precisely on the boundary, and our first instinct when the backlog would not drain was to raise it to 100. That moved us past the point where the tail of a full batch can be served inside its deadline at all, which is the condition defect 3 turns into rejected completions. Treat the result as a ceiling rather than a target, and leave room below it: with streaming enabled, pushed jobs consume the same permits, so the real capacity available to the poll path is lower than the formula assumes.
 * Keep the job `timeout` comfortably above worst-case handler duration, and remember it doubles as the semaphore acquire timeout.
 
 **Recover.**
