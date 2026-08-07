@@ -91,7 +91,7 @@ whose worker we actually killed is the well-behaved one.
 
 ![](extract-task.png)
 
-`extract_data_from_document` maps 1:1 to root process instances, so its backlog was roughly 4,000 jobs, one for each instance that piled up. It drains that within about 10 minutes and settles straight back to its steady 1/s.
+`extract_data_from_document` maps 1:1 to root process instances, so its backlog was roughly 4,500 jobs, one for each instance that piled up (75 minutes of outage at one new instance per second). It drains that within about 10 minutes and settles straight back to its steady 1/s.
 
 ![extract-data-handled](extract-data-handled.png)
 
@@ -104,7 +104,7 @@ If we look at our process model again, we can see two multi-instance activities,
 
 ![](dispute-job.png)
 
-The moment the earlier worker recovers its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,000 process instances that piled up during the outage were never a 4,000-job backlog. They were on the order of 600,000 jobs, about 150 per instance across three job types, all of which still have to complete before the root instances can finish.
+The moment the earlier worker recovers its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,500 process instances that piled up during the outage were never a 4,500-job backlog. They were on the order of 675,000 jobs, about 150 per instance across three job types, all of which still have to complete before the root instances can finish.
 
 This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15 we can see that turn happen:
 
@@ -223,6 +223,7 @@ The single-worker view above understates the problem.
 
 * Would the backlog still balloon like this with a shorter outage, or does it need a large enough head start to outrun the polling path?
 * Can the system recover without intervention under sustained load, once the three client defects are fixed? This is the interesting re-run, because it isolates the architectural layer from the bugs.
+* Does the engine's record processing duration degrade as the backlog grows, or does it stay flat while only the queue in front of it gets longer? We did not have that panel open during the run, so we cannot say either way, and it matters for whether a large backlog is purely a queueing problem or also a processing-cost one.
 * Does starting a cluster with more partitions upfront change backlog recovery time? More partitions mean more independent stream-processor actors, so it may raise the aggregate ceiling, but it does nothing about the push-versus-poll inversion, which is per-partition independent.
 
 ## Conclusion
