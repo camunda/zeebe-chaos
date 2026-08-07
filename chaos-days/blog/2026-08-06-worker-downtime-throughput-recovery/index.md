@@ -210,9 +210,45 @@ Defect 2 needs that `RejectedExecutionException` to fire repeatedly, and that tu
 
 So there are two clocks, and they do not start together. Job N in a batch, when its turn finally comes, gets a fresh full 1800ms to acquire a permit, measured from that moment. The broker's deadline clock for that same job started much earlier, when the batch was built. A job can therefore be far past its real deadline, producing exactly the `JOB.TIME_OUT` and `JOB.COMPLETE` rejections we saw, while still acquiring its permit comfortably inside its own locally reset window. Nothing throws, nothing gets logged, nothing leaks.
 
-The whole batch, end to end, with both clocks drawn against each other:
+The whole batch, end to end:
 
-![09-two-clocks-sequence](09-two-clocks-sequence.svg)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Poll loop<br/>JobWorkerImpl
+    participant B as Broker<br/>ACTIVATABLE backlog
+    participant S as Semaphore<br/>BlockingExecutor
+    participant H as Handler pool<br/>executionThreads = 10
+
+    P->>B: ActivateJobs(maxJobs = maxJobsActive - remainingJobs)
+    Note over P,B: DEFECT 1: the budget counts only polled jobs,<br/>so the client asks for more than it can hold
+    B-->>P: batch of N jobs
+    Note right of B: one deadline starts here, at t = 0,<br/>and covers every job in the batch
+
+    Note over P,S: DEFECT 3: jobs.forEach dispatches the batch<br/>one job at a time, blocking on each
+    P->>S: execute(job 1)
+    S->>H: permit acquired at once
+    P->>S: execute(job 2)
+    Note right of S: blocks until a permit frees,<br/>holding up everything behind it
+
+    B->>B: t = 1800 ms: job N times out,<br/>returned to ACTIVATABLE
+    P->>S: execute(job N)
+    Note right of S: its acquire window starts only now,<br/>a fresh 1800 ms from this moment,<br/>not from activation
+    S->>H: permit acquired, comfortably inside that window
+    Note over P,H: nothing throws, nothing is logged
+    H->>B: CompleteJob(job N)
+    B-->>H: rejected: the broker already gave this job away
+
+    rect rgb(236, 238, 241)
+    Note over S,P: rare branch, and it did not happen in this run
+    S--xP: RejectedExecutionException, if the window ever expires<br/>with every permit still taken
+    Note over P: DEFECT 2: remainingJobs leaks by one,<br/>and enough leaks stop polling for good
+    end
+```
+
+Step 7 and step 8 are the whole argument, so it is worth drawing the two clocks against a single axis:
+
+![09b-two-clocks-timeline](09b-two-clocks-timeline.svg)
 
 The metrics say that is what happened here. On the single `dispute-process-request-proof-from-vendor` pod that ran from 11:04 to 14:52, the cumulative `jobActivated` minus `jobHandled` gap moves up and down all afternoon and touches **0** at 13:50 CEST. A leaked job is never handled, so any accumulated leak puts a permanent floor under that difference. A gap that returns to zero means the leak was zero. And poll traffic never stopped: `JOB_BATCH#ACTIVATE` requests to the gateway ran at 10 to 18/s through the afternoon, and were still at 4 to 8/s between 16:02 and 16:08, when five of the six job workers were scaled to zero and this one was doing nearly all of the polling.
 
@@ -229,7 +265,61 @@ The single-worker view above understates the problem.
 
 With all of that in place, here is the whole day back in one piece: what we did, what the system did in response, and which of those two was actually driving the backlog at each point.
 
-![10-incident-sequence](10-incident-sequence.svg)
+```mermaid
+sequenceDiagram
+    participant U as Us
+    participant St as Starter<br/>1 instance/s
+    participant B as Broker<br/>ACTIVATABLE backlog
+    participant E as extract-data<br/>-from-document
+    participant D as downstream workers<br/>3 job types
+
+    rect rgb(186, 72, 52, 0.10)
+    Note over U,D: 09:43 CEST, the outage: backlog climbing
+    U->>E: scale to 0 replicas
+    St->>B: keeps creating 1 instance/s
+    Note over B: extract jobs pile up in ACTIVATABLE,<br/>active instances climb in a straight line
+    end
+
+    rect rgb(186, 72, 52, 0.10)
+    Note over U,D: 11:04 CEST, the worker returns: climbing faster
+    U->>E: scale back to 1 replica
+    E->>B: polls and drains ~4800 jobs in ~10 min
+    B->>D: each completion fans out into ~150 jobs
+    Note over D: the backlog now grows faster than<br/>it did while the worker was down
+    end
+
+    rect rgb(186, 72, 52, 0.10)
+    Note over U,D: 11:15 to 13:15, the inversion: peak around 13:00
+    St->>B: new instances keep arriving
+    B->>D: pushes newly created jobs straight to a worker
+    Note over B: a pushed job never enters ACTIVATABLE,<br/>so the standing backlog can only be polled,<br/>and polling competes with push for the same 60 permits
+    Note over D: pinned at capacity for five hours
+    end
+
+    rect rgb(148, 142, 120, 0.10)
+    Note over U,D: 14:52 and 15:26, we add capacity: backlog flat
+    U->>D: maxJobsActive 60 to 100, replicas 1 to 3
+    D-->>B: handled rate ~90/s to ~230/s
+    Note over D: now past executionThreads x (timeout / handlerDuration),<br/>so the tail of every batch expires before it starts
+    B-->>D: JOB.TIME_OUT and JOB.COMPLETE rejections climb
+    Note over B: backlog unchanged
+    end
+
+    rect rgb(148, 142, 120, 0.10)
+    Note over U,D: 15:59 to 16:08, the reclaim attempt: still flat
+    U->>D: scale 5 workers to 0, bottleneck to 5 replicas
+    D->>B: every proof-from-vendor completion creates a get-vendor-info job
+    Note over B: whose worker we just stopped, so the queue moves<br/>one task downstream instead of shrinking
+    U->>D: revert everything to 1 replica
+    end
+
+    rect rgb(64, 140, 96, 0.12)
+    Note over U,D: 16:15 to ~16:50, the starter is stopped: draining
+    U->>St: stop creating instances
+    Note over B: nothing left to push, so the poll path<br/>is finally uncontested
+    B->>D: backlog drains in ~35 minutes
+    end
+```
 
 Reading it top to bottom, the uncomfortable part is the middle. Three of the six phases are us intervening, and none of those interventions moved the backlog. The two phases that changed its direction were the outage starting and the starter stopping, which is to say the arrival and departure of new work. Everything we did in between changed throughput numbers without changing the outcome.
 
