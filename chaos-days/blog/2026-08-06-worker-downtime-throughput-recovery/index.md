@@ -298,7 +298,7 @@ One note before moving on: the single-worker view above understates the problem.
                 = 180
   ```
 
-  This means the maxJobsActive should be set to 180 or less, so that even the last job in a full batch can finish before the broker's deadline.
+  This means the maxJobsActive should be set to less than 180, so that even the last job in a full batch can finish before the broker's deadline.
 
   **Why the job `timeout` is what the wait has to fit inside.** That one configured value is quietly doing two different things. On the broker it is the job's deadline: once it expires the broker takes the job back and hands it to someone else. In the client it is *also* the longest a job will sit waiting for a free thread, because the same value is passed to the [`BlockingExecutor`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L273) and used as its [semaphore acquire timeout](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41).
 
@@ -319,7 +319,6 @@ One note before moving on: the single-worker view above understates the problem.
 * Would the backlog still balloon like this with a shorter outage, or does it need a large enough head start to outrun the polling path?
 * Can the system recover without intervention under sustained load, once the three client defects are fixed? This is the interesting re-run, because it isolates the architectural layer from the bugs.
 * Does the engine's record processing duration degrade as the backlog grows, or does it stay flat while only the queue in front of it gets longer? It matters for whether a large backlog is purely a queueing problem or also a processing-cost one.
-* Why did three replicas plateau near 170 jobs/s when their combined thread pools allow about 300? At one replica the worker was thread-bound, running at roughly 90% of its ceiling, but after the scale-out it was not, so something else became the limit. Is it the engine processing limit or something else?
 * Was `refunding` about to become the next bottleneck? It reaches roughly 100 jobs/s in the final samples, which is exactly its own `executionThreads / handlerDuration` ceiling. Relieving one job type may simply promote the next one, in which case per-worker tuning is a treadmill and the fix has to be architectural.
 * Does starting a cluster with more partitions upfront change backlog recovery time? More partitions mean more independent stream-processor actors, so it may raise the aggregate ceiling, but it does nothing about the push-versus-poll inversion, which is per-partition independent.
 
