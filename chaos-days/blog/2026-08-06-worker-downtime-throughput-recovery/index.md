@@ -138,7 +138,7 @@ If we look back at the complete day we see several interesting behaviors:
 Not only timeout commands, but also rejections of both `JOB.TIME_OUT` and `JOB.COMPLETE`.
 A rejected `JOB.TIME_OUT` means the broker went to time a job out and found it had already moved on, so a rising rate of them means a rising number of jobs finishing right at their deadline boundary. The largest burst of the whole day, around 255/s, sits at 11:00, which is the moment the recovered worker first met its backlog.
 
-Over the day we can see rejected `JOB.COMPLETE` commands, but around 16:15 they spike. A rejected completion means a worker finished a job it no longer owned, because the broker had already timed it out and made it available again. That is the deadline overrun described in defect 3 below and every one of those jobs was counted as handled on the client while contributing nothing. This is the difference between the throughput number alone and real progress.
+Over the day we can see rejected `JOB.COMPLETE` commands, but around 16:15 they spike. A rejected completion means a worker finished a job it no longer owned, because the broker had already timed it out and made it available again. That is the deadline overrun described in defect 3 below, and every one of those jobs was counted as handled on the client while contributing nothing. This is the difference between the throughput number alone and real progress.
 
 This small experiment showed that it is possible to increase one worker's throughput when others step down, but it does not actually make the backlog drain faster, because the backlog only moved one step ahead. Inside "Vendor fraud claim validation", `dispute_process_request_proof_from_vendor` is immediately followed by `dispute_process_request_get_vendor_info`. So every proof-from-vendor job we managed to complete created a get-vendor-info job for a worker we had just scaled to zero, and the queue shifted one task to the right rather than shrinking. We could have scaled that worker up again, and others down, but this felt a bit tedious, and what we wanted to try next was what happens when no new work arrives at all.
 
@@ -170,9 +170,9 @@ That check happens on job creation, on backoff-retry recurrence ([`JobRecurAfter
 
 The consequence is: **a pushed job never enters the `ACTIVATABLE` pool at all**, so it never queues behind the backlog, because it is never in the same queue.
 
-![Broker job event rates through the afternoon, with pushed tracking created almost exactly while the activated poll path stays flat](job-pushed.png)
+![Grafana panel of job creations, job completions and successful stream pushes for the namespace, all three tracking each other closely through the afternoon](job-pushed.png)
 
-The broker's own counters make this concrete. Across the whole afternoon, `pushed` and `created` metrics are always super close. Almost every job the engine created was pushed. Meanwhile `activated`, the poll path, sat flat at the same rate regardless of how large the backlog grew, and only moved once we scaled out. Completions run only a little above creations, which is the backlog draining at a trickle rather than not at all. It was not so much being drained slowly as bypassed.
+The broker's own counters make this concrete. The panel above plots job creations, job completions and successful stream pushes (`zeebe_gateway_job_stream_push_total`) on one axis, and from 11:20 to 16:00 all three track each other in a narrow band. Pushed sits just under created for the whole window, so almost every job the engine created went straight out to a worker over a stream rather than into `ACTIVATABLE`. Completions track creations just as closely, which is a system keeping pace with new work while making no impression on the backlog sitting behind it.
 
 How this works in detail:
 
@@ -197,14 +197,14 @@ Worth knowing before the details: in a default modern Java client the two paths 
 
 When streaming is enabled, both paths funnel activated jobs into one [`BlockingExecutor`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L38-L58), which wraps the handler thread pool in a semaphore sized by `maxJobsActive` ([`JobWorkerBuilderImpl`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L243-L277)). Aggregate capacity is genuinely respected. The stream's `onNext` blocks on that semaphore, which stalls gRPC's inbound flow control, which makes the gateway's [`responseObserver.isReady()`](https://github.com/camunda/camunda/blob/85d6b556712c4be6f7ada0f98338b5654142b82f/zeebe/gateway-grpc/src/main/java/io/camunda/zeebe/gateway/impl/stream/StreamJobsHandler.java#L154-L160) go false, so a full worker gets no more pushes. There is no missing capacity bound. What is missing is any arbitration of *order*, as the constructed and used semaphore is non-fair.
 
-It is constructed as [`new Semaphore(maxActivate)`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L34), the single-argument form, which the [`Semaphore(int)` javadoc](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Semaphore.html#%3Cinit%3E(int)) defines as creating a semaphore with a "nonfair fairness setting". Under that setting the [class documentation](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Semaphore.html) states that "barging is permitted", meaning a thread arriving at [`tryAcquire`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41) can be allocated a permit ahead of a thread that has been parked there waiting. The same documentation recommends initialising semaphores that guard resource access as *fair*, precisely so that no thread is starved out. That is exactly the shape we have. A pushed job arrives fresh on every `onNext`, so it can barge past a poll-delivered job that is already waiting. 
+It is constructed as [`new Semaphore(maxActivate)`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L34), the single-argument form, which the [`Semaphore(int)` javadoc](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Semaphore.html#%3Cinit%3E(int)) defines as creating a semaphore with a "nonfair fairness setting". Under that setting the [class documentation](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Semaphore.html) states that "barging is permitted", meaning a thread arriving at [`tryAcquire`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41) can be allocated a permit ahead of a thread that has been parked there waiting. The same documentation recommends initialising semaphores that guard resource access as *fair*, precisely so that no thread is starved out. That is exactly the shape we have. A pushed job arrives fresh on every `onNext`, so it can barge past a poll-delivered job that is already waiting.
 
 On top of that ordering asymmetry sit three separate accounting bugs in the poll path, which mostly happen when the worker capacity is already full and the poll path is trying to get a turn. The three defects are:
 
 
 **[Defect 1: the poll budget cannot see pushed jobs (camunda#59632)](https://github.com/camunda/camunda/issues/59632)** [`JobWorkerImpl`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L204-L221) tracks in-flight work in `remainingJobs`, but only poll responses increment it and only `handleJobFinished` decrements it. Pushed jobs route to [`handleStreamJobFinished`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L282-L284), which touches metrics only. So when the worker sizes its next request as `maxJobsActive - remainingJobs` ([L195](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L185-L202)), it asks for the full capacity even when push already holds every permit. The client systematically requests jobs it cannot accept, and the broker has already marked every one of them `ACTIVATED` with a running deadline before the client discovers it.
 
-**[Defect 2: rejected jobs are never given back, and polling stops for good (camunda#59633)](https://github.com/camunda/camunda/issues/59633)** A job that cannot get a permit within its timeout is dropped with a `RejectedExecutionException`, [logged, and forgotten](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L255-L272). Its runnable never runs, so `handleJobFinished` never fires, so its `+1` on `remainingJobs` is never returned. The counter ratchets upward permanently. *To note: Each job always waits the full configured `timeout`, counted from the moment `execute()` is invoked for that particular job.* The chances for such is rather low and did not happen in our test run.
+**[Defect 2: rejected jobs are never given back, and polling stops for good (camunda#59633)](https://github.com/camunda/camunda/issues/59633)** A job that cannot get a permit within its timeout is dropped with a `RejectedExecutionException`, [logged, and forgotten](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerImpl.java#L255-L272). Its runnable never runs, so `handleJobFinished` never fires, so its `+1` on `remainingJobs` is never returned. The counter ratchets upward permanently, and once enough has leaked, `shouldPoll` stays false and nothing re-arms the loop. In practice it is hard to hit: each job's acquire window restarts when `execute()` is called for that job, so even one that has already blown the broker's deadline usually still gets its permit without throwing. We saw no sign of it in this run.
 
 
 **[Defect 3: a poll batch is dispatched sequentially, blocking on the semaphore (camunda#59634)](https://github.com/camunda/camunda/issues/59634)** [`JobPollerImpl`](https://github.com/camunda/camunda/blob/0e583a991bf6c37331e325b0268ac49b57d2803b/clients/java/src/main/java/io/camunda/client/impl/worker/JobPollerImpl.java#L145-L161) does `jobs.forEach(jobConsumer)` and only afterwards reports the count. Each of those calls parks on `tryAcquire(timeout)`, so job N in a batch waits for jobs 1 to N-1 to each burn their full timeout first. Every one of those jobs had its `1800ms` deadline started when the broker built the batch. The tail of a large batch is therefore guaranteed to be past its deadline before it even starts, which means the handler runs and completes a job the broker has already timed out and possibly re-activated. That is duplicate execution, and it is the same symptom family as [camunda/camunda#42244](https://github.com/camunda/camunda/issues/42244).
@@ -229,10 +229,10 @@ sequenceDiagram
     P->>S: execute(job 2)
     Note right of S: blocks until a permit frees,<br/>holding up everything behind it
 
-    rect rgb(216, 138, 141)
+    rect rgb(148, 142, 120, 0.12)
     Note over S,P: rare branch, and it did not happen in this run
     S--xP: RejectedExecutionException, if the window ever expires<br/>with every permit still taken
-    Note over P: DEFECT 2: remainingJobs leaks by one,<br/>and enough leaks stop polling for good
+    Note over P: DEFECT 2: remainingJobs leaks by one,<br/>and enough leaks would stop polling for good
     end
 
     B->>B: t = 1800 ms: job N times out,<br/>returned to ACTIVATABLE
@@ -245,14 +245,14 @@ sequenceDiagram
 
 ```
 
-### Why every recovery path leads back to the broken one
+### Where a failed delivery ends up
 
 The following failure modes recover into the polling path:
 
 * A push that gets blocked at the gateway fails immediately, with no queueing or retry ([`RemoteStreamPusher`](https://github.com/camunda/camunda/blob/a0ee80db9873fc62be829e44b666d749c79a8d53/zeebe/transport/src/main/java/io/camunda/zeebe/transport/stream/impl/RemoteStreamPusher.java) documents itself as performing no retries of any kind), and the broker writes a [`YIELD`](https://github.com/camunda/camunda/blob/ff8dbe135d1523283ba1324ed42c98824150432d/zeebe/broker/src/main/java/io/camunda/zeebe/broker/jobstream/YieldingJobStreamErrorHandler.java#L20-L25) that puts the job back into `ACTIVATABLE`.
 * A job that times out on the broker goes back to `ACTIVATABLE` too. [`JobTimeOutProcessor`](https://github.com/camunda/camunda/blob/a40b238a4e9c431761cee7a25c8808aba7dd2004/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/job/JobTimeOutProcessor.java#L61) only notifies workers, it does not push. That is deliberate, and was [changed on purpose](https://github.com/camunda/camunda/pull/46641) after the duplicate-completion problems in the issue above.
 
-`ACTIVATABLE` is served by polling and nothing else.
+`ACTIVATABLE` is served by polling and nothing else, so both of those paths depend on the poll loop getting a turn.
 
 ### It gets worse with more workers and more job types
 
@@ -298,13 +298,13 @@ One note before moving on: the single-worker view above understates the problem.
                 = 180
   ```
 
-  This means the maxJobsActive should be set to less than 180, so that even the last job in a full batch can finish before the broker's deadline.
+  This means the maxJobsActive should be set to less than 180, so that even the last job in a full batch can finish before the broker's deadline. We were running 60 and raised it to 100, so we never came close. That is the part worth sitting with, because the formula tells you when a full batch is guaranteed to make its deadline, not what to aim for.
 
   **Why the job `timeout` is what the wait has to fit inside.** That one configured value is quietly doing two different things. On the broker it is the job's deadline: once it expires the broker takes the job back and hands it to someone else. In the client it is *also* the longest a job will sit waiting for a free thread, because the same value is passed to the [`BlockingExecutor`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L273) and used as its [semaphore acquire timeout](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L41).
 
   The two do not run down together, which is what makes this hard to see. The broker's deadline starts when the batch is handed out; the client's wait starts per job, when `execute()` is finally called for it. A job can blow the broker's deadline while still acquiring its permit inside its own window, so nothing on the client ever throws.
 
-  `maxJobsActive` is not a throughput knob. Throughput is `executionThreads / handlerDuration`. For this worker, 30 threads at a 300ms handler is a hard ceiling of 100 jobs/s, and we measured 87 to 91/s on the single pod, already about 90% of it. What `maxJobsActive` actually sets is the queue length, or how long a job waits before it runs, `maxJobsActive x handlerDuration / executionThreads`. Raising it from 60 to 100 took that wait from 600ms to 1000ms inside an 1800ms deadline, and to about 1300ms at the 390ms handler duration we actually measured once three replicas were contending.
+  `maxJobsActive` is not a throughput knob. Throughput is `executionThreads / handlerDuration`. For this worker, 30 threads at a 300ms handler is a hard ceiling of 100 jobs/s, and we measured 87 to 91/s on the single pod, already about 90% of it. What `maxJobsActive` actually sets is the queue length, or how long a job waits before it runs, `maxJobsActive x handlerDuration / executionThreads`. Raising it from 60 to 100 took that wait from 600ms to 1000ms inside an 1800ms deadline, and to about 1300ms at the 390ms handler duration we actually measured once three replicas were contending. All that buys is a longer queue in front of an unchanged deadline.
 
 * Keep the job `timeout` comfortably above your *worst-case* handler duration, not just the average. The bound above assumes every job takes about the same time, so a long tail quietly eats the waiting budget of every job queued behind it.
 
@@ -324,8 +324,8 @@ One note before moving on: the single-worker view above understates the problem.
 
 ## Conclusion
 
-Coming back online after a dependency outage is the easy part to verify: every job type's throughput bounced back within seconds. What is harder to see, is that the backlog kept growing underneath that healthy-looking throughput number for hours.
+Coming back online after a dependency outage is the easy part to verify: every job type's throughput bounced back within seconds. What is harder to see is that the backlog kept growing underneath that healthy-looking throughput number for hours.
 
 The mechanism turned out to have two layers. Architecturally, job push has no concept of a standing backlog: a pushed job never enters the queue the backlog lives in, so an outage-induced backlog can only be drained by a path that is competing for the capacity push keeps taking. That alone would make recovery slow. What kept it from catching up is the client's poll path, which requests work without counting what push already delivered and then dispatches each batch one blocking job at a time, so the tail of every batch burns its deadline before it runs and the completion is thrown away. A third defect, a capacity leak that stops a worker polling for good, is worse than either of those, and every recovery path in the system funnels straight into it. It simply did not fire on the day, which we only established afterwards by going back to the metrics.
 
-The reminder for us is that "throughput recovered" is not "fully recovered", the backlog must also be considered as well.
+The reminder for us is that "throughput recovered" is not "fully recovered". The backlog has to be watched alongside it.
