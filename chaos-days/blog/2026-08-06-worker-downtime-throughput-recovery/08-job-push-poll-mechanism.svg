@@ -73,7 +73,7 @@
   <rect class="bgrect" x="0" y="0" width="1240" height="740" />
 
   <text class="title" x="620" y="34">At the worker: one pool, two paths, three defects</text>
-  <text class="subtitle" x="620" y="56">Push and poll share one non-fair semaphore, and only the poll side loses jobs permanently when it loses the race</text>
+  <text class="subtitle" x="620" y="56">Push and poll share one non-fair semaphore, and the poll side is the fragile one when it loses the race</text>
 
   <g transform="translate(0,-276)">
   <rect class="band" x="40" y="356" width="1160" height="612" />
@@ -114,14 +114,14 @@
   <text class="boxsub" x="950" y="561">the tail of a batch is past its deadline before it starts</text>
   <text class="foot-warn" x="950" y="581">duplicate execution, rejected completions</text>
 
-  <rect class="box-warn" x="80" y="622" width="590" height="116" />
-  <text class="boxtitle" x="375" y="646" style="fill:var(--warn);">Defect 2 &#183; polling stops permanently</text>
+  <rect class="box" x="80" y="622" width="590" height="116" />
+  <text class="boxtitle" x="375" y="646">Defect 2 &#183; polling can stop permanently</text>
   <text class="boxsub" x="375" y="666">a rejected job never runs, so remainingJobs is never decremented</text>
-  <text class="boxsub" x="375" y="683">once the leak passes 30% of maxJobsActive, shouldPoll is false</text>
+  <text class="boxsub" x="375" y="683">once the leak passes Math.round(maxJobsActive x 0.3), shouldPoll is false</text>
   <text class="boxsub" x="375" y="700">onScheduledPoll returns without rescheduling, nothing re-arms it</text>
-  <text class="foot-warn" x="375" y="722">measured: never polled again, even with all capacity free</text>
+  <text class="boxsub" x="375" y="722">reproduced in a test, not observed in this run</text>
 
-  <path class="warn-line" d="M 488,578 V 622" marker-end="url(#aWarn)" />
+  <path class="ink-line" d="M 488,578 V 622" marker-end="url(#aInk)" />
 
   <!-- churn loop -->
   <text class="band-label" x="64" y="772">THE LOOP THIS CREATES</text>
@@ -147,8 +147,8 @@
   <path class="warn-line" d="M 900,818 H 942" marker-end="url(#aWarn)" />
   <path class="warn-line" d="M 1070,848 V 888 H 200 V 850" marker-end="url(#aWarn)" />
 
-  <text class="note-warn" x="80" y="924">No forward progress, and records are written on every lap. Once Defect 2 has fired, the loop cannot even start again.</text>
-  <text class="note" x="80" y="946">Both failure paths recover into ACTIVATABLE, which polling alone serves, so a worker that has stopped polling turns every recovery into a dead letter.</text>
+  <text class="note" x="80" y="924">Records are written on every lap while the job itself makes no progress.</text>
+  <text class="note" x="80" y="946">Both failure paths recover into ACTIVATABLE, which polling alone serves, so recovery depends on the poll loop getting a turn.</text>
 
   <!-- legend -->
   <line x1="80" y1="990" x2="118" y2="990" class="push-line" />
