@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1240 740" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and three defects sit on the poll side. Defect 1: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Defect 2: a rejected job never decrements the in-flight counter, so once the leak passes thirty percent of capacity the worker stops polling permanently and nothing re-arms the loop. Defect 3: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts, causing duplicate execution. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to rejected client-side, to broker timeout, and back to the backlog, making no forward progress.">
+     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and three defects sit on the poll side. Defect 1: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Defect 2: a rejected job never decrements the in-flight counter, so once the leak passes the activation threshold the worker can stop polling altogether and nothing re-arms the loop, which we reproduced in a test but did not observe in this run. Defect 3: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts and its completion is rejected when it finishes. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to blocked past its deadline, to broker timeout, and back to the backlog, making no forward progress while the handler still runs and still counts as handled.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -135,8 +135,8 @@
   <text class="boxsub" x="490" y="829">broker deadline starts ticking</text>
 
   <rect class="box" x="660" y="788" width="240" height="60" />
-  <text class="boxtitle" x="780" y="812">Rejected client-side</text>
-  <text class="boxsub" x="780" y="829">dropped, broker is not told</text>
+  <text class="boxtitle" x="780" y="812">Blocked past its deadline</text>
+  <text class="boxsub" x="780" y="829">waits behind the rest of the batch</text>
 
   <rect class="box" x="950" y="788" width="240" height="60" />
   <text class="boxtitle" x="1070" y="812">TIME_OUT on the broker</text>
@@ -147,7 +147,7 @@
   <path class="warn-line" d="M 900,818 H 942" marker-end="url(#aWarn)" />
   <path class="warn-line" d="M 1070,848 V 888 H 200 V 850" marker-end="url(#aWarn)" />
 
-  <text class="note" x="80" y="924">Records are written on every lap while the job itself makes no progress.</text>
+  <text class="note" x="80" y="924">The handler still runs and still counts as handled, but its completion is rejected, so records are written on every lap while the job makes no progress.</text>
   <text class="note" x="80" y="946">Both failure paths recover into ACTIVATABLE, which polling alone serves, so recovery depends on the poll loop getting a turn.</text>
 
   <!-- legend -->
