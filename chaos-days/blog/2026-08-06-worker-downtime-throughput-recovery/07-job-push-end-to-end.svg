@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1320 1080" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="End-to-end diagram of the path a job takes from the Zeebe broker's partition log, through the gateway, to a worker, for both push and polling. Push fires the instant a job becomes activatable and the gateway relays it to the worker's open stream, with no backlog check anywhere in the chain, so a pushed job never enters the ACTIVATABLE pool at all. Polling is an explicit request relayed by the same gateway down to the broker and back, and it is the only path that serves the ACTIVATABLE backlog, which is drawn as accumulated state rather than a log position. Both push and poll-delivered jobs share one capacity-limited pool on the worker. A push that gets blocked is failed immediately at the gateway and yielded straight back into the backlog state, recovering in roughly one log write. A poll-delivered job that loses the same race is silently dropped client-side, its poll budget is never returned, and the worker then stops polling permanently, which is what turns a slow drain into a stalled one.">
+     aria-label="End-to-end diagram of the path a job takes from the Zeebe broker's partition log, through the gateway, to a worker, for both push and polling. Push fires the instant a job becomes activatable and the gateway relays it to the worker's open stream, with no backlog check anywhere in the chain, so a pushed job never enters the ACTIVATABLE pool at all. Polling is an explicit request relayed by the same gateway down to the broker and back, and it is the only path that serves the ACTIVATABLE backlog, which is drawn as accumulated state rather than a log position. Both push and poll-delivered jobs share one capacity-limited pool on the worker. A push that gets blocked is failed immediately at the gateway and yielded straight back into the backlog state, recovering in roughly one log write. A poll-delivered job that loses the same race is silently dropped client-side and the broker is never told, so it runs down its deadline and churns back into the backlog instead of recovering quickly.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -108,8 +108,8 @@
   <text class="boxtitle" x="1055" y="136" style="fill:var(--warn);">Rejected client-side: no fast recovery</text>
   <text class="boxsub" x="1055" y="156">poll-delivered job's semaphore acquire times out</text>
   <text class="boxsub" x="1055" y="172">&#8594; RejectedExecutionException, silently dropped</text>
-  <text class="boxsub" x="1055" y="188">its poll budget is never given back, so this</text>
-  <text class="boxsub" x="1055" y="204" style="fill:var(--warn); font-weight:600;">worker then stops polling permanently</text>
+  <text class="boxsub" x="1055" y="188">the broker is never told, so the job runs down</text>
+  <text class="boxsub" x="1055" y="204" style="fill:var(--warn); font-weight:600;">its deadline and churns back into the backlog</text>
   <text class="boxsub" x="1055" y="228" style="font-style:italic;">contrast: a push blocked at the gateway yields</text>
   <text class="boxsub" x="1055" y="242" style="font-style:italic;">back to ACTIVATABLE almost immediately (below)</text>
 
