@@ -23,3 +23,7 @@ make build
 ```
 
 This command generates static content into the `build` directory and can be served using any static contents hosting service.
+
+### Usage analytics
+
+The production GitHub Pages site uses GoatCounter for privacy-friendly page view analytics. Docusaurus route changes are tracked explicitly so navigating between posts in the single-page app records page views without reloading the analytics script.
