@@ -14,7 +14,7 @@ authors:
 
 # Chaos Day Summary
 
-On today's Chaos Day, we simulated an extended outage of a job worker in our realistic "bank customer complaint/dispute handling" load test to see how well the system recovers once the worker returns. Running the experiment was the quick part. Explaining what we had measured took considerably longer and ended in five bug reports.
+On today's Chaos Day, we simulated an extended outage of a job worker in our realistic "bank customer complaint/dispute handling" load test to see how well the system recovers once the worker returns.
 
 We picked this scenario because it had already happened to us once, by accident: a worker in one of our other load tests had gone down for a while, and when it came back, throughput looked fine while something underneath clearly was not. We never got to the bottom of it at the time. Today, we deliberately reproduced the same shape of failure, with the time to actually dig in.
 
@@ -54,6 +54,8 @@ Some of these knobs matter a lot later, so it is worth being precise about what 
 * `completionDelay` is how long our handler sleeps before completing, simulating real work.
 * `threads` is the number of threads in the worker's handler pool, which is also the number of jobs it can handle concurrently. By default, this is set to [10](https://github.com/camunda/camunda/blob/c0cbe225642e0002a3bce445aaaa9cafd394f269/load-tests/load-tester/src/main/resources/application.yaml#L122-L128), though the two busiest job types in this scenario, `dispute_process_request_proof_from_vendor` and `refunding`, override it to `30`. That override matters later.
 * The job `timeout` is a static `1800ms` for all our workers, which is the time the broker will wait for a job to be completed before it times out and becomes available again.
+
+We planned to take the `extract-data-from-document` worker Deployment down to 0 replicas for around one hour, then bring it back up and watch how the system recovers.
 
 ### Expected
 
