@@ -15,15 +15,6 @@ const darkCodeTheme = themes.dracula;
   organizationName: 'camunda', // Usually your GitHub org/user name.
   projectName: 'zeebe-chaos', // Usually your repo name.
 
-  scripts: [
-    {
-      src: 'https://gc.zgo.at/count.js',
-      async: true,
-      'data-goatcounter': 'https://chriskujawa.goatcounter.com/count',
-      'data-goatcounter-settings': '{"no_onload":true}',
-    },
-  ],
-
   plugins: ['plugin-image-zoom'],
 
   themes: ['@docusaurus/theme-mermaid'],

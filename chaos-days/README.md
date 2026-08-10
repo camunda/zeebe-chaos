@@ -26,4 +26,4 @@ This command generates static content into the `build` directory and can be serv
 
 ### Usage analytics
 
-The production GitHub Pages site uses GoatCounter for privacy-friendly page view analytics. Docusaurus route changes are tracked explicitly so navigating between posts in the single-page app records page views without reloading the analytics script.
+The production GitHub Pages site uses GoatCounter for privacy-friendly page view analytics. Docusaurus route changes are tracked explicitly so navigating between posts in the single-page app records page views without depending on the external GoatCounter script.
