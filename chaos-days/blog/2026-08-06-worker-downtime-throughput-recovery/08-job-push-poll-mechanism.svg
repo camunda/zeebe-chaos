@@ -97,7 +97,8 @@
   <path class="push-line" d="M 225,470 V 512" marker-end="url(#aPush)" />
   <path class="pull-line" d="M 500,470 V 512" marker-end="url(#aPull)" />
 
-  <text class="strip-label" x="80" y="534" style="fill:var(--warn); font-weight:600;">Non-fair capacity &#183; one Semaphore(maxJobsActive) shared by both paths, constructed non-fair</text>
+  <rect class="box-warn" x="68" y="514" width="616" height="98" />
+  <text class="strip-label" x="80" y="534" style="fill:var(--warn); font-weight:600;">Non-fair capacity &#183; one Semaphore(maxJobsActive) shared by both paths</text>
   <rect class="slot-full" x="80" y="546" width="66" height="32" /><text class="slot-glyph" x="113" y="567">&#9889;</text>
   <rect class="slot-full" x="155" y="546" width="66" height="32" /><text class="slot-glyph" x="188" y="567">&#9889;</text>
   <rect class="slot-full" x="230" y="546" width="66" height="32" /><text class="slot-glyph" x="263" y="567">&#9889;</text>
