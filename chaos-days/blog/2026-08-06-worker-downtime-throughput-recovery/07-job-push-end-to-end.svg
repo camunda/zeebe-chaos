@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1320 1080" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="End-to-end diagram of the path a job takes from the Zeebe broker's partition log, through the gateway, to a worker, for both push and polling. Push fires the instant a job becomes activatable and the gateway relays it to the worker's open stream, with no backlog check anywhere in the chain, so a pushed job never enters the ACTIVATABLE pool at all. Polling is an explicit request relayed by the same gateway down to the broker and back, and it is the only path that serves the ACTIVATABLE backlog, which is drawn as accumulated state rather than a log position. Both push and poll-delivered jobs share one capacity-limited pool on the worker. A push that gets blocked is failed immediately at the gateway and yielded straight back into the backlog state, recovering in roughly one log write. A poll-delivered job that loses the same race is silently dropped client-side and the broker is never told, so it runs down its deadline and churns back into the backlog instead of recovering quickly.">
+     aria-label="End-to-end diagram of the path a job takes from the Zeebe broker's partition log, through the gateway, to a worker, for both push and polling. Push fires the instant a job becomes activatable and the gateway relays it to the worker's open stream, with no backlog check anywhere in the chain, so a pushed job never enters the ACTIVATABLE pool at all. Polling is an explicit request relayed by the same gateway down to the broker and back, and it is the only path that serves the ACTIVATABLE backlog, which is drawn as accumulated state rather than a log position. Both push and poll-delivered jobs share one capacity-limited pool on the worker. A push that gets blocked is failed immediately at the gateway and yielded straight back into the backlog state, recovering in roughly one log write. A poll-delivered job that loses the same race is dropped client-side without the broker being told, so it runs down its deadline and churns back into the backlog instead of recovering quickly, though that rejection is a rare path we did not see in this run.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -44,9 +44,11 @@
     .push-line { stroke: var(--push); stroke-width: 2.5; fill: none; }
     .pull-line { stroke: var(--pull); stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
     .warn-line { stroke: var(--warn); stroke-width: 2; fill: none; stroke-dasharray: 4 4; }
+    .ink-line { stroke: var(--ink); stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; opacity: .55; }
     .arrowhead-push { fill: var(--push); }
     .arrowhead-pull { fill: var(--pull); }
     .arrowhead-warn { fill: var(--warn); }
+    .arrowhead-ink { fill: var(--ink); opacity: .55; }
     .labelbg { fill: var(--bg); opacity: .92; rx: 5; }
     .lbl-push { fill: var(--push); font-size: 10.5px; text-anchor: middle; }
     .lbl-pull { fill: var(--pull); font-size: 10.5px; text-anchor: middle; }
@@ -71,6 +73,9 @@
     </marker>
     <marker id="arrowWarn" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" class="arrowhead-warn" />
+    </marker>
+    <marker id="arrowInk" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrowhead-ink" />
     </marker>
   </defs>
 
@@ -104,16 +109,16 @@
   <rect class="slot-ghost" x="650" y="216" width="70" height="28" />
   <rect class="slot-ghost" x="730" y="216" width="70" height="28" />
 
-  <rect class="box-warn" x="870" y="110" width="370" height="152" />
-  <text class="boxtitle" x="1055" y="136" style="fill:var(--warn);">Rejected client-side: no fast recovery</text>
+  <rect class="box" x="870" y="110" width="370" height="152" />
+  <text class="boxtitle" x="1055" y="136">Rejected client-side: no fast recovery</text>
   <text class="boxsub" x="1055" y="156">poll-delivered job's semaphore acquire times out</text>
-  <text class="boxsub" x="1055" y="172">&#8594; RejectedExecutionException, silently dropped</text>
+  <text class="boxsub" x="1055" y="172">&#8594; RejectedExecutionException, rare and not seen here</text>
   <text class="boxsub" x="1055" y="188">the broker is never told, so the job runs down</text>
-  <text class="boxsub" x="1055" y="204" style="fill:var(--warn); font-weight:600;">its deadline and churns back into the backlog</text>
+  <text class="boxsub" x="1055" y="204">its deadline and churns back into the backlog</text>
   <text class="boxsub" x="1055" y="228" style="font-style:italic;">contrast: a push blocked at the gateway yields</text>
   <text class="boxsub" x="1055" y="242" style="font-style:italic;">back to ACTIVATABLE almost immediately (below)</text>
 
-  <path class="warn-line" d="M 560,230 C 700,300 780,260 868,190" marker-end="url(#arrowWarn)" />
+  <path class="ink-line" d="M 560,230 C 700,300 780,260 868,190" marker-end="url(#arrowInk)" />
 
   <!-- ================= GATEWAY BAND ================= -->
   <rect class="band" x="40" y="420" width="1240" height="190" />
