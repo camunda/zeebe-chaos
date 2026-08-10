@@ -114,14 +114,14 @@
   <text class="boxsub" x="950" y="561">the tail of a batch is past its deadline before it starts</text>
   <text class="foot-warn" x="950" y="581">duplicate execution, rejected completions</text>
 
-  <rect class="box" x="80" y="622" width="590" height="116" />
-  <text class="boxtitle" x="375" y="646">Defect 2 &#183; polling can stop permanently</text>
+  <rect class="box-warn" x="80" y="622" width="590" height="116" />
+  <text class="boxtitle" x="375" y="646" style="fill:var(--warn);">Defect 2 &#183; polling can stop permanently</text>
   <text class="boxsub" x="375" y="666">a rejected job never runs, so remainingJobs is never decremented</text>
   <text class="boxsub" x="375" y="683">once the leak passes Math.round(maxJobsActive x 0.3), shouldPoll is false</text>
   <text class="boxsub" x="375" y="700">onScheduledPoll returns without rescheduling, nothing re-arms it</text>
   <text class="boxsub" x="375" y="722">reproduced in a test, not observed in this run</text>
 
-  <path class="ink-line" d="M 488,578 V 622" marker-end="url(#aInk)" />
+  <path class="warn-line" d="M 488,578 V 622" marker-end="url(#aWarn)" />
 
   <!-- churn loop -->
   <text class="band-label" x="64" y="772">THE LOOP THIS CREATES</text>
