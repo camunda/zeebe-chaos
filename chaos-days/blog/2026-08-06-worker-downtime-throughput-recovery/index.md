@@ -125,7 +125,6 @@ This peaks near 290/s once the other workers are out of the way. A 3x jump in ha
 
 Two separate things were going on. The first is that we should be careful about reading that 290/s as 290 jobs *progressing* per second. `jobHandled` is incremented when the handler method returns, not when the broker accepts the resulting command: [`JobRunnableFactoryImpl`](https://github.com/camunda/camunda/blob/42743d6fe90d8487d9a1f929f6e0d02981f60b3c/clients/java/src/main/java/io/camunda/client/impl/worker/JobRunnableFactoryImpl.java#L52-L66) runs the done-callback in a `finally` block, so a job whose deadline has already passed still runs, still returns, and still counts. Broker-side commands show that pressure building up through exactly the window we were tuning in:
 
-<!-- ![job-timeouts](log-job-commands.png) -->
 ![Broker command rates zoomed on the tuning window, with JOB.TIME_OUT climbing through the afternoon](log-job-commands-zoom.png)
 
 `JOB.TIME_OUT` commands climb through the afternoon, from a baseline of 50/s after 15:00 to a spike near 250/s at 15:25, when we first scaled the workers. The timeouts went away once we removed the load of the other workers entirely.
