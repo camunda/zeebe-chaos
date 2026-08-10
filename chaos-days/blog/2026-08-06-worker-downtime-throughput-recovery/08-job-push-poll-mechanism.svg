@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1240 740" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and three defects sit on the poll side. Defect 1: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Defect 2: a rejected job never decrements the in-flight counter, so once the leak passes the activation threshold the worker can stop polling altogether and nothing re-arms the loop, which we reproduced in a test but did not observe in this run. Defect 3: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts and its completion is rejected when it finishes. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to blocked past its deadline, to broker timeout, and back to the backlog, making no forward progress while the handler still runs and still counts as handled.">
+     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and four defects follow, one in the shared semaphore's ordering and three in the poll path's accounting. Defect 1: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Defect 2: a rejected job never decrements the in-flight counter, so once the leak passes the activation threshold the worker can stop polling altogether and nothing re-arms the loop, which we reproduced in a test but did not observe in this run. Defect 3: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts and its completion is rejected when it finishes. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to blocked past its deadline, to broker timeout, and back to the backlog, making no forward progress while the handler still runs and still counts as handled.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -72,12 +72,12 @@
 
   <rect class="bgrect" x="0" y="0" width="1240" height="740" />
 
-  <text class="title" x="620" y="34">At the worker: one pool, two paths, three defects</text>
+  <text class="title" x="620" y="34">At the worker: one pool, two paths, four defects</text>
   <text class="subtitle" x="620" y="56">Push and poll share one non-fair semaphore, and the poll side is the fragile one when it loses the race</text>
 
   <g transform="translate(0,-276)">
   <rect class="band" x="40" y="356" width="1160" height="612" />
-  <text class="band-label" x="64" y="380">ONE POOL, TWO PATHS, THREE DEFECTS</text>
+  <text class="band-label" x="64" y="380">ONE POOL, TWO PATHS, FOUR DEFECTS</text>
 
   <rect class="box-push" x="80" y="398" width="290" height="72" />
   <text class="boxtitle" x="225" y="422">Push stream (gRPC)</text>
