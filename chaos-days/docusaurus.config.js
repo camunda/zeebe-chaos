@@ -19,6 +19,14 @@ const darkCodeTheme = themes.dracula;
     'plugin-image-zoom'
   ],
 
+  themes: ['@docusaurus/theme-mermaid'],
+
+  // Renders ```mermaid fences as diagrams, so sequence figures can live in the post
+  // as text rather than as checked-in SVG.
+  markdown: {
+    mermaid: true,
+  },
+
   presets: [
     [
       '@docusaurus/preset-classic',
