@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1240 740" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and four defects follow, one in the shared semaphore's ordering and three in the poll path's accounting. Defect 1: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Defect 2: a rejected job never decrements the in-flight counter, so once the leak passes the activation threshold the worker can stop polling altogether and nothing re-arms the loop, which we reproduced in a test but did not observe in this run. Defect 3: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts and its completion is rejected when it finishes. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to blocked past its deadline, to broker timeout, and back to the backlog, making no forward progress while the handler still runs and still counts as handled.">
+     aria-label="Diagram of a Camunda job worker's client-side job intake. The push stream and the poll loop both deliver into a single non-fair semaphore sized by maxJobsActive, and four defects follow, one in the shared semaphore's ordering and three in the poll path's accounting. Blind budget: the poll budget does not count pushed jobs, so every poll over-requests work the worker cannot accept. Leaked budget: a rejected job never decrements the in-flight counter, so once the leak passes the activation threshold the worker can stop polling altogether and nothing re-arms the loop, which we reproduced in a test but did not observe in this run. Sequential dispatch: a poll batch is dispatched one job at a time while blocking on the semaphore, so the tail of a batch is past its deadline before it starts and its completion is rejected when it finishes. A closed loop at the bottom runs from the ACTIVATABLE backlog to activated, to blocked past its deadline, to broker timeout, and back to the backlog, making no forward progress while the handler still runs and still counts as handled.">
   <style>
     svg {
       --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
@@ -90,14 +90,14 @@
   <text class="boxsub" x="595" y="456">remainingJobs counts poll-delivered jobs only</text>
 
   <rect class="box-warn" x="820" y="398" width="380" height="72" />
-  <text class="boxtitle" x="1010" y="422" style="fill:var(--warn);">Defect 1 &#183; blind budget</text>
+  <text class="boxtitle" x="1010" y="422" style="fill:var(--warn);">Blind budget</text>
   <text class="boxsub" x="1010" y="440">pushed jobs hold permits without being counted,</text>
   <text class="boxsub" x="1010" y="456">so every poll over-requests what it cannot take</text>
 
   <path class="push-line" d="M 225,470 V 512" marker-end="url(#aPush)" />
   <path class="pull-line" d="M 500,470 V 512" marker-end="url(#aPull)" />
 
-  <text class="strip-label" x="80" y="534">shared capacity &#183; one non-fair Semaphore(maxJobsActive) serving both paths</text>
+  <text class="strip-label" x="80" y="534" style="fill:var(--warn); font-weight:600;">Non-fair capacity &#183; one Semaphore(maxJobsActive) shared by both paths, constructed non-fair</text>
   <rect class="slot-full" x="80" y="546" width="66" height="32" /><text class="slot-glyph" x="113" y="567">&#9889;</text>
   <rect class="slot-full" x="155" y="546" width="66" height="32" /><text class="slot-glyph" x="188" y="567">&#9889;</text>
   <rect class="slot-full" x="230" y="546" width="66" height="32" /><text class="slot-glyph" x="263" y="567">&#9889;</text>
@@ -109,13 +109,13 @@
   <text class="note" x="80" y="600">push arrives fresh on each onNext and can barge past a waiting poll job</text>
 
   <rect class="box-warn" x="700" y="500" width="500" height="98" />
-  <text class="boxtitle" x="950" y="524" style="fill:var(--warn);">Defect 3 &#183; a poll batch is dispatched one job at a time</text>
+  <text class="boxtitle" x="950" y="524" style="fill:var(--warn);">Sequential dispatch &#183; a poll batch goes one job at a time</text>
   <text class="boxsub" x="950" y="544">jobs.forEach blocks per job on tryAcquire(timeout)</text>
   <text class="boxsub" x="950" y="561">the tail of a batch is past its deadline before it starts</text>
   <text class="foot-warn" x="950" y="581">duplicate execution, rejected completions</text>
 
   <rect class="box-warn" x="80" y="622" width="590" height="116" />
-  <text class="boxtitle" x="375" y="646" style="fill:var(--warn);">Defect 2 &#183; polling can stop permanently</text>
+  <text class="boxtitle" x="375" y="646" style="fill:var(--warn);">Leaked budget &#183; polling can stop permanently</text>
   <text class="boxsub" x="375" y="666">a rejected job never runs, so remainingJobs is never decremented</text>
   <text class="boxsub" x="375" y="683">once the leak passes Math.round(maxJobsActive x 0.3), shouldPoll is false</text>
   <text class="boxsub" x="375" y="700">onScheduledPoll returns without rescheduling, nothing re-arms it</text>
