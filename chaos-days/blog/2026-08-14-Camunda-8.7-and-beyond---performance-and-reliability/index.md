@@ -32,7 +32,7 @@ For each version, we ran the same set of experiments, which included:
 - [stress test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#max--stress-load-test): running with high load for a short period of time (3 hours)
 - [endurance test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#realistic-load): running with realistic workload for a longer period of time (3 days)
 
-For each version, all tests were run in the same environment, using the same Kubernetes cluster and a similar setup: three broker nodes and Elasticsearch as secondary storage with three nodes. For more details about the specific configuration and setup see [here](https://github.com/camunda/camunda/tree/main/load-tests/setup). The only differences were the Camunda version being tested and version-specific configuration and setup changes (embedded vs. standalone gateways, Operate and Tasklist deployments, etc.).
+For each version, all tests were run in the same environment, using the same Kubernetes cluster and a similar setup: three broker nodes and Elasticsearch as secondary storage with three nodes. For more details about the specific configuration and setup, see [here](https://github.com/camunda/camunda/tree/main/load-tests/setup). The only differences were the Camunda version being tested and version-specific configuration and setup changes (embedded vs. standalone gateways, Operate and Tasklist deployments, etc.).
 
 ## Endurance Test Results
 
@@ -48,7 +48,7 @@ In a real production setup, there would likely be an ingress in front to load-ba
 
 The general processing is well distributed across the partitions, and we see no difference here.
 
-What is interesting is that even on the output side, meaning writing to the secondary storage, we see a similarly well-distributed load across the Elasticsearch nodes. Here we expected some difference, as we harmonized the indices, to reduce duplication.
+What is interesting is that even on the output side, meaning writing to the secondary storage, we see a similarly well-distributed load across the Elasticsearch nodes. Here we expected some difference, as we harmonized the indices to reduce duplication.
 
 ![Grafana dashboard showing write load evenly distributed across Elasticsearch nodes for all tested versions](endurance/general-3.png)
 
@@ -56,7 +56,7 @@ What is interesting is that even on the output side, meaning writing to the seco
 
 The first real difference we can see is in the area of used resources.
 
-The 8.8 version seems to use a bit more CPU than 8.7 and 8.9, while memory usage is similar across all versions. The CPU usage has some outliers (due to restarts) so this might be one explanation. With 8.9, we seem to have at least brought this under 8.7, which is a good sign.
+The 8.8 version seems to use a bit more CPU than 8.7 and 8.9, while memory usage is similar across all versions. The CPU usage has some outliers (due to restarts), so this might be one explanation. With 8.9, we seem to have at least brought this under 8.7, which is a good sign.
 
 Still, one interesting fact is that with 8.7, Elasticsearch seems to use more CPU, while with the other versions, Camunda and Elasticsearch are on par.
 
@@ -169,7 +169,7 @@ This is what the new architecture gives us: a more stable and reliable system wi
 
 We have run and investigated load tests for the different versions of Camunda 8.7, 8.8, and 8.9. 
 
-We clearly saw that the re-architecture of Camunda 8.8+ applied queueing mechanisms and with this improved the reliability and stability of the system. In our endurance test, we have seen how unreliable the previous archiver component was. Under stress, we saw data availability and resource consumption improve significantly.
+We clearly saw that the re-architecture of Camunda 8.8+ applied queueing mechanisms to improve the reliability and stability of the system. In our endurance test, we have seen how unreliable the previous archiver component was. Under stress, we saw data availability and resource consumption improve significantly.
 
 All of this comes with the cost of some processing performance (throughput and latency), as we need to limit the arrival rate to keep the system stable.
 
