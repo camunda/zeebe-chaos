@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week we ran several endurance and stress tests against Camunda 8.7, 8.8 and 8.9 (using the latest patch versions). In this post we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture, allowed reducing the data availability under normal load by more than factor 2 and limiting it under stress to ~40s (which is a factor 810 difference). All of this comes with the cost of some processing performance (throughput and latency).
+**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed reducing the data availability under normal load by more than a factor of 2, and limiting it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency).
 
 <!--truncate-->
 
@@ -48,7 +48,7 @@ In a real production setup, there would likely be an ingress in front to load ba
 
 The general processing is well distributed across the partitions, and here we can see no difference.
 
-What is interesting is that even on the output side, meaning writing to the secondary storage, we see similar load and well distribution across the elasticsearch nodes. Here we expected some difference, as we harmonized the indices, to reduce duplication.
+What is interesting is that even on the output side, meaning writing to the secondary storage, we see a similarly well-distributed load across the Elasticsearch nodes. Here we expected some difference, as we harmonized the indices, to reduce duplication.
 
 ![Grafana dashboard showing write load evenly distributed across Elasticsearch nodes for all tested versions](endurance/general-3.png)
 
@@ -56,11 +56,11 @@ What is interesting is that even on the output side, meaning writing to the seco
 
 The first real difference we can see in the area of used resources.
 
-The 8.8 version seem to use a bit more CPU compared to 8.7 and 8.9, while the memory usage is similar across all versions. The CPU usage has some outliers (due to restarts) so this might be one explanation. With 8.9 we seem to at least recover this to be under 8.7, which is a good sign.
+The 8.8 version seems to use a bit more CPU compared to 8.7 and 8.9, while the memory usage is similar across all versions. The CPU usage has some outliers (due to restarts) so this might be one explanation. With 8.9 we seem to at least recover this to be under 8.7, which is a good sign.
 
 Still, one interesting fact is that with 8.7 Elasticsearch seems to use more CPU while with the other versions Camunda and Elasticsearch are on par.
 
-Memory wise we seem to have a similar usage across all versions, which is likely related to the usage of JVMs and assigning similar set of resources. As we moved resources from previous Operate and Tasklist deployments to Camunda statefulsets.
+Memory-wise we seem to have a similar usage across all versions, which is likely related to the usage of JVMs and assigning a similar set of resources, as we moved resources from the previous Operate and Tasklist deployments to Camunda StatefulSets.
 
 ![Grafana dashboard comparing CPU and memory usage across Camunda 8.7, 8.8, and 8.9 during the endurance test](endurance/cpu-mem.png)
 
@@ -69,13 +69,13 @@ When we look at the JVM metrics it is interesting to see that in all versions Op
 
 The write IOPS metrics show that for 8.7 we seem to write more data into Elasticsearch. The IOPs are almost doubled compared to 8.8 and 8.9, which is likely related to re-architecture, introducing the Camunda Exporter vs. the previous Importer deployments (including the harmonization of the indices and the reduced duplication of data).
 
-As described before all versions managed to do the same amount of work, but with 8.7 we seem to need less IOPs on the Zeebe side ~2k while with 8.8 and 8.9 we need ~3k IOPs to do the same amount of work. This is unexpected and we will look into this in more detail.
+This is a different disk than the Elasticsearch writes above: on the Zeebe side, all versions managed to do the same amount of work, but 8.7 needs fewer IOPs (~2k) than 8.8 and 8.9 (~3k) to do it. This is unexpected and we will look into this in more detail.
 
-![Grafana dashboard showing Elasticsearch write IOPS for Camunda 8.7, 8.8, and 8.9, with 8.7 writing almost double the IOPS of the other versions](endurance/disk.png)
+![Grafana dashboard showing Elasticsearch write IOPS almost doubled on 8.7 versus 8.8 and 8.9, alongside Zeebe-side disk IOPS which are lower on 8.7 (~2k) than on 8.8 and 8.9 (~3k)](endurance/disk.png)
 
-Checking the disk usage of the secondary storage we would expect that 8.7 uses more disk space, as we have seen more IOPs on the Elasticsearch side and we have Operate and Tasklist running separate and writing in different indices.
+Checking the disk usage of the secondary storage we would expect that 8.7 uses more disk space, as we have seen more IOPs on the Elasticsearch side and we have Operate and Tasklist running separately and writing to different indices.
 
-If we look deeper into the details we can see that in 8.7 Operate runtime indices are constantly increasing, while in 8.8 see a more stable pattern (skiping 8.9 here). 
+If we look deeper into the details we can see that in 8.7 Operate runtime indices are constantly increasing, while in 8.8 we see a more stable pattern (skipping 8.9 here). 
 
 ![Grafana dashboard showing Operate runtime indices size continuously growing on 8.7 compared to a more stable pattern on 8.8](endurance/runtime-indices.png)
 
@@ -94,7 +94,7 @@ The archiver metrics show that 8.7 is not able to keep up with the amount of com
 
 ### Latency
 
-Now coming to a set of metrics where we can see a real difference between the versions. One part is the processing latency where we seem to have increased latency with 8.8 and 8.9 — it roughly doubled. But here needs to say that the Camunda applications now do more in one deployment (which was distributed before) which means there is higher contention between resources.
+Now coming to a set of metrics where we can see a real difference between the versions. One part is the processing latency where we seem to have increased latency with 8.8 and 8.9 — it roughly doubled. It should be noted, though, that the Camunda applications now do more in one deployment (which was previously distributed), which means there is higher contention between resources.
 
 On the positive side the re-architecture of the Camunda Exporter (in 8.8) has improved the latency of data available to the user, as we were reducing one step of write-and-reading before aggregating. More details about this can be read [here](https://camunda.com/blog/2025/02/one-exporter-to-rule-them-all-exploring-camunda-exporter/).
 
@@ -102,7 +102,7 @@ On the positive side the re-architecture of the Camunda Exporter (in 8.8) has im
 
 The [data availability metric](https://camunda.github.io/zeebe-chaos/2026/01/08/Experimenting-with-data-availability-metric) we use in our load tests is not available in 8.7, as it requires the REST API (which was added in 8.8 as well).
 
-So we need to make use of some older Operate Importer metrics to approximate the data availability. The data availability is calculated (in 8.8) as the time between a process instance creation request is sent and beining available via the REST API. This means we need to look at the Importer latency, which is the time between a record being written in Zeebe and imported by Operate (including written to Elasticsearch). Here, we need to add the Elasticsearch flush interval, which is set on the Operate Indices to two seconds, this gives us roughly the time the data needs to be available/visible to the user (excluding the network time between client and server).
+So we need to make use of some older Operate Importer metrics to approximate the data availability. The data availability is calculated (in 8.8) as the time between a process instance creation request being sent and it being available via the REST API. This means we need to look at the Importer latency, which is the time between a record being written in Zeebe and imported by Operate (including written to Elasticsearch). Here, we need to add the Elasticsearch flush interval, which is set on the Operate Indices to two seconds, this gives us roughly the time the data needs to be available/visible to the user (excluding the network time between client and server).
 
 ![Grafana dashboard showing Operate importer latency, used to approximate data availability across versions](endurance/import-latency.png)
 
@@ -110,7 +110,7 @@ For 8.7 this means we are on average at ~3.5 seconds for the importing latency, 
 
 ### Throughput
 
-As mentioned earlier on the throughput side of things, we can't spot a difference between the versions. Interesting is that we even write the same amount of records, but have an increase in IOPs.
+As mentioned earlier on the throughput side of things, we can't spot a difference between the versions. Interestingly, we even write the same amount of records, but have an increase in IOPs.
 
 ![Grafana dashboard showing similar processing throughput across Camunda 8.7, 8.8, and 8.9 during the endurance test](endurance/throughput.png)
 
@@ -121,7 +121,7 @@ In the following section we will look at the results of our stress tests, which 
 
 ![Grafana dashboard showing a completion rate around 90% and backpressure around 20% on 8.7, versus a completion rate of ~60% and backpressure of ~60% on 8.8 and 8.9 under stress](stress/general.png)
 
-In our general metrics we can already see a huge difference between the versions and how they handle the load. While 8.7 is almost able to handle the load, the completion rate is around 90% and backpressure at ~20%. The versions 8.8 and 8.9 are struggling with the incoming load it seems, we have a completion rate of ~60% and backpressure at ~60% as well. 
+In our general metrics we can already see a huge difference between the versions and how they handle the load. While 8.7 is almost able to handle the load, the completion rate is around 90% and backpressure at ~20%. The versions 8.8 and 8.9 seem to be struggling with the incoming load — we see a completion rate of ~60% and backpressure at ~60% as well. 
 
 Again here we can see that load is not well distributed across the gateways, which leads to imbalance. Still, the load at the partitions level is well distributed. We can see that the processing throughput difference is ~50% between 8.7 and 8.8/8.9.
 
@@ -132,7 +132,7 @@ We can see how the [performance degrades over time in newer versions](https://gi
 
 ![Grafana dashboard showing processing performance degrading over time on 8.8 and 8.9 while 8.7 keeps up with the load](stress/general-2.png)
 
-Interestingly, on the secondary storage side much more documents are indexed in 8.8 and 8.9, which is likely because the Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. In newer versions the Camunda application gives clients better backpressure, helping to reduce stress and keep latencies stable.
+Interestingly, on the secondary storage side many more documents are indexed in 8.8 and 8.9, which is likely because the Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. In newer versions the Camunda application gives clients better backpressure, helping to reduce stress and keep latencies stable.
 
 We can see a stable exporting backlog, considering that request backpressure was added with 8.8 as well.
 
@@ -174,6 +174,6 @@ All of this comes with the cost of some processing performance (throughput and l
 
 There are certain areas which we will look into in the future to improve our system even further:
 
- - like the IOPs on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
- - gRPC load balancing across gateways, which is not well distributed in our tests and likely in production as well. This is something we will look into with [#59565](https://github.com/camunda/camunda/issues/59565)
- - accumulation of state in the Camunda engine, which seems to lead to performance degradation over time. This is something we will look into with [#46993](https://github.com/camunda/camunda/issues/46993)
+- like the IOPs on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
+- gRPC load balancing across gateways, which is not well distributed in our tests and likely in production as well. This is something we will look into with [#59565](https://github.com/camunda/camunda/issues/59565)
+- accumulation of state in the Camunda engine, which seems to lead to performance degradation over time. This is something we will look into with [#46993](https://github.com/camunda/camunda/issues/46993)
