@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week, we ran several endurance and stress tests against Camunda 8.7, 8.8, and 8.9 (using the latest patch versions). In this post, we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 8.7 was performing better in our stress tests if we only look at the processing side of things. We observed a ~50% difference in processing throughput. But that is only one angle; the re-architecture of Camunda 8.8+ has improved the system's reliability and stability through queuing-theory mechanisms, which is a huge benefit for our users. On the 8.7 test, we experienced an archiver failure (a common failure scenario in the past) and saw a large import backlog of up to 9 hours. The 8.8+ architecture allowed us to reduce how long it takes for data to become available under normal load by more than a factor of 2, and to limit it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of the processing performance (throughput and latency), but improves the general data flow (queuing theory). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in future posts.
+**TL;DR;** 8.7 was performing better in our stress tests if we only look at the processing side of things. We observed a ~50% difference in processing throughput. But that is only one angle; the re-architecture of Camunda 8.8+ has improved the system's reliability and stability, in part through queueing-theory-informed backpressure, which is a huge benefit for our users. On the 8.7 test, we experienced an archiver failure (a common failure scenario in the past) and saw a large import backlog of up to 9 hours. The 8.8+ architecture allowed us to reduce how long it takes for data to become available under normal load by more than a factor of 2, and to limit it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with some cost to processing performance (throughput and latency). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in future posts.
 
 <!--truncate-->
 
@@ -94,7 +94,7 @@ This is what happens when a queue becomes unstable: once the archiver's throughp
 
 ### Latency
 
-Now, coming to a set of metrics where we can see a real difference between the versions. One part is the processing latency, where we seem to have increased latency with 8.8 and 8.9; it roughly doubled. It should be noted, though, that the Camunda applications now do more in one deployment (which was previously distributed), which means there is higher contention between resources.
+Now we come to a set of metrics where we can see a real difference between the versions. One part is the processing latency, where we seem to have increased latency with 8.8 and 8.9; it roughly doubled. It should be noted, though, that the Camunda applications now do more in one deployment (which was previously distributed), which means there is higher contention between resources.
 
 On the positive side, the re-architecture of the Camunda Exporter (in 8.8) has improved the latency of data available to the user, as we were reducing one step of write-and-read before aggregating. More details about this can be read [here](https://camunda.com/blog/2025/02/one-exporter-to-rule-them-all-exploring-camunda-exporter/).
 
@@ -131,9 +131,9 @@ We can see how the [performance degrades over time in newer versions](https://gi
 
 ![Grafana dashboard showing processing performance degrading over time on 8.8 and 8.9 while 8.7 keeps up with the load](stress/general-2.png)
 
-Interestingly, on the secondary storage side, many more documents are indexed in 8.8 and 8.9, which is likely because the Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. In newer versions, the Camunda application gives clients better backpressure, helping to reduce stress and keep latencies stable. We come to this in more detail next. 
+Interestingly, on the secondary storage side, many more documents are indexed in 8.8 and 8.9, which is likely because the Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. In newer versions, the Camunda application gives clients better backpressure, helping to reduce stress and keep latencies stable. We'll come to this in more detail next. 
 
-We can see a stable exporting backlog (queue length), as request backpressure considering exporter backlog, was added with 8.8 as well.
+We can see a stable exporting backlog (queue length), since request backpressure that also considers the exporter backlog was added with 8.8 as well.
 
 ![Grafana dashboard showing more documents indexed into secondary storage on 8.8 and 8.9 with a stable exporting backlog under stress](stress/general-3.png)
 
@@ -160,7 +160,7 @@ When we look deeper into the details, we can see that 8.7 is NOT able to keep up
 
 ![Grafana dashboard showing 8.7 importer latency regularly spiking above 4 hours and up to 9 hours under stress](stress/import-latency2.png)
 
-With 8.8 the queue is kept stable on purpose: 8.8+ rejects more requests up front (~60% backpressure above, versus ~20%), capping the arrival rate below capacity. That's the same trade-off used in highway on-ramp metering and TCP congestion control: a bounded arrival rate keeps both wait time and backlog finite (via [Little's Law](https://en.wikipedia.org/wiki/Little%27s_law)), instead of letting them diverge and causing unbounded delays as we see it here.
+With 8.8, the queue is kept stable on purpose: 8.8+ rejects more requests up front (~60% backpressure above, versus ~20%), capping the arrival rate below capacity. That's the same trade-off used in highway on-ramp metering and TCP congestion control: a bounded arrival rate keeps both wait time and backlog finite (via [Little's Law](https://en.wikipedia.org/wiki/Little%27s_law)), instead of letting them diverge and cause the kind of unbounded delays we saw above.
 
 This is what the new architecture gives us: a more stable and reliable system with backpressure to clients, allowing it to keep latencies stable.
 
@@ -169,9 +169,9 @@ This is what the new architecture gives us: a more stable and reliable system wi
 
 We have run and investigated load tests for the different versions of Camunda 8.7, 8.8, and 8.9. 
 
-We clearly saw that the re-architecture of Camunda 8.8+ applied queuing mechanisms and with this improved the reliability and stability of the system. In our endurance test, we have seen how unreliable the previous archiver component was. Under stress, we saw data availability and resource consumption improve significantly.
+We clearly saw that the re-architecture of Camunda 8.8+ applied queueing mechanisms and with this improved the reliability and stability of the system. In our endurance test, we have seen how unreliable the previous archiver component was. Under stress, we saw data availability and resource consumption improve significantly.
 
-All of this comes with the cost of some processing performance (throughput and latency). As you need to limit the arrival rate to keep the system stable.
+All of this comes with the cost of some processing performance (throughput and latency), as we need to limit the arrival rate to keep the system stable.
 
 There are certain areas that we will look into in the future to improve our system even further:
 
