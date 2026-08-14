@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week we ran several endurance and stress tests against Camunda 8.7, 8.8 and 8.9 (using the latest patch versions). In this post we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 
+**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture, allowed reducing the data availability under normal load by more than factor 2 and limiting it under stress to ~40s (which is a factor 810 difference). All of this comes with the cost of some processing performance (throughput and latency).
 
 <!--truncate-->
 
@@ -22,15 +22,15 @@ Over the last week we ran several endurance and stress tests against Camunda 8.7
 
 We have selected for each version the last patch version available at the time of the experiment.
 
-- 8.7: tbd
-- 8.8: tbd
-- 8.9: tbd
+- [8.7.36](https://github.com/camunda/camunda/releases/tag/8.7.36)
+- [8.8.34](https://github.com/camunda/camunda/releases/tag/8.8.34)
+- [8.9.15](https://github.com/camunda/camunda/releases/tag/8.9.15)
 
 
 For each version we ran the same set of experiments, which included:
 
-- stress test - link
-- endurance test over several days - link
+- [stress test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#max--stress-load-test)
+- [endurance test over several days](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#realistic-load)
 
 For each version, all tests were run in the same environment, using the same Kubernetes cluster and similar setup: three broker nodes and Elasticsearch as secondary storage with three nodes. The only difference was the version of Camunda being tested and version specific configuration and setup changes (embedded vs standalone gateways, Operate and Tasklist deployments, etc.).
 
@@ -108,8 +108,6 @@ So we need to make use of some older Operate Importer metrics to approximate the
 
 For 8.7 this means we are on average at ~3.5 seconds for the importing latency, plus two seconds for the Elasticsearch flush interval, which gives us a total of ~5.5 seconds. For 8.8 we are at ~1.5 seconds for the data availability in total, which is a significant improvement.
 
-
-
 ### Throughput
 
 As mentioned earlier on the throughput side of things, we can't spot a difference between the versions. Interesting is that we even write the same amount of records, but have an increase in IOPs.
@@ -132,8 +130,6 @@ Again here we can see that load is not well distributed across the gateways, whi
 
 We can see how the [performance degrades overtime in newer versions](https://github.com/camunda/camunda/issues/46993), while 8.7 is able to keep up with the load. This is something which is likely related to the accumulated state in the Camunda engine.
 
-
-
 ![](stress/general-2.png)
 
 Interesting is that on the secondary storage much more documents are indexed in 8.8 and 8.9, which is likely because Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. The Camunda application gives in newer version better backpressure to clients, allowing to reducing stress on keeping latencies stable.
@@ -154,7 +150,6 @@ The overall used resources is in 8.8+ under pressure much lower than with 8.7.
 
 
 ### Latency
-
 
 ![](stress/latency.png)
 
