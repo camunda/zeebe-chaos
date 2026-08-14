@@ -83,6 +83,8 @@ Here we can already see some reliability improvement of 8.8+ in action. Previous
 
 [The archiver](https://docs.camunda.io/docs/8.7/self-managed/operate-deployment/importer-and-archiver/) is in charge of moving completed process instances from the runtime indices to the historic (dated) indices. In previous versions this component was prone to failures and could lead to a backlog of completed process instances in the runtime indices, increasing their size. When an index (or shard) in Elasticsearch reached a certain size, it can [slow down the cluster and cause issues](https://www.elastic.co/docs/deploy-manage/production-guidance/optimize-performance/size-shards).
 
+This is a good example of [Little's Law](https://en.wikipedia.org/wiki/Little%27s_law) in action: the average backlog size equals the arrival rate multiplied by the average time an item waits. Once the archiver's processing rate falls even slightly behind the rate of completed process instances, the backlog no longer just grows, it grows unbounded, and so does the time it takes for that data to become visible to users.
+
 Looking at the historic indices, we can see that 8.8 for example was growing much faster than 8.7.
 
 ![Grafana dashboard showing historic indices growing faster on 8.8 than on 8.7](endurance/2026-08-14_14-00.png)
@@ -135,6 +137,8 @@ We can see how the [performance degrades over time in newer versions](https://gi
 Interestingly, on the secondary storage side many more documents are indexed in 8.8 and 8.9, which is likely because the Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. In newer versions the Camunda application gives clients better backpressure, helping to reduce stress and keep latencies stable.
 
 We can see a stable exporting backlog, considering that request backpressure was added with 8.8 as well.
+
+The same Little's Law dynamic from the archiver above applies here too, just used the other way around: this is the same trade-off used in highway on-ramp metering and TCP congestion control — rather than letting the queue build up without limit, the system pushes back on new arrivals early. 8.8+ already rejects more requests up front than 8.7 (~60% backpressure above, versus ~20%), which caps the arrival rate and keeps the backlog — and therefore the latency — bounded and predictable, instead of collapsing into the kind of multi-hour jam 8.7 shows further below.
 
 ![Grafana dashboard showing more documents indexed into secondary storage on 8.8 and 8.9 with a stable exporting backlog under stress](stress/general-3.png)
 
