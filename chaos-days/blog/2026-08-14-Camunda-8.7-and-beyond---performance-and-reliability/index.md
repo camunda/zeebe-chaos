@@ -118,7 +118,67 @@ As mentioned earlier on the throughput side of things, we can't spot a differenc
 
 ## Stress tests
 
+In the following section we will look at the results of our stress tests, which we run against all versions from above. We are putting a higher load on the system (300 PI/s with one single task), which is expected to lead to some failures and issues. The interesting part is here to see how the system behaves under stress and if we can spot any differences between the versions, like maximum throughput, latency, or other metrics.
 
-## Found Bugs
+
+![](stress/general.png)
+
+In our general metrics we can already see a huge difference between the versions and how they handle the load. While 8.7 is almost able to handle the load, the completion rate is around 90% and backpressure at ~20%. The versions 8.8 and 8.9 are struggling with the incoming load it seems, we have a completion rate of ~60% and backpressure at ~60% as well. 
+
+Again here we can see that load is not well distributed across the gateways, which leads to imbalance. Still, the load at the partitions level is well distributed. We can see that the processing throughput difference is ~50% between 8.7 and 8.8/8.9.
+
+![](stress/general-1.png)
 
 
+We can see how the [performance degrades overtime in newer versions](https://github.com/camunda/camunda/issues/46993), while 8.7 is able to keep up with the load. This is something which is likely related to the accumulated state in the Camunda engine.
+
+
+
+![](stress/general-2.png)
+
+Interesting is that on the secondary storage much more documents are indexed in 8.8 and 8.9, which is likely because Camunda Exporter is now more tightly coupled with the Camunda application and able to keep up. The Camunda application gives in newer version better backpressure to clients, allowing to reducing stress on keeping latencies stable.
+
+We can see a stable exporting backlog, considering this in request backpressure was added with 8.8 as well.
+
+![](stress/general-3.png)
+
+### Resources
+
+In 8.7 we can see that the Zeebe gateway is heavily throttled. In addition all versions put high load on Elasticsearch, which is expected as we are writing a lot of data into the secondary storage.
+
+![](stress/resources.png)
+
+The overall used resources is in 8.8+ under pressure much lower than with 8.7.
+
+![](stress/resources-2.png)
+
+
+### Latency
+
+
+![](stress/latency.png)
+
+On the first glance latency metrics look similar across the versions. Under pressure the data availability goes now up to ~40 seconds on newer version. 
+
+![](stress/import-latency.png)
+
+When we look deeper into the details we can see that 8.7 is NOT able to keep up with the load on the web application and importer side. The importer latency spikes regularly to more than 4 hours, when we look over a longer time frame this goes even up to 9 hours. This was exactly one of the most complains we had with pre 8.8 architecture, having slow updates on Operate and Tasklist.
+
+![](stress/import-latency2.png)
+
+This is what the new architecture gives us, a more stable and reliable system, backpressure to clients, allowing to keep latencies stable.
+
+
+## Conclusion
+
+We have run and investigated load tests for the different versions of Camunda 8.7, 8.8 and 8.9. 
+
+We clearly saw that the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system. In our endurance test we have seen how unreliable the previous archiver component was. Under stress, we saw data availability and resource consumption improve significantly.
+
+All of this comes with the cost of some processing performance (throughput and latency).
+
+There are certain areas which we will look into in the future to improve our system even further:
+
+ - like the IOPs on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
+ - gRPC load balancing across gateways, which is not well distributed in our tests and likely in production as well. This is something we will look into with [#59565](https://github.com/camunda/camunda/issues/59565)
+ - accumulation of state in the Camunda engine, which seems to lead to performance degradation over time. This is something we will look into with [#46993](https://github.com/camunda/camunda/issues/46993)
