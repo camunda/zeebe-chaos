@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week we ran several endurance and stress tests against Camunda 8.7, 8.8 and 8.9 (using the latest patch versions). In this post we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed reducing the data availability under normal load by more than a factor of 2, and limiting it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency).
+**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed reducing the data availability under normal load by more than a factor of 2, and limiting it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency). In addition to the bespoken re-architecture changes 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in the future.
 
 <!--truncate-->
 
@@ -177,3 +177,8 @@ There are certain areas which we will look into in the future to improve our sys
 - like the IOPs on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
 - gRPC load balancing across gateways, which is not well distributed in our tests and likely in production as well. This is something we will look into with [#59565](https://github.com/camunda/camunda/issues/59565)
 - accumulation of state in the Camunda engine, which seems to lead to performance degradation over time. This is something we will look into with [#46993](https://github.com/camunda/camunda/issues/46993)
+
+As potential next tests to improve processing throughput and latency we could look into the following:
+
+- Adding standalone gateway deployments to 8.8 and 8.9 to see if this reduction of load on the system  
+- Adding more resources to the Camunda application
