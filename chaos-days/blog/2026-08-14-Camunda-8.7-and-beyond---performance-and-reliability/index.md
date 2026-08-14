@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week we ran several endurance and stress tests against Camunda 8.7, 8.8 and 8.9 (using the latest patch versions). In this post we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 8.7 was performing better in our stress tests if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed us to reduce the data availability under normal load by more than a factor of 2, and to limit it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in the future.
+**TL;DR;** 8.7 was performing better in our stress tests if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed us to reduce how long it takes for data to become available under normal load by more than a factor of 2, and to limit it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in the future.
 
 <!--truncate-->
 
@@ -67,13 +67,13 @@ Memory-wise we seem to have a similar usage across all versions, which is likely
 When we look at the JVM metrics it is interesting to see that in all versions Optimize is the application with the highest memory usage (excluding ES here).
 
 
-The write IOPS metrics show that for 8.7 we seem to write more data into Elasticsearch. The IOPs are almost doubled compared to 8.8 and 8.9, which is likely related to re-architecture, introducing the Camunda Exporter vs. the previous Importer deployments (including the harmonization of the indices and the reduced duplication of data).
+The write IOPS metrics show that for 8.7 we seem to write more data into Elasticsearch. The IOPS are almost doubled compared to 8.8 and 8.9, which is likely related to re-architecture, introducing the Camunda Exporter vs. the previous Importer deployments (including the harmonization of the indices and the reduced duplication of data).
 
-This is a different disk than the Elasticsearch writes above: on the Zeebe side, all versions managed to do the same amount of work, but 8.7 needs fewer IOPs (~2k) than 8.8 and 8.9 (~3k) to do it. This is unexpected and we will look into this in more detail.
+This is a different disk than the Elasticsearch writes above: on the Zeebe side, all versions managed to do the same amount of work, but 8.7 needs fewer IOPS (~2k) than 8.8 and 8.9 (~3k) to do it. This is unexpected and we will look into this in more detail.
 
 ![Grafana dashboard showing Elasticsearch write IOPS almost doubled on 8.7 versus 8.8 and 8.9, alongside Zeebe-side disk IOPS which are lower on 8.7 (~2k) than on 8.8 and 8.9 (~3k)](endurance/disk.png)
 
-Checking the disk usage of the secondary storage we would expect that 8.7 uses more disk space, as we have seen more IOPs on the Elasticsearch side and we have Operate and Tasklist running separately and writing to different indices.
+Checking the disk usage of the secondary storage we would expect that 8.7 uses more disk space, as we have seen more IOPS on the Elasticsearch side and we have Operate and Tasklist running separately and writing to different indices.
 
 If we look deeper into the details we can see that in 8.7 Operate runtime indices are constantly increasing, while in 8.8 we see a more stable pattern (skipping 8.9 here). 
 
@@ -112,7 +112,7 @@ For 8.7 this means we are on average at ~3.5 seconds for the importing latency, 
 
 ### Throughput
 
-As mentioned earlier on the throughput side of things, we can't spot a difference between the versions. Interestingly, we even write the same amount of records, but have an increase in IOPs.
+As mentioned earlier on the throughput side of things, we can't spot a difference between the versions. Interestingly, we even write the same amount of records, but have an increase in IOPS.
 
 ![Grafana dashboard showing similar processing throughput across Camunda 8.7, 8.8, and 8.9 during the endurance test](endurance/throughput.png)
 
@@ -178,7 +178,7 @@ All of this comes with the cost of some processing performance (throughput and l
 
 There are certain areas which we will look into in the future to improve our system even further:
 
-- like the IOPs on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
+- like the IOPS on the Zeebe side, which seem to be higher in 8.8+ than in 8.7, while doing the same amount of work
 - gRPC load balancing across gateways, which is not well distributed in our tests and likely in production as well. This is something we will look into with [#59565](https://github.com/camunda/camunda/issues/59565)
 - accumulation of state in the Camunda engine, which seems to lead to performance degradation over time. This is something we will look into with [#46993](https://github.com/camunda/camunda/issues/46993)
 
