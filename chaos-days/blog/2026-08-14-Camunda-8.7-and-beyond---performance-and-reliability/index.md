@@ -14,7 +14,7 @@ authors: zell
 
 Over the last week we ran several endurance and stress tests against Camunda 8.7, 8.8 and 8.9 (using the latest patch versions). In this post we want to summarize the results of our experiments, explain the differences between the versions, and share our findings with the community.
 
-**TL;DR;** 8.7 was performing better in our stress tests, if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed reducing the data availability under normal load by more than a factor of 2, and limiting it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in the future.
+**TL;DR;** 8.7 was performing better in our stress tests if we only look at the processing side of things. We saw a difference of processing throughput at ~50%. But that is only one angle, the re-architecture of Camunda 8.8+ has improved the reliability and stability of the system, which is a huge improvement for our users. On 8.7 we experienced archiver failure (a common failure scenario of the past), and saw large importing backlog up to 9 hours. The 8.8+ architecture allowed us to reduce the data availability under normal load by more than a factor of 2, and to limit it under stress to ~40s (compared to 8.7's up-to-9-hour importing backlog under stress, roughly an 810x difference). All of this comes with the cost of some processing performance (throughput and latency). In addition to the above-mentioned re-architecture changes, 8.8 and beyond come with even more features (which might even help in such cases, like dynamic scaling) and stability improvements, which we will look into in the future.
 
 <!--truncate-->
 
@@ -36,7 +36,7 @@ For each version, all tests were run in the same environment, using the same Kub
 
 ## Endurance Test Results
 
-All versions were able to handle the load for the duration of the test (we were looking at the same time window). While the general load looks fine some differences have been observed in the deeper level (see in a later section). 
+All versions were able to handle the load for the duration of the test (we were looking at the same time window). While the general load looks fine, some differences have been observed at a deeper level (see in a later section). 
 
 ![Grafana dashboard showing general load metrics across Camunda 8.7, 8.8, and 8.9 during the endurance test, highlighting uneven gRPC traffic distribution across gateways](endurance/general.png)
 
@@ -54,7 +54,7 @@ What is interesting is that even on the output side, meaning writing to the seco
 
 ### Resources
 
-The first real difference we can see in the area of used resources.
+The first real difference we can see is in the area of used resources.
 
 The 8.8 version seems to use a bit more CPU compared to 8.7 and 8.9, while the memory usage is similar across all versions. The CPU usage has some outliers (due to restarts) so this might be one explanation. With 8.9 we seem to at least recover this to be under 8.7, which is a good sign.
 
@@ -161,7 +161,7 @@ At first glance latency metrics look similar across the versions. Under pressure
 
 ![Grafana dashboard showing data availability rising to about 40 seconds under stress on newer versions](stress/import-latency.png)
 
-When we look deeper into the details we can see that 8.7 is NOT able to keep up with the load on the web application and importer side. The importer latency spikes regularly to more than 4 hours; when we look over a longer time frame this goes even up to 9 hours. This was exactly one of the most common complaints we had with pre 8.8 architecture, having slow updates on Operate and Tasklist.
+When we look deeper into the details we can see that 8.7 is NOT able to keep up with the load on the web application and importer side. The importer latency spikes regularly to more than 4 hours; when we look over a longer time frame this goes even up to 9 hours. This was exactly one of the most common complaints we had with the pre-8.8 architecture, having slow updates on Operate and Tasklist.
 
 ![Grafana dashboard showing 8.7 importer latency regularly spiking above 4 hours and up to 9 hours under stress](stress/import-latency2.png)
 
