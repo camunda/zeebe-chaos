@@ -177,7 +177,41 @@ The broker's own counters make this concrete. The panel above plots job creation
 
 How this works in detail:
 
-![07-job-push-end-to-end](07-job-push-end-to-end.svg)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Broker<br/>ACTIVATABLE backlog
+    participant GPu as Gateway<br/>Push forwarding
+    participant GPo as Gateway<br/>Poll forwarding
+    participant W as Worker<br/>capacity permits
+
+    Note over B: Jobs A-D created during the outage
+    B->>B: no stream to push to, so they land in ACTIVATABLE
+    Note over B,W: worker reconnects, stream registered
+
+    B->>GPu: Job E created, processed immediately
+    Note over B,GPu: NO BACKLOG CHECK: publishWork only asks whether<br/>there is a live stream, never whether a backlog is already waiting
+    GPu->>W: relay to the worker's open stream
+    W->>W: permit consumed, processed and pushed
+
+    W->>GPo: ActivateJobs, sent on a timer
+    GPo->>B: forwarded to the broker
+    B-->>GPo: batch for A-D: priority first, then oldest key
+    Note right of B: response only once this log position is processed
+    GPo-->>W: relayed back, competing for the same permits
+
+    rect rgb(162, 59, 46, 0.12)
+    Note over GPu,B: fast recovery: push blocked at the gateway
+    GPu--xB: not ready, fails now, no queue
+    B->>B: YIELD, back to ACTIVATABLE in roughly one log write
+    end
+
+    rect rgb(162, 59, 46, 0.12)
+    Note over W,B: slow recovery: poll job loses the permit race,<br/>rare and not seen in this run
+    W--xW: semaphore acquire times out, RejectedExecutionException
+    W->>B: broker never told, job runs down its deadline,<br/>then churns back into the backlog
+    end
+```
 
 
 That lines up exactly with what we saw. Jobs created while `extract-data-from-document` was down had no stream to go to, so they landed in `ACTIVATABLE`. The moment the worker came back and registered its stream, every subsequently created job, from the ongoing new instance creation and from completing whatever backlog items did get through, was pushed straight out. The pre-existing backlog could only be served by the polling path, `ActivateJobs`, and polling was now competing for the exact capacity that push was continuously consuming.
@@ -194,7 +228,39 @@ We expected to find that push simply outraces polling for the worker's capacity.
 Worth knowing before the details: in a default modern Java client, the two paths do not even share a transport. `DEFAULT_PREFER_REST_OVER_GRPC` is [`true`](https://github.com/camunda/camunda/blob/7965bc72ba24349c074921da8e699929b8d2042f/clients/java/src/main/java/io/camunda/client/impl/CamundaClientBuilderImpl.java#L95), so polling goes over REST while streaming is gRPC-only. In our tests, we used gRPC for both.
 
 
-![08-job-push-poll-mechanism](08-job-push-poll-mechanism.svg)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Pu as Push stream, gRPC
+    participant S as Semaphore<br/>maxJobsActive, non-fair
+    participant Po as Poll loop, REST
+
+    Note over Pu,Po: independent paths, neither aware of the other
+
+    Po->>Po: blind budget: asks for maxJobsActive minus remainingJobs
+    Note over Po: remainingJobs never counts push, so it over-asks
+
+    Pu->>S: tryAcquire, job 1
+    S->>Pu: permit granted
+
+    Po->>S: tryAcquire, already waiting
+
+    Pu->>S: tryAcquire, job 2
+    S->>Pu: permit granted
+    Pu->>S: tryAcquire, job 3
+    S->>Pu: permit granted
+    Note over S: capacity reached, every permit now held by push
+    Note over Po,S: non-fair capacity: barging allowed, no ordering<br/>guaranteed, poll's earlier request still isn't granted
+
+    Note over Po: batch arrives ACTIVATED, sharing one deadline
+    Po->>S: execute(job 1)
+    Po->>S: execute(job 2)
+    Note right of S: blocks per job, burning the shared deadline
+    Po->>S: execute(job N)
+    S--xPo: sequential dispatch: job N already past that deadline
+
+    Note over Pu,Po: push blocks on this same semaphore too, its own deadline<br/>at risk too, but a stuck push never delays another push, unlike<br/>poll's batch where job 2..N queue behind job 1
+```
 
 When streaming is enabled, both paths funnel activated jobs into one [`BlockingExecutor`](https://github.com/camunda/camunda/blob/051b1c8efee654694d03dd4dbce3652e939c0128/clients/java/src/main/java/io/camunda/client/impl/worker/BlockingExecutor.java#L38-L58), which wraps the handler thread pool in a semaphore sized by `maxJobsActive` ([`JobWorkerBuilderImpl`](https://github.com/camunda/camunda/blob/c4844344227ebbe3db3dc0b84ab4879607aab3c3/clients/java/src/main/java/io/camunda/client/impl/worker/JobWorkerBuilderImpl.java#L243-L277)). Aggregate capacity is genuinely respected. The stream's `onNext` blocks on that semaphore, which stalls gRPC's inbound flow control, which makes the gateway's [`responseObserver.isReady()`](https://github.com/camunda/camunda/blob/85d6b556712c4be6f7ada0f98338b5654142b82f/zeebe/gateway-grpc/src/main/java/io/camunda/zeebe/gateway/impl/stream/StreamJobsHandler.java#L154-L160) go false, so a full worker gets no more pushes. There is no missing capacity bound. What is missing is any arbitration of *order*, as the constructed and used semaphore is non-fair.
 
