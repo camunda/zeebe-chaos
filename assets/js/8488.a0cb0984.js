@@ -1,1 +1,0 @@
-"use strict";(globalThis.webpackChunkzell_chaos||=[]).push([[8488],{8488(e,c,r){r.d(c,{createArchitectureServices:()=>s.S});var s=r(89221);r(51400)}}]);
