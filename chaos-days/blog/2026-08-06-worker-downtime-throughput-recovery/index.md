@@ -165,7 +165,7 @@ It turned out to be two independent things stacked on top of each other. The fir
 
 ### Layer 1: push hands out jobs that never enter the backlog
 
-Inside the engine a method called [`BpmnJobActivationBehavior#publishWork`](https://github.com/camunda/camunda/blob/a79395b4d0af9a578aceb7f2f34e69371c302bea/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/bpmn/behavior/BpmnJobActivationBehavior.java#L78-L116) checks exactly one thing when a job becomes activatable: is there a live worker stream for this job type right now? If there is, the job is activated and pushed immediately. If there is not, the engine only records the job as `ACTIVATABLE` and notifies workers that work exists.
+Inside the engine, a method called [`BpmnJobActivationBehavior#publishWork`](https://github.com/camunda/camunda/blob/a79395b4d0af9a578aceb7f2f34e69371c302bea/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/bpmn/behavior/BpmnJobActivationBehavior.java#L78-L116) checks exactly one thing when a job becomes activatable: is there a live worker stream for this job type right now? If there is, the job is activated and pushed immediately. If there is not, the engine only records the job as `ACTIVATABLE` and notifies workers that work exists.
 
 That check happens on job creation, on backoff-retry recurrence ([`JobRecurAfterBackoffProcessor`](https://github.com/camunda/camunda/blob/e931e33fcb21d14917f577defc1b00d03577a75d/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/job/JobRecurAfterBackoffProcessor.java#L59)), on incident resolution ([`IncidentResolveProcessor`](https://github.com/camunda/camunda/blob/fb6cfe1a4da708b955e880fcd5f3840082ac2e56/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/incident/IncidentResolveProcessor.java#L292)), and on a job failure that still has retries left ([`JobFailProcessor`](https://github.com/camunda/camunda/blob/41f13654c376d48a6e0bb3fce2db270e2103d058/zeebe/engine/src/main/java/io/camunda/zeebe/engine/processing/job/JobFailProcessor.java#L150)). It never checks whether an older backlog of the same job type is already waiting.
 
@@ -176,6 +176,7 @@ The consequence is: **a pushed job never enters the `ACTIVATABLE` pool at all**,
 The broker's own counters make this concrete. The panel above plots job creations, job completions and successful stream pushes (`zeebe_gateway_job_stream_push_total`) on one axis, and from 11:20 to 16:00 all three track each other in a narrow band. Pushed sits just under created for the whole window, so almost every job the engine created went straight out to a worker over a stream rather than into `ACTIVATABLE`. Completions track creations just as closely, which is a system keeping pace with new work while making no impression on the backlog sitting behind it.
 
 How this works in detail:
+
 
 ```mermaid
 sequenceDiagram
@@ -194,32 +195,40 @@ sequenceDiagram
     GPu->>W: relay to the worker's open stream
     W->>W: permit consumed, processed and pushed
 
+
     W->>GPo: ActivateJobs, sent on a timer
     GPo->>B: forwarded to the broker
     B-->>GPo: batch for A-D: priority first, then oldest key
     Note right of B: response only once this log position is processed
-    GPo-->>W: relayed back, competing for the same permits
-
-    rect rgb(162, 59, 46, 0.12)
-    Note over GPu,B: fast recovery: push blocked at the gateway
-    GPu--xB: not ready, fails now, no queue
-    B->>B: YIELD, back to ACTIVATABLE in roughly one log write
-    end
-
-    rect rgb(162, 59, 46, 0.12)
-    Note over W,B: slow recovery: poll job loses the permit race,<br/>rare and not seen in this run
-    W--xW: semaphore acquire times out, RejectedExecutionException
-    W->>B: broker never told, job runs down its deadline,<br/>then churns back into the backlog
-    end
+    GPo-->>W: relayed back, competing for the same permits as push does
 ```
 
-
 That lines up exactly with what we saw. Jobs created while `extract-data-from-document` was down had no stream to go to, so they landed in `ACTIVATABLE`. The moment the worker came back and registered its stream, every subsequently created job, from the ongoing new instance creation and from completing whatever backlog items did get through, was pushed straight out. The pre-existing backlog could only be served by the polling path, `ActivateJobs`, and polling was now competing for the exact capacity that push was continuously consuming.
-
 
 We filed this as [camunda/camunda#59631](https://github.com/camunda/camunda/issues/59631). It is related to, but more specific than, the existing [camunda/camunda#15730](https://github.com/camunda/camunda/issues/15730), which already flagged in general terms that polling backfills jobs created before any streams existed.
 
 Worth noting for completeness: the polling path itself is not buggy in its ordering. [`DbJobState#forEachActivatableJobs`](https://github.com/camunda/camunda/blob/a40b238a4e9c431761cee7a25c8808aba7dd2004/zeebe/engine/src/main/java/io/camunda/zeebe/engine/state/instance/DbJobState.java#L452-L470) walks the backlog in three phases, highest priority first and oldest job key first within a priority band. If polling gets a turn, it drains the right jobs. The problem is how often it gets a turn.
+
+Additionally, when the Job push to the client on the Gateway is not successful (e.g., because the Client applies backpressure over the gRPC flow control), the corresponding job is yielded back to the broker. This job then ends in the same activatable job backlog/pool; only the polling approach is draining from it.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Broker<br/>ACTIVATABLE backlog
+    participant GPu as Gateway<br/>Push forwarding
+    participant GPo as Gateway<br/>Poll forwarding
+    participant W as Worker<br/>capacity permits
+
+    B->>GPu: Job X created, pushed
+
+    rect rgb(162, 59, 46, 0.12)
+    Note over GPu,B: push blocked at the gateway
+    GPu--xB: YIELD back, no queue
+    B->>B: YIELD puts job into ACTIVATABLE pool
+    end
+```
+
+
 
 ### Layer 2: four defects in the client's polling path
 
