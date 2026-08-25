@@ -252,7 +252,7 @@ sequenceDiagram
     Pu->>S: tryAcquire, job 1
     S->>Pu: permit granted
 
-    Po->>S: tryAcquire, already waiting
+    Po->>S: tryAcquire execute(job A), already waiting
 
     Pu->>S: tryAcquire, job 2
     S->>Pu: permit granted
@@ -262,10 +262,10 @@ sequenceDiagram
     Note over Po,S: non-fair capacity: barging allowed, no ordering<br/>guaranteed, poll's earlier request still isn't granted
 
     Note over Po: batch arrives ACTIVATED, sharing one deadline
-    Po->>S: execute(job 1)
-    Po->>S: execute(job 2)
+    Po->>S: tryAcquire execute(job B)
+    Po->>S: tryAcquire execute(job C)
     Note right of S: blocks per job, burning the shared deadline
-    Po->>S: execute(job N)
+    Po->>S: tryAcquire execute(job N) / tryAcquire
     S--xPo: sequential dispatch: job N already past that deadline
 
     Note over Pu,Po: push blocks on this same semaphore too, its own deadline<br/>at risk too, but a stuck push never delays another push, unlike<br/>poll's batch where job 2..N queue behind job 1
