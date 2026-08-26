@@ -1,0 +1,77 @@
+<svg viewBox="0 0 1240 380" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="A timeline comparing the two clocks that govern a job, drawn against a shared millisecond axis running from zero to 3600 milliseconds. The top bar is the broker's deadline: one bar from zero to 1800 milliseconds, covering every job in the batch, started when the batch was built. Below it are three client acquire windows, one per job, each also 1800 milliseconds long but each starting at its own turn in the dispatch loop rather than at activation. Job 1's window starts at zero and lines up with the broker's. Job 2's starts around 600 milliseconds. Job N's starts around 1500 milliseconds and therefore runs to roughly 3300 milliseconds, well past the point at which the broker has already reclaimed the job. A dashed vertical line at 1800 milliseconds marks where the broker reclaims job N, and a marker inside job N's window shows it acquiring its permit shortly after that line, comfortably inside its own local window while already far outside the broker's. That is why the client neither throws nor logs anything even though the job is long gone.">
+  <style>
+    svg {
+      --bg:#f4f5f8; --ink:#1c2230; --muted:#5b6472;
+      --panel-border:#c7ccd6; --band-border:#dfe2e8;
+      --pull:#2f5f8a; --pull-soft:rgba(47,95,138,0.14);
+      --warn:#a23b2e; --warn-soft:rgba(162,59,46,0.12);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg:not([data-theme="light"]) {
+        --bg:#12151c; --ink:#e6e9ef; --muted:#9aa4b2;
+        --panel-border:#333a48; --band-border:#242938;
+        --pull:#7ea3cc; --pull-soft:rgba(126,163,204,0.18);
+        --warn:#d97a63; --warn-soft:rgba(217,122,99,0.16);
+      }
+    }
+    svg[data-theme="dark"] {
+      --bg:#12151c; --ink:#e6e9ef; --muted:#9aa4b2;
+      --panel-border:#333a48; --band-border:#242938;
+      --pull:#7ea3cc; --pull-soft:rgba(126,163,204,0.18);
+      --warn:#d97a63; --warn-soft:rgba(217,122,99,0.16);
+    }
+    .bgrect { fill: var(--bg); }
+    .title { fill: var(--ink); font-size: 21px; font-weight: 600; text-anchor: middle; }
+    .subtitle { fill: var(--muted); font-size: 12.5px; text-anchor: middle; }
+    .band { fill: none; stroke: var(--band-border); stroke-width: 1.5; rx: 14; }
+    .note-warn { fill: var(--warn); font-size: 10.5px; font-weight: 600; text-anchor: middle; }
+    .rowlabel { fill: var(--ink); font-size: 12px; text-anchor: end; }
+    .rowsub { fill: var(--muted); font-size: 10px; text-anchor: end; }
+    .inbar { fill: var(--ink); font-size: 10.5px; font-weight: 600; text-anchor: start; }
+    .bar-broker { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1.6; rx: 5; }
+    .bar-client { fill: var(--pull-soft); stroke: var(--pull); stroke-width: 1.6; rx: 5; }
+    .axis { stroke: var(--panel-border); stroke-width: 1.5; }
+    .tick { stroke: var(--panel-border); stroke-width: 1.2; }
+    .ticklabel { fill: var(--muted); font-size: 10.5px; text-anchor: middle; }
+    .cut { stroke: var(--warn); stroke-width: 1.8; stroke-dasharray: 5 4; }
+  </style>
+
+  <rect class="bgrect" x="0" y="0" width="1240" height="380"/>
+
+  <text class="title"    x="620" y="40">The two clocks</text>
+  <text class="subtitle" x="620" y="64">The broker starts one deadline for the whole batch. The client starts a window per job, at its own turn in the forEach.</text>
+
+  <rect class="band" x="60" y="90" width="1120" height="260"/>
+
+  <line class="cut" x1="700" y1="126" x2="700" y2="286"/>
+
+  <rect class="bar-broker" x="280" y="134" width="420" height="22"/>
+  <text class="rowlabel" x="264" y="147">broker deadline</text>
+  <text class="rowsub"   x="264" y="161">all N jobs</text>
+
+  <rect class="bar-client" x="280" y="174" width="420" height="22"/>
+  <text class="rowlabel" x="264" y="189">job 1 window</text>
+
+  <rect class="bar-client" x="420" y="214" width="420" height="22"/>
+  <text class="rowlabel" x="264" y="229">job 2 window</text>
+
+  <rect class="bar-client" x="630" y="254" width="420" height="22"/>
+  <text class="rowlabel" x="264" y="269">job N window</text>
+  <circle cx="737" cy="265" r="5" fill="var(--warn)"/>
+  <text class="inbar" x="752" y="269">Other worker acquires job</text>
+
+  <line class="axis" x1="280" y1="294" x2="1120" y2="294"/>
+  <line class="tick" x1="280"  y1="294" x2="280"  y2="300"/>
+  <line class="tick" x1="490"  y1="294" x2="490"  y2="300"/>
+  <line class="tick" x1="700"  y1="294" x2="700"  y2="300"/>
+  <line class="tick" x1="910"  y1="294" x2="910"  y2="300"/>
+  <line class="tick" x1="1120" y1="294" x2="1120" y2="300"/>
+  <text class="ticklabel" x="280"  y="316">0</text>
+  <text class="ticklabel" x="490"  y="316">900ms</text>
+  <text class="ticklabel" x="700"  y="316">1800ms</text>
+  <text class="ticklabel" x="910"  y="316">2700ms</text>
+  <text class="ticklabel" x="1120" y="316">3600ms</text>
+  <text class="note-warn" x="700" y="337">the broker reclaims job N here</text>
+</svg>
