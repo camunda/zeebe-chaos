@@ -20,6 +20,14 @@ We picked this scenario because it had already happened to us once, by accident:
 
 **TL;DR:** We experimented with our realistic workload and took a job worker down for 80 minutes. Throughput recovered within seconds of its return, but the backlog behind it grew for another two hours, because the step we removed fans one process instance into 50 downstream jobs. Adding capacity and replicas shifted the throughput, but the backlog reduction always remained at the same rate. Two reasons for this. First, job push is prioritized, as new jobs are handed straight to a worker, so they never enter the queue the backlog lives in, leaving polling to drain it while competing for the same capacity. Second, the client's poll path has four defects of its own: two explain what we measured, and two more we found by reading the code. All observed behaviors are filed as issues: [camunda/camunda#59631](https://github.com/camunda/camunda/issues/59631) for the engine side and [camunda/camunda#59635](https://github.com/camunda/camunda/issues/59635) for the client.
 
+:::info
+
+[Update: 20.08.2026]
+
+We updated this post with [a short description of how the cluster naturally recovers from the same kind of failure](#recovering-without-manual-intervention), without any manual intervention.
+
+:::
+
 <!--truncate-->
 
 ## Chaos Experiment
@@ -114,7 +122,7 @@ If we look at our process model again, we can see two multi-instance activities,
 
 The moment the earlier worker drains its backlog, the following job workers jump into execution and then stay pinned near their ceiling for hours. That is the fan-out arriving: every process instance that clears `extract-data-from-document` produces exactly 1 `extract_data_from_document` job, but 50 each of `dispute_process_request_proof_from_vendor`, `dispute_process_request_get_vendor_info` and `refunding`. So the roughly 4,800 process instances that piled up during the outage were never a 4,800-job backlog. They were on the order of 720,000 jobs, about 150 per instance across three job types, all of which still have to be completed before the root instances can finish.
 
-This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15, we can see that a turn happens:
+<a name="fanned-out-work"></a> This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight. Around 13:15, we can see that a turn happens:
 
 ![04-active-process-instances](04-active-process-instances.png)
 
@@ -397,6 +405,7 @@ One note before moving on: the single-worker view above understates the problem.
 
 * Would the backlog still balloon like this with a shorter outage, or does it need a large enough head start to outrun the polling path?
 * Can the system recover without intervention under sustained load, once the four client defects are fixed? This is an interesting re-run because it isolates the architectural layer from the bugs.
+  * ➡️ See [update below](#recovering-without-manual-intervention)
 * Does the engine's record processing duration degrade as the backlog grows, or does it stay flat while only the queue in front of it gets longer? It matters whether a large backlog is purely a queueing problem or also a processing-cost one.
 * Was `refunding` about to become the next bottleneck? It reaches roughly 100 jobs/s in the final samples, which is exactly its own `executionThreads / handlerDuration` ceiling. Relieving one job type may simply promote the next one, in which case per-worker tuning is a treadmill, and the fix has to be architectural.
 * Does starting a cluster with more partitions upfront change backlog recovery time? More partitions mean more independent stream-processor actors, so it may raise the aggregate ceiling, but it does nothing about the push-versus-poll inversion, which is per-partition independent.
@@ -408,3 +417,36 @@ Coming back online after a dependency outage is the easy part to verify: every j
 The mechanism turned out to have two layers. Architecturally, job push has no concept of a standing backlog: a pushed job never enters the queue that the backlog lives in, so an outage-induced backlog can only be drained by a path that is competing for the capacity push keeps taking. That alone would make recovery slow. What kept it from catching up is the client's poll path, which requests work without counting what push already delivered and then dispatches each batch one blocking job at a time, so the tail of every batch burns its deadline before it runs, and the completion is thrown away. A third defect, a capacity leak that can stop a worker polling altogether, would be worse than either of those, and it matters because both failure paths recover into the poll loop. It did not fire on the day, which we only established afterward by going back to the metrics.
 
 The reminder for us is that "throughput recovered" is not "fully recovered". The backlog has to be watched alongside it.
+
+---
+
+## Recovering without manual intervention
+
+:::info
+
+[Update: 20.08.2026]
+
+One of the open questions we had after the experiment was: what would have happened if we had not intervened at all? How long would it have taken for the backlog to drain on its own, and would it have drained at all?
+
+:::
+
+On August 20th, we ran a short experiment to actually test this behavior:
+
+1. We created a new cluster with a similar configuration as the original one and deployed the same process.
+2. At 11:50: once the cluster was in a stable state and we had the baseline metrics, we shutdown the same `extract-data-from-document` worker for ~70 minutes to simulate a worker outage (just like we did last time).
+3. At 13:00: after about 70 minutes, the worker was scaled back in to its original default value (1 replica).
+4. We let the cluster run on its own.
+
+#### Result
+
+The day after, we looked at the state of the cluster:
+
+![Processing per partition](follow-up-1/01-processing-partition.png)
+![Requests handled by gateways](follow-up-1/02-requests-gateway.png)
+![Active instances per partition](follow-up-1/03-active-instances.png)
+
+Just after the worker restarted, between 13:10 and 15:00, we first observed [the same behavior as described previously](#fanned-out-work):
+
+> This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight.
+
+After that the worker continues to process the pending backlog and eventually catches up to the original point around 18:00: for our realistic workload load test, a 70 minutes outage of the worker at the beginning of the process model resulted in a ~6 hours recovery time without manual intervention, after which the cluster was back to its original state.
