@@ -225,6 +225,7 @@ sequenceDiagram
     Note over GPu,B: push blocked at the gateway
     GPu--xB: YIELD back, no queue
     B->>B: YIELD puts job into ACTIVATABLE pool
+    Note over GPu,B: From now on, <br>this job is only available via polling
     end
 ```
 
