@@ -367,7 +367,7 @@ The day after, we looked at the state of the cluster:
 ![Requests handled by gateways](follow-up-1/02-requests-gateway.png)
 ![Active instances per partition](follow-up-1/03-active-instances.png)
 
-Once the worker restarted, we first observed just after the worker restarted, between 13:10 to 15:00, [the same behavior as described previously](#fanned-out-work):
+Just after the worker restarted, between 13:10 and 15:00, we first observed [the same behavior as described previously](#fanned-out-work):
 
 > This is also why we first had to accumulate more process instances before we saw any drain at all: the backlog only starts shrinking once creation of new work is outpaced by completion of the fanned-out work already in flight.
 
