@@ -1,6 +1,6 @@
 ---
 layout: posts
-title:  "Client resilience against OIDC outages"
+title:  "OIDC Client issues on cluster bootstrapping"
 date:   2026-09-10
 categories: 
   - chaos_experiment 
