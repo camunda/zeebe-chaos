@@ -39,8 +39,7 @@ needs a matching update, and open a `camunda-docs` PR or issue referencing the c
 This already happened once, organically: the
 [slow disk on primary/secondary storage post](chaos-days/blog/2026-06-19-Using-slow-disk-with-Camunda/index.md)
 led to [camunda-docs#9150](https://github.com/camunda/camunda-docs/pull/9150) and
-[camunda-docs#9154](https://github.com/camunda/camunda-docs/pull/9154). Treat that as the pattern
-to repeat deliberately, not as a one-off.
+[camunda-docs#9154](https://github.com/camunda/camunda-docs/pull/9154).
 
 ### Distill durable findings into the sizing knowledge base
 
