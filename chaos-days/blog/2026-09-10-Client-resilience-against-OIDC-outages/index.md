@@ -22,7 +22,7 @@ On today's Chaos Day, we investigated how Camunda clients (starters and workers)
 
 ## Chaos Experiment
 
-We ran this in the `c8-chaos-client-investigation` namespace on our `camunda-benchmark-prod` cluster: a full Camunda 8 stack (Camunda, Identity, Keycloak, Elasticsearch, Optimize, Connectors) plus our realistic "bank customer complaint/dispute handling" load test (a starter and several job workers).
+We ran our usual setup, a full Camunda 8 stack (Camunda, Identity, Keycloak, Elasticsearch, Optimize, Connectors) plus our [realistic "bank customer complaint/dispute handling" load test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#realistic-load) (a starter and several job workers).
 
 Our assumption going in was that clients keep a connection open and simply fail to renew it after a failure. To check that, we wanted to correlate three things across the same time window:
 
@@ -32,7 +32,7 @@ Our assumption going in was that clients keep a connection open and simply fail 
 
 ### Expected
 
-Mostly investigating. We expected to confirm (or rule out) that clients keep a stale connection open and never renew it after a failure.
+This was mostly an investigative exercise. We expected to confirm (or rule out) that clients keep a stale connection open and never renew it after a failure.
 
 ### Actual
 
@@ -135,7 +135,7 @@ A client that races the bootstrap sequence now waits 30 seconds instead of 5 min
 
 Next we wanted to understand how the system behaves under identity restarts happening at the same time as worker restarts, relevant to [camunda/camunda#62647](https://github.com/camunda/camunda/issues/62647). We noticed Identity was sharing a node with a worker pod, which may also be the case in that issue.
 
-We couldn't delete the node directly (a Teleport RBAC restriction), so we deleted the Identity and worker pods instead, repeatedly, and also edited the Keycloak CR directly to force Keycloak itself to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
+We couldn't delete the node directly (due to RBAC restriction), so we deleted the Identity and worker pods instead, repeatedly, and also edited the Keycloak CR directly to force Keycloak itself to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
 
 We did separately confirm the same underlying symptom occurred the day before, in an unrelated stable-89 load test, as a worker's Spring context failing to start entirely:
 
