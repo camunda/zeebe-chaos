@@ -1,19 +1,29 @@
 # AGENTS.md - zeebe-chaos
 
-This repository stores Zeebe/Camunda chaos-day experiment write-ups, published as a Docusaurus
-blog at https://camunda.github.io/zeebe-chaos/.
+This repository has two parts: `go-chaos/`, the `zbchaos` fault-injection CLI used to run chaos
+experiments against Zeebe, and `chaos-days/`, the write-ups of experiments run with it, published
+as a Docusaurus blog at https://camunda.github.io/zeebe-chaos/.
 
 ---
 
 ## Repository layout
 
 ```
+go-chaos/
+  cmd/            # zbchaos CLI commands (cluster, terminate, disconnect, backup, stress, verify, ...)
+  internal/       # chaos-experiment library, BPMN helpers, k8s manifests
+  worker/         # load-generation workers used by experiments
+  deploy/         # deployment manifests for experiment targets
+  integration/    # integration tests
 chaos-days/
   blog/<date>-<title>/index.md   # one experiment write-up per post
   templates/YYYY-MM-DD-template.md  # post skeleton
   newPost.sh                     # scaffolds a new post from the template
-go-chaos/                        # Go chaos-toolkit experiments and tooling
 ```
+
+`go-chaos/` is built, tested, and released via `.github/workflows/go-ci.yml` and `release.yaml`
+(see `go-chaos/README.md` for the `make build`/`make test`/`release.sh` commands). The blog is
+built and published via `.github/workflows/buildChaosBlog.yml` and `publish-blog.yml`.
 
 To start a new chaos-day post, run `chaos-days/newPost.sh "<Title>"` from `chaos-days/`. It copies
 `templates/YYYY-MM-DD-template.md` into `blog/<current-date>-<title>/index.md`, substituting the
@@ -49,5 +59,4 @@ experiment.
 
 ## Ownership
 
-`.github/CODEOWNERS` currently lists a single individual (`@ChrisKujawa`) as owner of everything in
-this repo, not a team.
+Owned by `@camunda/reliability-testing` (`.github/CODEOWNERS`).
