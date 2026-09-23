@@ -36,11 +36,6 @@ headroom, replica counts, timeouts under resource pressure, or similar — check
 [camunda-docs's self-managed sizing guide](https://github.com/camunda/camunda-docs/blob/main/docs/components/best-practices/architecture/sizing-self-managed.md)
 needs a matching update, and open a `camunda-docs` PR or issue referencing the chaos-day post.
 
-This already happened once, organically: the
-[slow disk on primary/secondary storage post](chaos-days/blog/2026-06-19-Using-slow-disk-with-Camunda/index.md)
-led to [camunda-docs#9150](https://github.com/camunda/camunda-docs/pull/9150) and
-[camunda-docs#9154](https://github.com/camunda/camunda-docs/pull/9154).
-
 ### Distill durable findings into the sizing knowledge base
 
 A blog post here is a narrative, point-in-time record of one experiment. When a finding is a
