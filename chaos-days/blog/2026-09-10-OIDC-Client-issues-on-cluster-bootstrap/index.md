@@ -14,20 +14,20 @@ authors:
 
 # Chaos Day Summary
 
-On today's Chaos Day, we investigated how Camunda clients (starters and workers) behave during cluster bootstrap authentication, prompted by [camunda/camunda#58983](https://github.com/camunda/camunda/issues/58983), a report that load-test clients can be unable to authenticate for a long time right after a cluster is created. We wanted to walk through the whole startup sequence, Elasticsearch, Camunda, Identity, Keycloak, and clients, and find exactly where a client can get stuck.
+On today's Chaos Day, we investigated how Camunda clients (starters and workers) behave during cluster bootstrap authentication, prompted by [camunda/camunda#58983](https://github.com/camunda/camunda/issues/58983), a report that load-test clients can be unable to authenticate for a long time right after a cluster is created. We wanted to walk through the whole startup sequence, Elasticsearch, Camunda, Management Identity, Keycloak, and clients, and find exactly where a client can get stuck.
 
-**TL;DR:** During cluster bootstrap, a client can receive an OAuth 401 before Camunda has finished granting the permissions that make its token valid. The Camunda Java client's `OAuthCredentialsProvider` then latches into a non-retryable cooldown period that defaults to 5 minutes, so that a single early 401 can leave a client unable to authenticate for minutes, even though the rest of the cluster recovers within seconds. Lowering `camunda.client.auth.token-fetch-non-retryable-cooldown` to 30 seconds fixes this for our load tests ([camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862)). Along the way, we also hit a false-positive `ERROR` log bug ([camunda/camunda#62686](https://github.com/camunda/camunda/issues/62686), fixed) and confirmed two observability gaps: Identity exposes no metrics, and the client exposes none for its OAuth token-fetch/retry behavior ([camunda/camunda#50684](https://github.com/camunda/camunda/issues/50684), [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113)).
+**TL;DR:** During cluster bootstrap, a client can receive an OAuth 401 before Camunda has finished granting the permissions that make its token valid. The Camunda Java client's `OAuthCredentialsProvider` then latches into a non-retryable cooldown period that defaults to 5 minutes, so that a single early 401 can leave a client unable to authenticate for minutes, even though the rest of the cluster recovers within seconds. Lowering `camunda.client.auth.token-fetch-non-retryable-cooldown` to 30 seconds fixes this for our load tests ([camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862)). Along the way, we also hit a false-positive `ERROR` log bug ([camunda/camunda#62686](https://github.com/camunda/camunda/issues/62686), fixed) and confirmed two observability gaps: Management Identity exposes no metrics, and the client exposes none for its OAuth token-fetch/retry behavior ([camunda/camunda#50684](https://github.com/camunda/camunda/issues/50684), [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113)).
 
 <!--truncate-->
 
 ## Chaos Experiment
 
-We ran our usual setup, a full Camunda 8 stack (Camunda, Identity, Keycloak, Elasticsearch, Optimize, Connectors) plus our [realistic "bank customer complaint/dispute handling" load test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#realistic-load) (a starter and several job workers).
+We ran our usual setup, a full Camunda 8 stack (Camunda, Management Identity, Keycloak, Elasticsearch, Optimize, Connectors) plus our [realistic "bank customer complaint/dispute handling" load test](https://github.com/camunda/camunda/blob/main/docs/testing/reliability-testing.md#realistic-load) (a starter and several job workers).
 
 Our assumption going in was that clients keep a connection open and simply fail to renew it after a failure. To check that, we wanted to correlate three things across the same time window:
 
 - Creation of Keycloak
-- Bootstrapping of Identity
+- Bootstrapping of Management Identity
 - Client connection behavior
 
 ### Expected
@@ -65,7 +65,7 @@ We took the test down at 12:06 to file this as a bug: [camunda/camunda#62686](ht
 
 #### How the bootstrap actually orders itself
 
-Before the second try, we mapped out what actually has to happen, in what order, for Elasticsearch, Keycloak, Identity, Camunda, and the clients to all come up together.
+Before the second try, we mapped out what actually has to happen, in what order, for Elasticsearch, Keycloak, Management Identity, Camunda, and the clients to all come up together.
 
 Sequential, and each step gates the next:
 
@@ -79,7 +79,7 @@ In parallel with all of that:
 
 - Postgres starts.
 - Keycloak starts and writes into Postgres.
-- MGMT Identity starts and writes into Keycloak (realms, etc.).
+- Management Identity starts and writes into Keycloak (realms, etc.).
 - Clients start and, once Keycloak has enough state, can retrieve a token.
 
 The catch: a token retrieved at that point is not valid yet, because it needs the init permissions from the sequential chain above, which is not done yet either. A client that races ahead of that chain gets a 401, not because anything is actually broken, but because it asked one step too early.
@@ -131,11 +131,11 @@ OAuth credentials provider latched a non-retryable failure for clientId=orchestr
 
 A client that races the bootstrap sequence now waits 30 seconds instead of 5 minutes before its next attempt, which is well within the time the rest of the cluster needs to finish coming up anyway. We applied this to the load-tester defaults in [camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862).
 
-#### Fourth experiment, identity restarts together with workers
+#### Fourth experiment, Management Identity restarts together with workers
 
-Next, we wanted to understand how the system behaves when identity restarts occur at the same time as worker restarts, as relevant to [camunda/camunda#62647](https://github.com/camunda/camunda/issues/62647). We noticed Identity was sharing a node with a worker pod, which may also be the case in that issue.
+Next, we wanted to understand how the system behaves when Management Identity restarts occur at the same time as worker restarts, as relevant to [camunda/camunda#62647](https://github.com/camunda/camunda/issues/62647). We noticed Management Identity was sharing a node with a worker pod, which may also be the case in that issue.
 
-We couldn't delete the node directly (due to RBAC restrictions), so we repeatedly deleted the Identity and worker pods and edited the Keycloak CR directly to force Keycloak to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
+We couldn't delete the node directly (due to RBAC restrictions), so we repeatedly deleted the Management Identity and worker pods and edited the Keycloak CR directly to force Keycloak to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
 
 We separately confirm the same underlying symptom occurred the day before, in an unrelated stable-89 load test, as a worker's Spring context failing to start entirely:
 
@@ -158,7 +158,7 @@ Both point at the same family of bootstrap-ordering races as the first three tri
 
 ## Found Bugs and Follow-ups
 
-- **Identity has no metrics at all.** We had no metric to point to for Identity's own health, readiness, or token-issuance behavior during this investigation, only log-scraping. Tracked as part of [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113).
+- **Management Identity has no metrics at all.** We had no metric to point to for Management Identity's own health, readiness, or token-issuance behavior during this investigation, only log-scraping. Tracked as part of [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113).
 - **Clients have no metrics for OAuth refresh, token requests, or failure rate.** We only found the non-retryable latch by reading debug logs live during the experiment. Tracked as [camunda/camunda#50684](https://github.com/camunda/camunda/issues/50684).
 - **False-positive `SuspensionBehavior` ERROR log spam**, found during the first try: [camunda/camunda#62686](https://github.com/camunda/camunda/issues/62686) (fixed).
 - **The config fix itself**: [camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862), lowering the load-test default cooldown to `PT30S`.
