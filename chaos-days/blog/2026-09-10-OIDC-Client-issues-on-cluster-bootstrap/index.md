@@ -14,9 +14,9 @@ authors:
 
 # Chaos Day Summary
 
-On today's Chaos Day, we investigated how Camunda clients (starters and workers) behave while authenticating during cluster bootstrap, prompted by [camunda/camunda#58983](https://github.com/camunda/camunda/issues/58983), a report that load-test clients can be unable to authenticate for a long time right after a cluster is created. We wanted to walk through the whole startup sequence, Elasticsearch, Camunda, Identity, Keycloak, and clients, and find exactly where a client can get stuck.
+On today's Chaos Day, we investigated how Camunda clients (starters and workers) behave during cluster bootstrap authentication, prompted by [camunda/camunda#58983](https://github.com/camunda/camunda/issues/58983), a report that load-test clients can be unable to authenticate for a long time right after a cluster is created. We wanted to walk through the whole startup sequence, Elasticsearch, Camunda, Identity, Keycloak, and clients, and find exactly where a client can get stuck.
 
-**TL;DR:** During cluster bootstrap, a client can receive an OAuth 401 before Camunda has finished granting the permissions that make its token valid. The Camunda Java client's `OAuthCredentialsProvider` then latches into a non-retryable cooldown, which defaults to 5 minutes, so that single early 401 can leave a client unable to authenticate for minutes, even though the rest of the cluster recovers within seconds. Lowering `camunda.client.auth.token-fetch-non-retryable-cooldown` to 30 seconds fixes this for our load tests ([camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862)). Along the way we also hit a false-positive `ERROR` log bug ([camunda/camunda#62686](https://github.com/camunda/camunda/issues/62686), fixed) and confirmed two observability gaps: Identity exposes no metrics, and the client exposes none for its OAuth token-fetch/retry behavior ([camunda/camunda#50684](https://github.com/camunda/camunda/issues/50684), [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113)).
+**TL;DR:** During cluster bootstrap, a client can receive an OAuth 401 before Camunda has finished granting the permissions that make its token valid. The Camunda Java client's `OAuthCredentialsProvider` then latches into a non-retryable cooldown period that defaults to 5 minutes, so that a single early 401 can leave a client unable to authenticate for minutes, even though the rest of the cluster recovers within seconds. Lowering `camunda.client.auth.token-fetch-non-retryable-cooldown` to 30 seconds fixes this for our load tests ([camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862)). Along the way, we also hit a false-positive `ERROR` log bug ([camunda/camunda#62686](https://github.com/camunda/camunda/issues/62686), fixed) and confirmed two observability gaps: Identity exposes no metrics, and the client exposes none for its OAuth token-fetch/retry behavior ([camunda/camunda#50684](https://github.com/camunda/camunda/issues/50684), [camunda/camunda#51113](https://github.com/camunda/camunda/issues/51113)).
 
 <!--truncate-->
 
@@ -106,7 +106,7 @@ Caused by: java.io.IOException: Failed while requesting access token with status
 And, more explicitly, from a dedicated log search:
 
 ```
-OAuth credentials provider latched non-retryable failure for clientId=orchestration after HTTP 401 from token endpoint .../protocol/openid-connect/token. Token fetches will fail fast until 2026-09-10T10:20:20.724006897Z (PT5M), then a fresh attempt will be made. Verify clientId, clientSecret, audience, and token URL configuration.
+OAuth credentials provider latched a non-retryable failure for clientId=orchestration after an HTTP 401 from the token endpoint .../protocol/openid-connect/token. Token fetches will fail fast until 2026-09-10T10:20:20.724006897Z (PT5M), then a fresh attempt will be made. Verify clientId, clientSecret, audience, and token URL configuration.
 ```
 
 In short: the client doesn't retry after a 401, it fails fast for the rest of the cooldown window and only tries again once that expires. The relevant code:
@@ -126,18 +126,18 @@ We recreated the load test with `camunda.client.auth.token-fetch-non-retryable-c
 The fix worked. The same latch message now reported the new window:
 
 ```
-OAuth credentials provider latched non-retryable failure for clientId=orchestration after HTTP 401 from token endpoint .../protocol/openid-connect/token. Token fetches will fail fast until 2026-09-10T13:29:19.407492112Z (PT30S), then a fresh attempt will be made. Verify clientId, clientSecret, audience, and token URL configuration.
+OAuth credentials provider latched a non-retryable failure for clientId=orchestration after an HTTP 401 from the token endpoint .../protocol/openid-connect/token. Token fetches will fail fast until 2026-09-10T13:29:19.407492112Z (PT30S), then a fresh attempt will be made. Verify clientId, clientSecret, audience, and token URL configuration.
 ```
 
 A client that races the bootstrap sequence now waits 30 seconds instead of 5 minutes before its next attempt, which is well within the time the rest of the cluster needs to finish coming up anyway. We applied this to the load-tester defaults in [camunda/camunda#62862](https://github.com/camunda/camunda/pull/62862).
 
 #### Fourth experiment, identity restarts together with workers
 
-Next we wanted to understand how the system behaves under identity restarts happening at the same time as worker restarts, relevant to [camunda/camunda#62647](https://github.com/camunda/camunda/issues/62647). We noticed Identity was sharing a node with a worker pod, which may also be the case in that issue.
+Next, we wanted to understand how the system behaves when identity restarts occur at the same time as worker restarts, as relevant to [camunda/camunda#62647](https://github.com/camunda/camunda/issues/62647). We noticed Identity was sharing a node with a worker pod, which may also be the case in that issue.
 
-We couldn't delete the node directly (due to RBAC restriction), so we deleted the Identity and worker pods instead, repeatedly, and also edited the Keycloak CR directly to force Keycloak itself to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
+We couldn't delete the node directly (due to RBAC restrictions), so we repeatedly deleted the Identity and worker pods and edited the Keycloak CR directly to force Keycloak to restart. After several rounds of this, we were not able to reproduce the original extended-outage failure mode; everything recovered.
 
-We did separately confirm the same underlying symptom occurred the day before, in an unrelated stable-89 load test, as a worker's Spring context failing to start entirely:
+We separately confirm the same underlying symptom occurred the day before, in an unrelated stable-89 load test, as a worker's Spring context failing to start entirely:
 
 ```
 Caused by: java.lang.IllegalStateException: Failed to retrieve topology due to authentication error; check your config
