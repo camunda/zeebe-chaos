@@ -170,7 +170,7 @@ Why did more CPU make it worse? The CPU count also changes the garbage collector
 
 ### The starter becomes a zombie
 
-With 2 cores, the starter ran at the full 500 PI/s for a while until the heap filled up. As we were not blocked by GC, we accumulated more requests until we got stopped by `OutOfMemory` error. After this, the rate went to zero. The pod did not restart, and the logs showed no error. 
+With 2 cores, the starter ran at the full 500 PI/s for a while until the heap filled up. As we were not blocked by GC, we accumulated more requests until an `OutOfMemoryError` stopped it. After this, the rate went to zero. The pod did not restart, and the logs showed no error. 
 
 The reason is in the code: the starter creates instances with `scheduleAtFixedRate`, and it only catches `Exception` inside the scheduled task. An `Error` such as `OutOfMemoryError` escapes, and the executor then silently cancels all future runs of the task. Nothing is logged until someone calls `get()` on the returned future, which nobody does.
 
@@ -195,14 +195,14 @@ This is a different failure with a different effect. The REST client retries fai
 What should the load tester do instead?
 
 - **Never let a periodic task die silently.** Catch `Throwable` around the scheduled work and log it (or even exit the JVM if necessary).
-- **Treat an `Error` as fatal.** For an `OutOfMemoryError`, `-XX:+ExitOnOutOfMemoryError` makes the JVM exit, so Kubernetes restarts the pod, and the test shows the failure. The heap dump should then go to an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) (via `-XX:HeapDumpPath`), so it survives the restart and doesn't fill the container file system.
+- **Treat an `Error` as fatal.** For an `OutOfMemoryError`, `-XX:+ExitOnOutOfMemoryError` makes the JVM exit, so Kubernetes restarts the container, and the test shows the failure. The heap dump should then go to an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) (via `-XX:HeapDumpPath`), so it survives the container restart (it is deleted when the pod is replaced) and doesn't fill the container file system.
 - **Bound the work you accept.** The cause of the out-of-memory was the unbounded queue, which brings us to the next section.
 
 ### Open and closed models
 
 Looking for a fix, we remembered the difference between an open and a closed workload model (see the [k6 documentation on scenarios](https://grafana.com/docs/k6/latest/using-k6/scenarios/) and [open versus closed workload models](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/)):
 
-- In a **closed workload model**, a fixed number of virtual users each wait for the response before sending the next request. The load adapts to the system, so a slow system gets less load. This is interesting for sizing, but it cannot overload the system.
+- In a **closed workload model**, a fixed number of virtual users each wait for the response before sending the next request. The load adapts to the system, so a slow system gets less load. This is interesting for sizing, but it can hide an overload: when responses slow down, the arrival rate drops with them.
 - In an **open workload model**, new requests arrive at a fixed rate, independent of how fast the system answers. This is how real traffic behaves, and what we want to stress a system.
 
 Our starter follows the open model, which is why a slow system causes work to pile up. The ideal is in the middle: keep the open model, but limit the number of requests in flight. A very small limit makes the starter behave like a closed model. With enough headroom, for example, ten seconds' worth of requests at the configured rate, it stays open until the system falls behind by more than that.
