@@ -22,7 +22,12 @@ We run several load tests every day (gRPC and REST, each with and without Elasti
 
 We had already seen that the starter, the application that creates process instances, was heavily CPU throttled. Today we wanted to find out why.
 
-**TL;DR;** The bottleneck was the load tester itself, not Camunda. The starter's HTTP client has a pool of 100 connections, which can only complete as many requests per second as the pool size divided by the request duration. At a configured rate of 500 PI/s, the starter scheduled more requests than the pool completed, kept scheduling new ones, and queued up to about 85,000 of them in memory. The heap filled up and the JVM spent almost all CPU on garbage collection slowing the starter down (the throttling we saw). Giving the starter more CPU made the failure worse, not better, most likely because the JVM then picks a different garbage collector causing `OutOfMemoryError`. We were able to limit the number of in-flight requests, which keeps the starter stable at the configured rate. This change, kept us still in an open-model architecture and we were able to reach about 380 PI/s, which is now limited by Camunda's CPU. During our experiments we added exploratively HTTP client metrics ([camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477)) that made the backlog visible. The investigation also produced eight new issues and five draft fixes to improve the load tester, the Java client and the load test configuration, listed at the end.
+**TL;DR;** The bottleneck was the load tester itself, not Camunda.
+
+- The starter's HTTP client has a pool of 100 connections. At a configured rate of 500 PI/s, the starter scheduled more requests than the pool completed and queued the rest in memory, up to about 85,000 requests.
+- The full heap made the JVM spend most of its CPU on garbage collection, which slowed the starter down and caused the CPU throttling we saw. Giving the starter more CPU made it worse, most likely because the JVM then picks a different garbage collector that no longer slows the sender down. The starter ran out of memory and its scheduler died silently.
+- Limiting the number of in-flight requests keeps the starter stable under the configured load, in an open workload model: when the system cannot keep up, the starter skips sends instead of queueing them. With this prototype we reach about 380 PI/s of the 500 PI/s configured, which is now limited by Camunda's CPU.
+- We also added HTTP client metrics ([camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477)) that made the backlog visible. The investigation produced eight new issues and five draft fixes for the load tester, the Java client and the load test configuration, listed at the end.
 
 <!--truncate-->
 
@@ -84,7 +89,7 @@ io.camunda.client.api.command.ClientException: org.apache.hc.core5.util.Deadline
 	...
 ```
 
-This was actually the first hint, that we were building a backlog.
+This was actually the first hint that we were building a backlog: requests waited longer than their deadline for a free connection.
 
 #### Hypothesis 1: the REST read queries consume the CPU
 
@@ -147,17 +152,19 @@ At 300 PI/s, the pool is far from its limit.
 
 ### More CPU, and what the starter does with it
 
-Since the starter was CPU throttled, the next step was obvious: give it more CPU. We doubled it from 250 to 500 millicores, and later raised it to 2 cores.
-We profiled the starter during one of these runs.
+Since the starter was CPU throttled, the next step was obvious: give it more CPU. We doubled it from 250 to 500 millicores, and later raised it to 2 cores. The throttling disappeared, but the starter did not become healthy. With 500 millicores it sent only about 290 to 350 requests per second, with 2 cores it sent the full 500 per second.
+
+We profiled the starter at 2 cores.
 
 ![CPU flamegraph of the starter: almost all samples are in the garbage collector](starter-profile.png)
 
-Around 80% of the samples are in the garbage collector, mostly marking and compacting the heap.
+Around 80% of the samples are on native JVM threads, and almost all of those belong to the G1 garbage collector, mostly marking and compacting the heap. Only about 18% are Java code.
+
 ![GC activity of the starter over the test](starter-gc.png)
 
-Why is the heap so full? The max connection pool allows 100 connections (default client configuration) at the same time, and the starter keeps scheduling 500 new requests per second regardless of how many have completed. This means that many requests are queued in memory, waiting for a free connection. We were accumulating a large number of queued requests, which contributed to the high memory usage. This eventually led to the garbage collector running back-to-back full collections and using almost the whole CPU, as we used with 250 millicores a serial collector (default in Java). This also explains the earlier observations. At 300 PI/s no queue forms. 
+Why is the heap so full? The max connection pool allows 100 connections (default client configuration) at the same time, and the starter keeps scheduling 500 new requests per second regardless of how many have completed. This means that many requests are queued in memory, waiting for a free connection. We accumulated up to about 85,000 queued requests, which filled the heap (its maximum was 512 MiB, the JVM default of a quarter of the container memory). The garbage collector then ran back-to-back full collections and used almost the whole CPU. At 300 PI/s no queue forms, because requests complete as fast as they are scheduled.
 
-The CPU count changes the garbage collector: with fewer than two CPUs the JVM chooses the serial collector, which stops all application threads while it collects, including the thread that schedules new requests. From two CPUs it chooses G1, which does most of its marking concurrently and keeps the scheduler running. So with less CPU, the pauses and the throttling slowed the sender down and thereby also limited how fast the backlog grew.
+Why did more CPU make it worse? The CPU count also changes the garbage collector: with fewer than two CPUs the JVM chooses the serial collector, which stops all application threads while it collects, including the thread that schedules new requests. From two CPUs it chooses G1, which does most of its marking concurrently and keeps the scheduler running. So with less CPU, the pauses and the throttling most likely slowed the sender down and thereby also limited how fast the backlog grew. This is a hypothesis that fits what we measured, but we did not separate the garbage collector from the throttling. Running 2 cores with `-XX:+UseSerialGC` would show it.
 
 ### The starter becomes a zombie
 
@@ -196,17 +203,17 @@ Looking for a fix, we remembered the difference between an open and a closed wor
 - In a **closed workload model**, a fixed number of virtual users each wait for the response before sending the next request. The load adapts to the system, so a slow system gets less load. This is interesting for sizing, but it cannot overload the system.
 - In an **open workload model**, new requests arrive at a fixed rate, independent of how fast the system answers. This is how real traffic behaves, and what we want to stress a system.
 
-Our starter follows the open model, which is why a slow system makes it pile up work. The ideal is in the middle: keep the open model, but bound the number of requests in flight. If we limit it to exactly the configured rate, the starter behaves like a closed model, with some headroom we still keep the benefits of the open model.
+Our starter follows the open model, which is why a slow system makes it pile up work. The ideal is in the middle: keep the open model, but bound the number of requests in flight. A very small limit makes the starter behave like a closed model. With enough headroom, for example ten seconds worth of requests at the configured rate, it stays open until the system falls behind by more than that.
 
-We implemented this ([commit](https://github.com/camunda/camunda/pull/64477/commits/745c4d33079339a2f85d758b8e34620b3e2b1462)) with a semaphore: every scheduled tick needs a permit, and the permit is returned when the response arrives. If no permit is available, the tick is skipped, so no new request is queued. We allow `rate * 10` requests in flight, which is 5,000 for 500 PI/s.
+We prototyped this ([commit](https://github.com/camunda/camunda/pull/64477/commits/745c4d33079339a2f85d758b8e34620b3e2b1462), the proper fix is tracked in [camunda/camunda#64584](https://github.com/camunda/camunda/issues/64584)) with a semaphore: every scheduled tick needs a permit, and the permit is returned when the response arrives. If no permit is available, the tick is skipped, so no new request is queued. We allow `rate * 10` requests in flight, which is 5,000 for 500 PI/s.
 
 ### Results
 
-With the limit, the load stabilizes. The gateway receives about 380 PI/s for 500 PI/s of configured load, steady and smooth, which is more than the REST test with Elasticsearch reaches today (about 200 PI/s in the daily run, with 300 configured).
+With the limit, the load stabilizes. The gateway receives about 380 PI/s for 500 PI/s of configured load, steady and smooth (the starter skips the ticks it cannot send within the limit), which is more than the REST test with Elasticsearch reaches today (about 200 PI/s in the daily run, with 300 configured).
 
 ![Gateway throughput after the fix: a steady 380 PI/s](fix-starter-throughput.png)
 
-The number of in-flight requests stays within the bound we configured (about 4,800 to 5,000 pending requests, instead of 85,000), while the pool is in constant use.
+The number of in-flight requests stays within the bound we configured (about 4,800 to 5,000 pending requests, instead of 85,000), while the pool stays fully leased (100 connections).
 
 ![HTTP client metrics after the fix: the pool is fully used, pending requests are bounded](fix-starter-pool.png)
 
@@ -216,7 +223,7 @@ The starter is no longer throttled, and the bottleneck has moved to where it bel
 
 ## Conclusion
 
-The REST load test was limited by the starter, not by Camunda. A connection pool of 100 connections completes only as many requests per second as the pool size divided by the request duration, and the duration grew while the starter was overloaded. Once the configured rate exceeded that, the open-model starter queued requests without any bound, filled its heap, spent almost all CPU on garbage collection. Giving it more CPU made it worse: the JVM switched to G1, the starter no longer slowed itself down, and it ran into the out of memory error. With this the starter lost its scheduler to an `OutOfMemoryError` without any visible signal.
+The REST load test was limited by the starter, not by Camunda. The starter's connection pool of 100 connections completes only as many requests per second as the pool size divided by the request duration, and the duration grew while the starter was overloaded. Once the configured rate exceeded that, the open-model starter queued requests without any bound and filled its heap. It then spent almost all CPU on garbage collection, which slowed it down and led to the throttling we first saw. Giving it more CPU made it worse, most likely because the JVM switched to the G1 collector and the starter no longer slowed itself down. It kept queueing until it ran out of memory, and the `OutOfMemoryError` silently ended its scheduler. We expected less CPU to hurt, but more CPU hurt more.
 
 The key takeaways:
 
