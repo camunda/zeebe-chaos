@@ -20,14 +20,14 @@ On today's Chaos Day, we investigated a puzzling result of our daily load tests,
 
 We run several load tests every day (gRPC and REST, each with and without Elasticsearch as secondary storage) against the current `main`. The "None" variants run without secondary storage to max out the engine and observe its limits. In the results above, None-gRPC completes about 491 PI/s, while None-REST completes only about 85 PI/s, even though its starter reports starting 435 PI/s. With Elasticsearch, the REST test completes about 170 PI/s and is at least in the same range as gRPC.
 
-We had already seen that the starter, the application that creates process instances, was heavily CPU throttled. Today we wanted to find out why.
+We had already seen that the starter, the application that creates process instances, was heavily CPU throttled. Today, we wanted to find out why.
 
 **TL;DR;** The bottleneck was the load tester itself, not Camunda.
 
 - The starter's HTTP client has a pool of 100 connections. At a configured rate of 500 PI/s, the starter scheduled more requests than the pool completed and queued the rest in memory, up to about 85,000 requests.
-- The full heap made the JVM spend most of its CPU on garbage collection, which slowed the starter down and caused the CPU throttling we saw. Giving the starter more CPU made it worse: with two or more CPUs the JVM runs the G1 garbage collector instead of the serial one, and G1 no longer slows the sender down. The starter ran out of memory and its scheduler died silently.
-- Limiting the number of in-flight requests keeps the starter stable under the configured load, in an open workload model: when the system cannot keep up, the starter skips sends instead of queueing them. With this prototype we reach about 380 PI/s of the 500 PI/s configured, which is now limited by Camunda's CPU.
-- We also added HTTP client metrics ([camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477)) that made the backlog visible. The investigation produced eight new issues and five draft fixes for the load tester, the Java client and the load test configuration, listed at the end.
+- The full heap made the JVM spend most of its CPU on garbage collection, which slowed the starter down and caused the CPU throttling we saw. Giving the starter more CPU made it worse: with two or more CPUs, the JVM runs the G1 garbage collector instead of the serial one, and G1 no longer slows the sender down. The starter ran out of memory, and its scheduler died silently.
+- Limiting the number of in-flight requests keeps the starter stable under the configured load, in an open workload model: when the system cannot keep up, the starter skips sending instead of queueing them. With this prototype, we reach about 380 PI/s out of the configured 500 PI/s, which is now limited by Camunda's CPU.
+- We also added HTTP client metrics ([camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477)) that made the backlog visible. The investigation produced eight new issues and five draft fixes for the load tester, the Java client, and the load test configuration, listed at the end.
 
 ![Gateway throughput before and after the fix: about 90 PI/s after the collapse, then a steady 374 PI/s](tldr.png)
 
@@ -43,7 +43,7 @@ We started with the existing data of the daily load tests, and then ran our own 
 
 ### Expected
 
-This was an investigation, we had no firm expectation besides the hypothesis from the original issue: the starter, not Camunda, limits the REST test. If so, 300 PI/s should run smoothly, and more load or less CPU for the starter should make it worse.
+This was an investigation; we had no firm expectation besides the hypothesis from the original issue: the starter, not Camunda, limits the REST test. If so, 300 PI/s should run smoothly, and more load or less CPU for the starter should make it worse.
 
 ### Actual
 
@@ -53,11 +53,11 @@ Comparing gRPC and REST without secondary storage shows distinct patterns in the
 
 ![Server metrics of the daily None-REST and None-gRPC load tests](daily-server-metrics.png)
 
-The starter metrics show nothing obvious. It counts a request rate in line with the configured load, as if it was not hitting any limit.
+The starter metrics show nothing obvious. It counts a request rate in line with the configured load, as if it were not hitting any limit.
 
 ![Starter metrics of the daily None-REST load test, counting the expected request rate](daily-starter-metrics.png)
 
-We realized that the starter counts a process instance when it *sends* the request, not when it gets the response. In the daily results above, the starter "started" 435 PI/s, while the gateway accepted only 85 PI/s. The headline "completed" percentage of 99.66% in the table is calculated against the instances the gateway accepted, so it hides that most submitted instances never got through.
+We realized that the starter counts a process instance when it *sends* the request, not when it gets the response. In the daily results above, the starter "started" 435 PI/s, while the gateway accepted only 85 PI/s. The headline "completed" percentage of 99.66% in the table is calculated based on the instances the gateway accepted, so it hides the fact that most submitted instances never got through.
 
 The CPU throttling metrics, however, show that the starter was heavily throttled during the high load tests.
 
@@ -93,7 +93,7 @@ io.camunda.client.api.command.ClientException: org.apache.hc.core5.util.Deadline
 
 This was actually the first hint that we were building a backlog: requests waited longer than their deadline for a free connection.
 
-#### Hypothesis 1: the REST read queries consume the CPU
+#### Hypothesis 1: The REST read queries consume the CPU
 
 The read queries run through the same HTTP client as the instance creation (a gRPC client has separate threads and connections). So the REST queries could be what burns the CPU and exhausts the connections.
 
@@ -121,11 +121,11 @@ As soon as the starter was throttled, it sent less, and the load on Camunda vani
 
 #### Reviewing the load tester code
 
-While reading the starter code we found several things worth improving, which we tracked as follow-ups (see below): the process instance counter is incremented before the request is answered, and failed requests are not recorded. The data reader blocks its scheduler threads and shares its query context between threads without synchronization.
+While reading the starter code, we found several things worth improving, which we tracked as follow-ups (see below): the process instance counter is incremented before the request is answered, and failed requests are not recorded. The data reader blocks its scheduler threads and shares its query context between threads without synchronization.
 
 ### Adding observability
 
-We did not know what happens inside the client. The Camunda Java client exposes no metrics for its HTTP client, so we looked for a way to get them and found the [Apache HttpClient observation module](https://hc.apache.org/httpcomponents-client-5.6.x/observation.html), which can report request durations and connection pool statistics through Micrometer. We enabled it for the Java client in [camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477) (the proposal for a proper client feature is [camunda/camunda#64528](https://github.com/camunda/camunda/issues/64528)). After a few attempts, we got the metrics we wanted. This is a scrape taken shortly after the start of the 500 PI/s test:
+We did not know what was happening inside the client. The Camunda Java client exposes no metrics for its HTTP client, so we looked for a way to get them and found the [Apache HttpClient observation module](https://hc.apache.org/httpcomponents-client-5.6.x/observation.html), which can report request durations and connection pool statistics through Micrometer. We enabled it for the Java client in [camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477) (the proposal for a proper client feature is [camunda/camunda#64528](https://github.com/camunda/camunda/issues/64528)). After a few attempts, we got the metrics we wanted. This is a scrape taken shortly after the start of the 500 PI/s test:
 
 ```
 # TYPE http_client_inflight gauge
@@ -144,7 +144,7 @@ http_client_request_seconds_max{method="POST",status="200"} 4.536155268
 
 ![HTTP client metrics of the starter during the 500 PI/s run](client_metrics.png)
 
-All 100 connections of the pool are leased and requests are waiting for one (`pending`), while the average `POST` takes about 2 seconds. As the test ran longer, the number of pending requests grew to about 80,000 and the slowest request took about two minutes. With 300 PI/s, the same metrics look very different: around 5 to 15 connections are in use, nothing is pending, and requests take 20 to 60 milliseconds at most. (Left: 500 PI/s, right: 300 PI/s.)
+All 100 connections of the pool are leased, and requests are waiting for one (`pending`), while the average `POST` takes about 2 seconds. As the test ran longer, the number of pending requests grew to about 80,000, and the slowest request took about two minutes. With 300 PI/s, the same metrics look very different: around 5 to 15 connections are in use, nothing is pending, and requests take 20 to 60 milliseconds at most. (Left: 500 PI/s, right: 300 PI/s.)
 
 ![HTTP client metrics for 500 PI/s (left) and 300 PI/s (right)](client-metrics-comparing.png)
 
@@ -154,25 +154,25 @@ At 300 PI/s, the pool is far from its limit.
 
 ### More CPU, and what the starter does with it
 
-Since the starter was CPU throttled, the next step was obvious: give it more CPU. We doubled it from 250 to 500 millicores, and later raised it to 2 cores. The throttling disappeared, but the starter did not become healthy. With 500 millicores it sent only about 290 to 350 requests per second, with 2 cores it sent the full 500 per second.
+Since the starter was CPU throttled, the next step was obvious: give it more CPU. We doubled it from 250 to 500 millicores, and later raised it to 2 cores. The throttling disappeared, but the starter did not become healthy. With 500 millicores, it sent only about 290 to 350 requests per second; with 2 cores, it sent the full 500 per second.
 
 We profiled the starter at 2 cores.
 
 ![CPU flamegraph of the starter: almost all samples are in the garbage collector](starter-profile.png)
 
-Around 80% of the samples are on native JVM threads, and almost all of those belong to the G1 garbage collector, mostly marking and compacting the heap. Only about 18% are Java code.
+Around 80% of the samples run on native JVM threads, and almost all of those are handled by the G1 garbage collector, which mostly marks and compacts the heap. Only about 18% are Java code.
 
 ![GC activity of the starter over the test](starter-gc.png)
 
-Why is the heap so full? The max connection pool allows 100 connections (default client configuration) at the same time, and the starter keeps scheduling 500 new requests per second regardless of how many have completed. This means that many requests are queued in memory, waiting for a free connection. We accumulated up to about 85,000 queued requests, which filled the heap (its maximum was 512 MiB, the JVM default of a quarter of the container memory). The garbage collector then ran back-to-back full collections and used almost the whole CPU. At 300 PI/s no queue forms, because requests complete as fast as they are scheduled.
+Why is the heap so full? The max connection pool allows 100 connections (default client configuration) at the same time, and the starter keeps scheduling 500 new requests per second regardless of how many have completed. This means that many requests are queued in memory, waiting for a free connection. We accumulated up to about 85,000 queued requests, which filled the heap (its maximum was 512 MiB, the JVM default of a quarter of the container memory). The garbage collector then ran back-to-back full collections, using almost the entire CPU. At 300 PI/s, no queue forms, because requests complete as fast as they are scheduled.
 
-Why did more CPU make it worse? The CPU count also changes the garbage collector: with fewer than two CPUs the JVM chooses the serial collector, which stops all application threads while it collects, including the thread that schedules new requests. From two CPUs it chooses G1, which does most of its marking concurrently and keeps the scheduler running. The 2-core run used G1, as the profile and the GC metrics show. So with less CPU, the pauses and the throttling slowed the sender down and thereby also limited how fast the backlog grew. We did not measure how much of that slowdown came from the serial collector and how much from the CPU throttling.
+Why did more CPU make it worse? The CPU count also changes the garbage collector: with fewer than two CPUs, the JVM chooses the serial collector, which stops all application threads while it collects, including the thread that schedules new requests. From two CPUs, it chooses G1, which does most of its marking concurrently and keeps the scheduler running. The 2-core run used G1, as the profile and the GC metrics show. So, with less CPU, pauses and throttling slowed the sender down and thereby limited how quickly the backlog grew. We did not measure how much of that slowdown was due to the serial collector and how much to CPU throttling.
 
 ### The starter becomes a zombie
 
-With 2 cores, the starter ran at the full 500 PI/s for a while, until the heap was full. As we were not blocked by GC we accumulated more requests until we got stopped by `OutOfMemory` error. After this the rate went to zero. The pod did not restart and the logs showed no error. 
+With 2 cores, the starter ran at the full 500 PI/s for a while until the heap filled up. As we were not blocked by GC, we accumulated more requests until we got stopped by `OutOfMemory` error. After this, the rate went to zero. The pod did not restart, and the logs showed no error. 
 
-The reason is in the code: the starter creates instances with `scheduleAtFixedRate`, and it only catches `Exception` inside the scheduled task. An `Error` such as `OutOfMemoryError` escapes, and the executor then silently cancels all future runs of the task. Nothing is logged, until someone calls `get()` on the returned future, which nobody does.
+The reason is in the code: the starter creates instances with `scheduleAtFixedRate`, and it only catches `Exception` inside the scheduled task. An `Error` such as `OutOfMemoryError` escapes, and the executor then silently cancels all future runs of the task. Nothing is logged until someone calls `get()` on the returned future, which nobody does.
 
 ```
 $ kubectl logs starter-... | grep Mem
@@ -180,7 +180,7 @@ NOTE: Picked up JDK_JAVA_OPTIONS: -XX:+HeapDumpOnOutOfMemoryError
 java.lang.OutOfMemoryError: Java heap space
 ```
 
-The JVM was started with `-XX:+HeapDumpOnOutOfMemoryError`, which writes a heap dump (here about 800 MB onto the container file system) and then keeps the process running. So the starter stayed alive without doing anything: a zombie. Kubernetes could not detect this, because nothing checks that the starter keeps sending. This is the same gap that [camunda/camunda#62661](https://github.com/camunda/camunda/issues/62661) wants to close with real liveness and readiness indicators.
+The JVM was started with `-XX:+HeapDumpOnOutOfMemoryError`, which writes a heap dump (here about 800 MB onto the container file system) and then keeps the process running. So the starter stayed alive without doing anything: a zombie. Kubernetes could not detect this because nothing checks that the starter keeps sending. This is the same gap that [camunda/camunda#62661](https://github.com/camunda/camunda/issues/62661) wants to close with real liveness and readiness indicators.
 
 The same pod also logged a `StackOverflowError` in the HTTP client threads:
 
@@ -190,13 +190,13 @@ Exception in thread "httpclient-dispatch-1" java.lang.StackOverflowError
 Exception in thread "httpclient-dispatch-2" java.lang.StackOverflowError
 ```
 
-This is a different failure with a different effect. The REST client retries failures directly in the same call stack, and after enough failures it overflows the stack and the client is unusable until restart. We already knew this as [camunda/camunda#34597](https://github.com/camunda/camunda/issues/34597); a starter that is overloaded and has many failing requests is a good way to trigger it.
+This is a different failure with a different effect. The REST client retries failures directly in the same call stack, and after enough failures, it overflows the stack, and the client is unusable until restarted. We already knew this as [camunda/camunda#34597](https://github.com/camunda/camunda/issues/34597); a starter that is overloaded and has many failing requests is a good way to trigger it.
 
 What should the load tester do instead?
 
 - **Never let a periodic task die silently.** Catch `Throwable` around the scheduled work and log it (or even exit the JVM if necessary).
-- **Treat an `Error` as fatal.** For an `OutOfMemoryError`, `-XX:+ExitOnOutOfMemoryError` makes the JVM exit, so Kubernetes restarts the pod and the test shows the failure. The heap dump should then go to an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) (via `-XX:HeapDumpPath`), so it survives the restart and doesn't fill the container file system.
-- **Bound the work you accept.** The cause of the out of memory was the unbounded queue, which brings us to the next section.
+- **Treat an `Error` as fatal.** For an `OutOfMemoryError`, `-XX:+ExitOnOutOfMemoryError` makes the JVM exit, so Kubernetes restarts the pod, and the test shows the failure. The heap dump should then go to an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) (via `-XX:HeapDumpPath`), so it survives the restart and doesn't fill the container file system.
+- **Bound the work you accept.** The cause of the out-of-memory was the unbounded queue, which brings us to the next section.
 
 ### Open and closed models
 
@@ -205,17 +205,17 @@ Looking for a fix, we remembered the difference between an open and a closed wor
 - In a **closed workload model**, a fixed number of virtual users each wait for the response before sending the next request. The load adapts to the system, so a slow system gets less load. This is interesting for sizing, but it cannot overload the system.
 - In an **open workload model**, new requests arrive at a fixed rate, independent of how fast the system answers. This is how real traffic behaves, and what we want to stress a system.
 
-Our starter follows the open model, which is why a slow system makes it pile up work. The ideal is in the middle: keep the open model, but bound the number of requests in flight. A very small limit makes the starter behave like a closed model. With enough headroom, for example ten seconds worth of requests at the configured rate, it stays open until the system falls behind by more than that.
+Our starter follows the open model, which is why a slow system causes work to pile up. The ideal is in the middle: keep the open model, but limit the number of requests in flight. A very small limit makes the starter behave like a closed model. With enough headroom, for example, ten seconds' worth of requests at the configured rate, it stays open until the system falls behind by more than that.
 
 We prototyped this ([commit](https://github.com/camunda/camunda/pull/64477/commits/745c4d33079339a2f85d758b8e34620b3e2b1462), the proper fix is tracked in [camunda/camunda#64584](https://github.com/camunda/camunda/issues/64584)) with a semaphore: every scheduled tick needs a permit, and the permit is returned when the response arrives. If no permit is available, the tick is skipped, so no new request is queued. We allow `rate * 10` requests in flight, which is 5,000 for 500 PI/s.
 
 ### Results
 
-With the limit, the load stabilizes. The gateway receives about 380 PI/s for 500 PI/s of configured load, steady and smooth (the starter skips the ticks it cannot send within the limit), which is more than the REST test with Elasticsearch reaches today (about 200 PI/s in the daily run, with 300 configured).
+With the limit, the load stabilizes. The gateway receives about 380 PI/s for a configured load of 500 PI/s, steady and smooth (the starter skips ticks it cannot send within the limit), which is more than the REST test with Elasticsearch reaches today (about 200 PI/s in the daily run, with 300 configured).
 
 ![Gateway throughput after the fix: a steady 380 PI/s](fix-starter-throughput.png)
 
-The number of in-flight requests stays within the bound we configured (about 4,800 to 5,000 pending requests, instead of 85,000), while the pool stays fully leased (100 connections).
+The number of in-flight requests stays within the bounds we configured (about 4,800 to 5,000 pending requests, instead of 85,000), while the pool stays fully leased (100 connections).
 
 ![HTTP client metrics after the fix: the pool is fully used, pending requests are bounded](fix-starter-pool.png)
 
@@ -225,18 +225,18 @@ The starter is no longer throttled, and the bottleneck has moved to where it bel
 
 ## Conclusion
 
-The REST load test was limited by the starter, not by Camunda. The starter's connection pool of 100 connections completes only as many requests per second as the pool size divided by the request duration, and the duration grew while the starter was overloaded. Once the configured rate exceeded that, the open-model starter queued requests without any bound and filled its heap. It then spent almost all CPU on garbage collection, which slowed it down and led to the throttling we first saw. Giving it more CPU made it worse, because the JVM switched to the G1 collector and the starter no longer slowed itself down. It kept queueing until it ran out of memory, and the `OutOfMemoryError` silently ended its scheduler. We expected less CPU to hurt, but more CPU hurt more.
+The REST load test was limited by the starter, not by Camunda. The starter's connection pool of 100 connections completes only as many requests per second as the pool size divided by the request duration, and the duration grew while the starter was overloaded. Once the configured rate exceeded that, the open-model starter queued requests without any bounds and filled its heap. It then spent almost all CPU on garbage collection, which slowed it down and led to the throttling we first saw. Giving it more CPU made it worse, because the JVM switched to the G1 collector, and the starter no longer slowed itself down. It kept queueing until it ran out of memory, and the `OutOfMemoryError` silently ended its scheduler. We expected less CPU to hurt, but more CPU hurt more.
 
 ![Client requests and pool usage before and after the fix: before, 56 req/s succeed and 377 req/s fail without a response (status 599); after, a steady 365 req/s without failures](conclusion.png)
 
-Before the fix (left), the starter accumulated a backlog of up to about 80,000 requests that it could not process in time, and the throughput broke down. Most requests failed without any HTTP response, which the metrics report as status `599`. We could only see this after we added the HTTP client metrics. With the fix (right), the work in flight is bound: the pool stays fully leased with about 5,000 pending requests, and the throughput is steady.
+Before the fix (left), the starter accumulated a backlog of up to 80,000 requests it could not process in time, and throughput broke down. Most requests failed without any HTTP response, which the metrics report as status `599`. We could only see this after we added the HTTP client metrics. With the fix (right), the work in flight is bound: the pool stays fully leased with about 5,000 pending requests, and the throughput is steady.
 
 The key takeaways:
 
-- **Bound the work in flight.** In an open workload model, a limit on concurrent requests keeps a slow system from turning into an out of memory failure of the load generator, and the skipped ticks show up as lower throughput instead of a crash.
-- **Make failures loud.** A periodic task that swallows an `Error`, and a JVM that continues after an `OutOfMemoryError`, produce a process that looks healthy and does nothing. Catch `Throwable` in scheduled tasks and exit on out of memory.
+- **Bound the work in flight.** In an open workload model, a limit on concurrent requests keeps a slow system from turning into an out-of-memory failure of the load generator, and the skipped ticks show up as lower throughput instead of a crash.
+- **Make failures loud.** A periodic task that swallows an `Error`, and a JVM that continues after an `OutOfMemoryError`, produces a process that looks healthy and does nothing. Catch `Throwable` in scheduled tasks and exit on out-of-memory.
 - **Observability pays off.** We could only tell the pool was the limit after we had the HTTP client metrics. The Java client should expose them out of the box.
-- **Check the load generator before blaming the system.** The CPU throttling of the starter was the first clue, and it took the client metrics, a profile and a heap dump to turn it into an explanation.
+- **Check the load generator before blaming the system.** The CPU throttling of the starter was the first clue, and it took the client metrics, a profile, and a heap dump to explain it.
 
 ## Found Bugs and Follow-ups
 
@@ -250,4 +250,4 @@ The key takeaways:
 - [camunda/camunda#34597](https://github.com/camunda/camunda/issues/34597): the Java client can fail with a `StackOverflowError` in its failure handling.
 - [camunda/camunda#62661](https://github.com/camunda/camunda/issues/62661): real liveness and readiness indicators for the load tester, which would have flagged the zombie starter.
 - [camunda/camunda#64584](https://github.com/camunda/camunda/issues/64584): the starter should limit its in-flight requests. The proof of concept with the semaphore is [camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477), which also contains the HTTP client metrics.
-- [camunda/camunda#64585](https://github.com/camunda/camunda/issues/64585): the load tester should fail loudly, by catching `Throwable` in scheduled tasks, exiting on out of memory and writing heap dumps to an `emptyDir` volume.
+- [camunda/camunda#64585](https://github.com/camunda/camunda/issues/64585): the load tester should fail loudly, by catching `Throwable` in scheduled tasks, exiting on out of memory, and writing heap dumps to an `emptyDir` volume.
