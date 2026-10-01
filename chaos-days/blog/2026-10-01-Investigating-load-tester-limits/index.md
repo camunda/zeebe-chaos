@@ -29,6 +29,8 @@ We had already seen that the starter, the application that creates process insta
 - Limiting the number of in-flight requests keeps the starter stable under the configured load, in an open workload model: when the system cannot keep up, the starter skips sends instead of queueing them. With this prototype we reach about 380 PI/s of the 500 PI/s configured, which is now limited by Camunda's CPU.
 - We also added HTTP client metrics ([camunda/camunda#64477](https://github.com/camunda/camunda/pull/64477)) that made the backlog visible. The investigation produced eight new issues and five draft fixes for the load tester, the Java client and the load test configuration, listed at the end.
 
+![Gateway throughput before and after the fix: about 90 PI/s after the collapse, then a steady 374 PI/s](tldr.png)
+
 <!--truncate-->
 
 ## Chaos Experiment
@@ -224,6 +226,10 @@ The starter is no longer throttled, and the bottleneck has moved to where it bel
 ## Conclusion
 
 The REST load test was limited by the starter, not by Camunda. The starter's connection pool of 100 connections completes only as many requests per second as the pool size divided by the request duration, and the duration grew while the starter was overloaded. Once the configured rate exceeded that, the open-model starter queued requests without any bound and filled its heap. It then spent almost all CPU on garbage collection, which slowed it down and led to the throttling we first saw. Giving it more CPU made it worse, because the JVM switched to the G1 collector and the starter no longer slowed itself down. It kept queueing until it ran out of memory, and the `OutOfMemoryError` silently ended its scheduler. We expected less CPU to hurt, but more CPU hurt more.
+
+![Client requests and pool usage before and after the fix: before, 56 req/s succeed and 377 req/s fail without a response (status 599); after, a steady 365 req/s without failures](conclusion.png)
+
+Before the fix (left), the starter accumulated a backlog of up to about 80,000 requests that it could not process in time, and the throughput broke down. Most requests failed without any HTTP response, which the metrics report as status `599`. We could only see this after we added the HTTP client metrics. With the fix (right), the work in flight is bound: the pool stays fully leased with about 5,000 pending requests, and the throughput is steady.
 
 The key takeaways:
 
