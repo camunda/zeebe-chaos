@@ -6,8 +6,10 @@ categories:
   - chaos_experiment 
   - bpmn
 tags:
-  - availability
-authors: zell
+  - performance
+authors: 
+  - jon
+  - zell
 ---
 
 
