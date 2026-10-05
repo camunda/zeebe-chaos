@@ -61,8 +61,23 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 			return forceFailover(flags)
 		},
 	}
+	rebalanceCommand := &cobra.Command{
+		Use:   "rebalance",
+		Short: "Rebalances partition leadership and waits for it to complete",
+		Long: `Requests a cluster-wide leadership rebalance via the cluster-admin API and waits until every
+partition in the plan has been transferred or was already led by the desired broker.
+
+If a rebalance or a cluster configuration change is already in progress, or no coordinator is
+reachable, the command retries until it can start or the timeout is reached.
+
+Requires client credentials the target cluster accepts as cluster-admin.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return rebalanceCluster(cmd.Context(), flags)
+		},
+	}
 
 	rootCmd.AddCommand(clusterCommand)
+	clusterCommand.AddCommand(rebalanceCommand)
 	clusterCommand.AddCommand(statusCommand)
 	clusterCommand.AddCommand(waitCommand)
 	clusterCommand.AddCommand(forceFailoverCommand)

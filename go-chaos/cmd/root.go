@@ -95,6 +95,15 @@ type Flags struct {
 	clientSecret string
 }
 
+func (f Flags) String() string {
+	redacted := f
+	if redacted.clientSecret != "" {
+		redacted.clientSecret = "<redacted>"
+	}
+	type flags Flags
+	return fmt.Sprintf("%v", flags(redacted))
+}
+
 var (
 	Version        = "development"
 	Commit         = "HEAD"
