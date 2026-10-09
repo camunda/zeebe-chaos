@@ -22,8 +22,8 @@ Under stress, the data availability reported by our load tester ("how long after
 - The REST search endpoint is not slower than with gRPC. The server answers `/v2/process-instances/search` in about 70 ms in both setups, and k6 shows similar latencies for both protocols once we fixed our k6 dashboard.
 - The starter (the load tester application that creates process instances) used one Camunda client for creating instances at 300 PI/s *and* for the availability check. With REST, the connection pool of that client was fully leased (100 connections) with about 2,900 requests waiting, so the availability search waited in the same queue. The starter measured about 15 seconds for a query that took the server 70 ms.
 - The availability check starts the next check only after the previous one completed, and returns at most 2,500 instances per check. With a 15 second cycle, it confirms at most about 167 instances per second. The rest is dropped after 90 seconds and recorded with the same metric as a real latency, so timeouts look like slow data availability.
-- A second Camunda client only for the read requests brings the search time seen by the starter from about 15 seconds to below 500 ms ([camunda/camunda#65355](https://github.com/camunda/camunda/pull/65355)).
-- The data availability itself did not improve: instances still take one to two minutes to show up with REST. So there is more going on, which we have not found yet.
+- A second Camunda client only for the read requests brings the search time seen by the starter from about 15 seconds to about 0.1 seconds ([camunda/camunda#65355](https://github.com/camunda/camunda/pull/65355), merged). The mean data availability of the REST test drops from about 97 seconds to about 30 to 65 seconds, in the same range as gRPC (about 45 seconds).
+- The remaining delay of about 45 seconds exists for both protocols. It is a queuing effect of the stress load: with more load, the exporter backlog grows, and data becomes searchable later.
 
 <!--truncate-->
 
@@ -128,11 +128,15 @@ We tried several things to confirm and fix it, with these results:
 2. A bigger connection pool (500 instead of 100), more threads for the data availability meter (5 instead of 1), and ten times the CPU for the starter (2500m instead of 250m): no visible change.
 3. A **second Camunda client only for the read requests**: the search time seen by the starter dropped from about 15 seconds to below 500 ms. The server execution time did not change, only the time until the starter code got its response.
 
-The second client separates the "loader" from the "reader" in the starter ([camunda/camunda#65355](https://github.com/camunda/camunda/pull/65355)), which also makes the application easier to reason about.
+The second client separates the "loader" from the "reader" in the starter ([camunda/camunda#65355](https://github.com/camunda/camunda/pull/65355), merged), which also makes the application easier to reason about.
 
-#### What is still open
+#### With the separate client
 
-The data availability metric did not change much with the second client. Instances still take one to two minutes between their creation and the moment the starter finds them, and gRPC shows about 45 seconds. With a query that takes below 500 ms, the 2,500 instances per check are no longer the limit, so this looks like a real delay in the data, not a measurement effect. We have not found its cause yet.
+After the change was deployed to the REST test on 4 CPU nodes, the starter measures about 0.12 to 0.15 seconds for the availability query (before: 14.7 seconds). The mean data availability is now about 30 to 65 seconds (before: 97 seconds), which is in the range of gRPC (42 to 45 seconds). The REST protocol is not the reason for a higher data availability.
+
+#### The remaining 45 seconds
+
+Under stress, process instances still take about 45 seconds until they can be found with the search API, for REST and for gRPC. The query is fast now, so this is not a measurement effect of the client. It is a queuing effect: under the higher load, the exporter backlog is bigger, and the data reaches the secondary storage later. The exporter backlog was the same for REST and gRPC in the stress tests, which matches the same data availability for both.
 
 ## Conclusion
 
@@ -149,4 +153,3 @@ What we learned:
 - Use a separate Camunda client for the availability queries in the starter: [camunda/camunda#65355](https://github.com/camunda/camunda/pull/65355).
 - Count timed-out instances in their own metric (not in the latency histogram), and count checks whose result page was full.
 - Searching with a filter on thousands of process instance keys is about five times slower than without a filter (about 2 s vs 400 ms). To be checked whether this is expected.
-- Find out why instances take one to two minutes to become available for the search under stress, with both REST and gRPC.
