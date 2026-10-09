@@ -48,6 +48,26 @@ func awaitWithTimeout(client *rebalanceClient, rebalanceID int64, timeout time.D
 	return client.awaitRebalance(ctx, rebalanceID)
 }
 
+type rebalanceAPI struct {
+	posts int
+	gets  int
+}
+
+func (a *rebalanceAPI) serve(getBody string) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case http.MethodPost:
+			a.posts++
+			writer.WriteHeader(http.StatusAccepted)
+			_, _ = writer.Write([]byte(`{"runningRebalance":{"rebalanceId":7}}`))
+		case http.MethodGet:
+			a.gets++
+			_, _ = writer.Write([]byte(getBody))
+		}
+	}
+}
+
 func Test_RebalanceClientRequiresCredentials(t *testing.T) {
 	// when
 	client, err := newRebalanceClient(context.Background(), "http://localhost:8080", nil)
@@ -183,9 +203,9 @@ func Test_RebalanceOutcome(t *testing.T) {
 		{PartitionID: 1, PhysicalTenantID: "default", Progress: "COMPLETED", Result: "TRANSFERRED"},
 		{PartitionID: 2, PhysicalTenantID: "default", Progress: "COMPLETED", Result: "ALREADY_LEADER"},
 	}
-	partitionNotRebalanced := []rebalancePartitionOperation{
+	partitionSkipped := []rebalancePartitionOperation{
 		{PartitionID: 1, PhysicalTenantID: "default", Progress: "COMPLETED", Result: "TRANSFERRED"},
-		{PartitionID: 2, PhysicalTenantID: "default", Progress: "COMPLETED", Result: "PHYSICAL_TENANT_DISABLED"},
+		{PartitionID: 2, PhysicalTenantID: "default", Progress: "COMPLETED", Result: "LAG_TOO_HIGH"},
 	}
 
 	tests := map[string]struct {
@@ -196,15 +216,18 @@ func Test_RebalanceOutcome(t *testing.T) {
 		"every partition transferred or already leader succeeds": {
 			completed: &completedRebalance{RebalanceID: 7, Result: rebalanceResultCompleted, Partitions: transferred},
 		},
-		"a partition with another result fails": {
-			completed:     &completedRebalance{RebalanceID: 7, Result: rebalanceResultCompleted, Partitions: partitionNotRebalanced},
-			wantErr:       "rebalance 7 finished as COMPLETED but partition 2 of default was not rebalanced",
-			wantPartition: "partition 2 of default: progress COMPLETED, result PHYSICAL_TENANT_DISABLED",
+		"a skipped partition still succeeds": {
+			completed: &completedRebalance{RebalanceID: 7, Result: rebalanceResultCompleted, Partitions: partitionSkipped},
 		},
-		"a non-completed aggregate result fails": {
+		"a failed rebalance fails": {
 			completed:     &completedRebalance{RebalanceID: 7, Result: "FAILED", Partitions: transferred},
 			wantErr:       "rebalance 7 finished as FAILED",
 			wantPartition: "partition 1 of default: progress COMPLETED, result TRANSFERRED",
+		},
+		"a cancelled rebalance fails": {
+			completed:     &completedRebalance{RebalanceID: 7, Result: "CANCELLED", Partitions: partitionSkipped},
+			wantErr:       "rebalance 7 finished as CANCELLED",
+			wantPartition: "partition 2 of default: progress COMPLETED, result LAG_TOO_HIGH",
 		},
 	}
 
@@ -223,4 +246,106 @@ func Test_RebalanceOutcome(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.wantPartition)
 		})
 	}
+}
+
+func Test_RebalanceNoWaitReturnsOnceAccepted(t *testing.T) {
+	// given
+	api := &rebalanceAPI{}
+	server := httptest.NewServer(api.serve(`{"runningRebalance":{"rebalanceId":7}}`))
+	defer server.Close()
+	client := newTestClient(server)
+
+	// when
+	err := client.rebalance(context.Background(), true)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 1, api.posts)
+	assert.Equal(t, 0, api.gets)
+}
+
+func Test_RebalanceWaitSucceedsWhenCompletedWithSkippedPartition(t *testing.T) {
+	// given
+	api := &rebalanceAPI{}
+	server := httptest.NewServer(api.serve(`{"lastCompletedRebalance":{"rebalanceId":7,"result":"COMPLETED","partitions":[
+		{"partitionId":1,"physicalTenantId":"default","progress":"COMPLETED","result":"TRANSFERRED"},
+		{"partitionId":2,"physicalTenantId":"default","progress":"COMPLETED","result":"NO_LEADER"}]}}`))
+	defer server.Close()
+	client := newTestClient(server)
+
+	// when
+	err := client.rebalance(context.Background(), false)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 1, api.posts)
+	assert.Equal(t, 1, api.gets)
+}
+
+func Test_RebalanceWaitFailsWhenRebalanceFailed(t *testing.T) {
+	// given
+	api := &rebalanceAPI{}
+	server := httptest.NewServer(api.serve(`{"lastCompletedRebalance":{"rebalanceId":7,"result":"FAILED","partitions":[
+		{"partitionId":1,"physicalTenantId":"default","progress":"COMPLETED","result":"UNREACHABLE"}]}}`))
+	defer server.Close()
+	client := newTestClient(server)
+
+	// when
+	err := client.rebalance(context.Background(), false)
+
+	// then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rebalance 7 finished as FAILED")
+	assert.Contains(t, err.Error(), "partition 1 of default: progress COMPLETED, result UNREACHABLE")
+}
+
+func Test_AwaitBalancedSucceedsOnceBalanced(t *testing.T) {
+	// given
+	var gets int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gets++
+		state := "BALANCING"
+		if gets > 2 {
+			state = "BALANCED"
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"state":"` + state + `"}`))
+	}))
+	defer server.Close()
+	client := newTestClient(server)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	// when
+	err := client.awaitBalanced(ctx)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 3, gets)
+}
+
+func Test_AwaitBalancedFailsWithSummaryOnTimeout(t *testing.T) {
+	// given
+	server := httptest.NewServer(balanceBody(`{"state":"UNBALANCED",
+		"partitions":[
+			{"partitionId":1,"physicalTenantId":"default","currentLeader":"1","desiredLeader":"0","state":"UNBALANCED"},
+			{"partitionId":2,"physicalTenantId":"default","currentLeader":null,"desiredLeader":"1","state":"UNBALANCED"}],
+		"lastCompletedRebalance":{"rebalanceId":7,"result":"CANCELLED","partitions":[
+			{"partitionId":1,"physicalTenantId":"default","progress":"PENDING"}]}}`))
+	defer server.Close()
+	client := newTestClient(server)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// when
+	err := client.awaitBalanced(ctx)
+
+	// then
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "cluster did not become BALANCED")
+	assert.Contains(t, err.Error(), "last observed state UNBALANCED")
+	assert.Contains(t, err.Error(), "partition 1 of default: state UNBALANCED, leader 1, desired leader 0")
+	assert.Contains(t, err.Error(), "partition 2 of default: state UNBALANCED, leader none, desired leader 1")
+	assert.Contains(t, err.Error(), "last completed rebalance: rebalance 7 finished as CANCELLED (partition 1 of default: progress PENDING, result none)")
 }

@@ -84,6 +84,7 @@ type Flags struct {
 	regions           int32
 	replicationFactor int32
 	partitionCount    int32
+	noWait            bool
 
 	// dataloss
 	awaitReadiness bool

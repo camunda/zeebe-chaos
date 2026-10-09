@@ -63,12 +63,18 @@ func AddClusterCommands(rootCmd *cobra.Command, flags *Flags) {
 	}
 	rebalanceCommand := &cobra.Command{
 		Use:   "rebalance",
-		Short: "Rebalances partition leadership and waits for it to complete",
-		Long: `Requests a cluster-wide leadership rebalance via the cluster-admin API and waits until every
-partition in the plan has been transferred or was already led by the desired broker.
+		Short: "Rebalances partition leadership, by default waiting for it to complete",
+		Long: `Requests a cluster-wide leadership rebalance via the cluster-admin API.
 
-If a rebalance or a cluster configuration change is already in progress, or no coordinator is
-reachable, the command retries until it can start or the timeout is reached.
+By default the command waits for the requested rebalance to finish and logs the result of every
+partition in the plan. It succeeds when the rebalance finishes as COMPLETED, regardless of the
+individual partition results, and fails when it finishes as CANCELLED or FAILED.
+
+With --no-wait the command exits as soon as the rebalance has been accepted and logs its id. Use
+'verify balance' to check the resulting cluster balance.
+
+In both modes, if a rebalance or a cluster configuration change is already in progress, or no
+coordinator is reachable, the command retries until it can start or the timeout is reached.
 
 Requires client credentials the target cluster accepts as cluster-admin.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -78,6 +84,7 @@ Requires client credentials the target cluster accepts as cluster-admin.`,
 
 	rootCmd.AddCommand(clusterCommand)
 	clusterCommand.AddCommand(rebalanceCommand)
+	rebalanceCommand.Flags().BoolVar(&flags.noWait, "no-wait", false, "Specify whether to exit once the rebalance has been accepted, instead of waiting for it to complete")
 	clusterCommand.AddCommand(statusCommand)
 	clusterCommand.AddCommand(waitCommand)
 	clusterCommand.AddCommand(forceFailoverCommand)
