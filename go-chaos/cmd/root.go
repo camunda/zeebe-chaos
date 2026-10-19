@@ -52,6 +52,9 @@ type Flags struct {
 	// backup
 	backupId string
 
+	// recovery
+	mode string
+
 	// disconnect
 	oneDirection    bool
 	disconnectToAll bool
@@ -134,6 +137,7 @@ func NewCmd() *cobra.Command {
 	rootCmd.MarkFlagsRequiredTogether("audience", "authServer", "clientId", "clientSecret")
 
 	AddBackupCommand(rootCmd, &flags)
+	AddRecoveryCommands(rootCmd, &flags)
 	AddBrokersCommand(rootCmd, &flags)
 	AddConnectCmd(rootCmd, &flags)
 	AddDatalossSimulationCmd(rootCmd, &flags)
