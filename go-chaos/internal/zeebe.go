@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal/poll"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/pb"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 	"google.golang.org/grpc"
@@ -356,60 +357,50 @@ func CreateJobCompleter(zbClient zbc.Client, options JobCompleteOptions) (ZCComm
 type ZCCommandSender func() (int64, error)
 
 func CreateProcessInstanceOnPartition(piCreator ProcessInstanceCreator, requiredPartition int32, timeout time.Duration) error {
-	timeoutChan := time.After(timeout)
-	tickerChan := time.Tick(100 * time.Millisecond)
+	p := poll.New(timeout, 100*time.Millisecond)
 
 	partitionId := int32(0)
-	for {
-		select {
-		case <-timeoutChan:
-			return errors.New(fmt.Sprintf("Expected to create process instance on partition %d, but timed out after %s.", requiredPartition, timeout.String()))
-		case <-tickerChan:
-			processInstanceKey, err := piCreator()
-			if err != nil {
-				// we do not return here, since we want to retry until the timeout
-				LogInfo("Encountered an error during process instance creation. Error: %s", err.Error())
-				break
-			}
-			partitionId = ExtractPartitionIdFromKey(processInstanceKey)
+	for range p.Attempts() {
+		processInstanceKey, err := piCreator()
+		if err != nil {
+			// we do not return here, since we want to retry until the timeout
+			LogInfo("Encountered an error during process instance creation. Error: %s", err.Error())
+			continue
+		}
+		partitionId = ExtractPartitionIdFromKey(processInstanceKey)
 
-			LogVerbose("Created process instance with key %d on partition %d, required partition %d.", processInstanceKey, partitionId, requiredPartition)
+		LogVerbose("Created process instance with key %d on partition %d, required partition %d.", processInstanceKey, partitionId, requiredPartition)
 
-			if partitionId == requiredPartition {
-				return nil
-			} else if requiredPartition == 0 {
-				return nil
-			}
+		if partitionId == requiredPartition {
+			return nil
+		} else if requiredPartition == 0 {
+			return nil
 		}
 	}
+	return errors.New(fmt.Sprintf("Expected to create process instance on partition %d, but timed out after %s.", requiredPartition, timeout.String()))
 }
 
 func SendCountOfCommands(commandSender ZCCommandSender, countOfInstances int32, timeout time.Duration) error {
-	timeoutChan := time.After(timeout)
-	tickerChan := time.Tick(100 * time.Millisecond)
+	p := poll.New(timeout, 100*time.Millisecond)
 
 	count := int32(0)
 	partitionId := int32(0)
-	for {
-		select {
-		case <-timeoutChan:
-			return errors.New(fmt.Sprintf("Expected to send %d commands, but timed out after %s whereas %d commands have been sent.", countOfInstances, timeout.String(), count))
-		case <-tickerChan:
-			key, err := commandSender()
-			if err != nil {
-				// we do not return here, since we want to retry until the timeout
-				LogInfo("Encountered an error during command sending. Error: %s", err.Error())
-				break
-			}
-			count++
-			partitionId = ExtractPartitionIdFromKey(key)
-			LogVerbose("[%d/%d] Successful command sent, got response with key %d on partition %d.", count, countOfInstances, key, partitionId)
+	for range p.Attempts() {
+		key, err := commandSender()
+		if err != nil {
+			// we do not return here, since we want to retry until the timeout
+			LogInfo("Encountered an error during command sending. Error: %s", err.Error())
+			continue
+		}
+		count++
+		partitionId = ExtractPartitionIdFromKey(key)
+		LogVerbose("[%d/%d] Successful command sent, got response with key %d on partition %d.", count, countOfInstances, key, partitionId)
 
-			if count >= countOfInstances {
-				return nil
-			}
+		if count >= countOfInstances {
+			return nil
 		}
 	}
+	return errors.New(fmt.Sprintf("Expected to send %d commands, but timed out after %s whereas %d commands have been sent.", countOfInstances, timeout.String(), count))
 }
 
 func ExtractPartitionIdFromKey(key int64) int32 {

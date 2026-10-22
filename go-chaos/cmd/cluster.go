@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal/poll"
 	"github.com/spf13/cobra"
 )
 
@@ -312,9 +313,9 @@ func waitForChange(port int, changeId int64, timeout time.Duration) error {
 // A failing query (e.g. the gateway pod we are port-forwarded to is briefly unavailable) is retried
 // after the same interval as a successful one and does not shorten the time budget.
 func waitForChangeWith(queryTopology func() (*CurrentTopology, error), changeId int64, timeout time.Duration, interval time.Duration) error {
-	deadline := time.Now().Add(timeout)
+	p := poll.New(timeout, interval)
 	var lastQueryErr error
-	for i := 1; ; i++ {
+	for i := range p.Attempts() {
 		topology, err := queryTopology()
 		if err != nil {
 			lastQueryErr = err
@@ -352,11 +353,7 @@ func waitForChangeWith(queryTopology func() (*CurrentTopology, error), changeId 
 			}
 		}
 
-		if !time.Now().Add(interval).Before(deadline) {
-			break
-		}
-		internal.LogVerbose("Waiting %s before checking again. Iteration %d", interval, i)
-		time.Sleep(interval)
+		internal.LogVerbose("Waiting %s before checking again. Iteration %d", interval, i+1)
 	}
 
 	if lastQueryErr != nil {
@@ -402,11 +399,10 @@ func forceFailover(flags *Flags) error {
 	defer closePortForward()
 
 	timeout := time.Minute * 5
-	interval := time.Second * 5
-	deadline := time.Now().Add(timeout)
+	p := poll.New(timeout, time.Second*5)
 	var lastQueryErr error
 
-	for time.Now().Before(deadline) {
+	for range p.Attempts() {
 		topology, err := QueryTopology(port)
 		if err != nil {
 			lastQueryErr = err
@@ -420,7 +416,7 @@ func forceFailover(flags *Flags) error {
 			case failoverStepWaitForPendingChange:
 				internal.LogInfo("Cluster is already changing, waiting for change %d to complete", topology.PendingChange.Id)
 				// The pending change shares the overall budget instead of getting a fresh timeout.
-				err = waitForChange(port, topology.PendingChange.Id, time.Until(deadline))
+				err = waitForChange(port, topology.PendingChange.Id, p.Remaining())
 				ensureNoError(err)
 				continue
 			case failoverStepForceRemove:
@@ -435,11 +431,6 @@ func forceFailover(flags *Flags) error {
 				internal.LogInfo("Waiting for %d brokers in topology, found %d", flags.brokers, len(topology.Brokers))
 			}
 		}
-
-		if !time.Now().Add(interval).Before(deadline) {
-			break
-		}
-		time.Sleep(interval)
 	}
 
 	if lastQueryErr != nil {

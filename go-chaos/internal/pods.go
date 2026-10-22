@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal/poll"
 	"k8s.io/utils/ptr"
 
 	v1 "k8s.io/api/core/v1"
@@ -169,33 +170,27 @@ func (c K8Client) AwaitReadiness() error {
 }
 
 func (c K8Client) AwaitReadinessWithTimeout(timeout time.Duration, tickTime time.Duration) error {
-	timedOut := time.After(timeout)
-	ticker := time.Tick(tickTime)
+	p := poll.New(timeout, tickTime)
 
-	// Keep checking until we're timed out
-	for {
-		select {
-		case <-timedOut:
-			return fmt.Errorf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout)
-		case <-ticker:
-			brokersAreRunning, err := c.checkIfBrokersAreRunning()
-			if err != nil {
-				LogVerbose("Failed to check broker status. Will retry. %v", err)
-			}
-			// gateways are not running in self-managed
-			gatewaysAreRunning := true
-			if c.SaaSEnv {
-				gatewaysAreRunning, err = c.checkIfGatewaysAreRunning()
-			}
-			if err != nil {
-				LogVerbose("Failed to check gateway status. Will retry. %v", err)
-			}
+	for range p.Attempts() {
+		brokersAreRunning, err := c.checkIfBrokersAreRunning()
+		if err != nil {
+			LogVerbose("Failed to check broker status. Will retry. %v", err)
+		}
+		// gateways are not running in self-managed
+		gatewaysAreRunning := true
+		if c.SaaSEnv {
+			gatewaysAreRunning, err = c.checkIfGatewaysAreRunning()
+		}
+		if err != nil {
+			LogVerbose("Failed to check gateway status. Will retry. %v", err)
+		}
 
-			if brokersAreRunning && gatewaysAreRunning {
-				return nil
-			}
+		if brokersAreRunning && gatewaysAreRunning {
+			return nil
 		}
 	}
+	return fmt.Errorf("Awaited readiness of pods in namespace %v, but timed out after %v", c.GetCurrentNamespace(), timeout)
 }
 
 func (c K8Client) checkIfBrokersAreRunning() (bool, error) {
@@ -234,26 +229,19 @@ func (c K8Client) checkIfGatewaysAreRunning() (bool, error) {
 }
 
 func (c K8Client) AwaitPodReadiness(podName string, timeout time.Duration) error {
-	timedOut := time.After(timeout)
-	ticker := time.Tick(1 * time.Second)
+	p := poll.New(timeout, 1*time.Second)
 
-	// Keep checking until we're timed out
-	for {
-		select {
-		case <-timedOut:
-			return fmt.Errorf("Pod %s is not ready with in given timeout %v", podName, timeout)
-		case <-ticker:
-			// check status of pod on every tick (1 second)
-			pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
-			if err != nil {
-				LogVerbose("Failed to get pod %s. Will retry", pod.Name)
-			} else if pod.Status.Phase == v1.PodRunning && pod.Status.ContainerStatuses[0].Ready { // assuming there is only one container
-				return nil
-			} else {
-				LogVerbose("Pod %s is in phase %s, but not ready. Wait for some seconds", pod.Name, pod.Status.Phase)
-			}
+	for range p.Attempts() {
+		pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
+		if err != nil {
+			LogVerbose("Failed to get pod %s. Will retry", pod.Name)
+		} else if pod.Status.Phase == v1.PodRunning && pod.Status.ContainerStatuses[0].Ready { // assuming there is only one container
+			return nil
+		} else {
+			LogVerbose("Pod %s is in phase %s, but not ready. Wait for some seconds", pod.Name, pod.Status.Phase)
 		}
 	}
+	return fmt.Errorf("Pod %s is not ready with in given timeout %v", podName, timeout)
 }
 
 func (c K8Client) RestartPod(podName string) error {

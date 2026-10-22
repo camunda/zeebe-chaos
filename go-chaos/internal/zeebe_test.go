@@ -266,7 +266,7 @@ func Test_ShouldImmediatelyTimeoutForCountCreation(t *testing.T) {
 
 	// then
 	assert.Error(t, err, "expected error")
-	assert.Contains(t, err.Error(), "Expected to send 10 commands, but timed out after 0s whereas 0 commands have been sent.")
+	assert.Contains(t, err.Error(), "Expected to send 10 commands, but timed out after 0s whereas 1 commands have been sent.")
 }
 
 func Test_ShouldRetryOnCreatingCountOfProcessInstances(t *testing.T) {

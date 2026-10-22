@@ -17,11 +17,12 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/camunda/zeebe-chaos/go-chaos/internal/poll"
 	v1 "k8s.io/api/apps/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -73,18 +74,18 @@ func (c K8Client) ScaleZeebeCluster(replicas int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	err = wait.PollImmediateUntilWithContext(
-		ctx,
-		1*time.Second,
-		func(ctx context.Context) (done bool, err error) {
-			scale, err := c.Clientset.AppsV1().StatefulSets(namespace).GetScale(ctx, sfs.Name, meta.GetOptions{})
-			if err != nil {
-				return false, err
-			}
-			LogInfo("Waiting for %d replicas, currently at %d ", replicas, scale.Status.Replicas)
-			return scale.Status.Replicas == int32(replicas), nil
-		},
-	)
+	timeout := 5 * time.Minute
+	poller := poll.New(timeout, 1*time.Second)
+	for range poller.Attempts() {
+		scale, err := statefulSets.GetScale(ctx, sfs.Name, meta.GetOptions{})
+		if err != nil {
+			return initialReplicas, err
+		}
+		LogInfo("Waiting for %d replicas, currently at %d ", replicas, scale.Status.Replicas)
+		if scale.Status.Replicas == int32(replicas) {
+			return initialReplicas, nil
+		}
+	}
 
-	return initialReplicas, err
+	return initialReplicas, fmt.Errorf("stateful set %s did not reach %d replicas within %s", sfs.Name, replicas, timeout)
 }

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"github.com/camunda/zeebe-chaos/go-chaos/internal/poll"
 	"github.com/camunda/zeebe/clients/go/v8/pkg/zbc"
 	"github.com/spf13/cobra"
 )
@@ -175,8 +176,8 @@ func (client *orchestrationRESTClient) takeBackup(backupType BackupType, backupI
 }
 
 func (client *orchestrationRESTClient) waitForBackup(backupType BackupType, backupID int64, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	p := poll.New(timeout, client.pollInterval())
+	for range p.Attempts() {
 		var backup backupStatus
 		if _, err := client.request(context.TODO(), http.MethodGet, fmt.Sprintf("/backups/%s/%d", backupType, backupID), nil, http.StatusOK, &backup); err != nil {
 			return err
@@ -188,14 +189,13 @@ func (client *orchestrationRESTClient) waitForBackup(backupType BackupType, back
 		case "FAILED", "DOES_NOT_EXIST":
 			return fmt.Errorf("%s backup %d ended in state %s: %s", backupType, backupID, backup.State, backup.FailureReason)
 		}
-		time.Sleep(client.pollInterval())
 	}
 	return fmt.Errorf("%s backup %d did not complete within %s", backupType, backupID, timeout)
 }
 
 func (client *orchestrationRESTClient) waitForRestore(changeID string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	p := poll.New(timeout, client.pollInterval())
+	for range p.Attempts() {
 		var status restoreStatus
 		statusCode, err := client.request(context.TODO(), http.MethodGet, "/restore", nil, http.StatusOK, &status)
 		if err != nil {
@@ -214,14 +214,13 @@ func (client *orchestrationRESTClient) waitForRestore(changeID string, timeout t
 		case "FAILED", "CANCELLED":
 			return fmt.Errorf("restore change %s ended in state %s", changeID, status.Status)
 		}
-		time.Sleep(client.pollInterval())
 	}
 	return fmt.Errorf("restore change %s did not complete within %s", changeID, timeout)
 }
 
 func (client *orchestrationRESTClient) waitForChange(changeID string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	p := poll.New(timeout, client.pollInterval())
+	for range p.Attempts() {
 		var topology restTopology
 		_, err := client.request(context.TODO(), http.MethodGet, "/topology", nil, http.StatusOK, &topology)
 		if err != nil {
@@ -230,7 +229,6 @@ func (client *orchestrationRESTClient) waitForChange(changeID string, timeout ti
 		if topology.LastCompletedChangeID == changeID {
 			return nil
 		}
-		time.Sleep(client.pollInterval())
 	}
 	return fmt.Errorf("cluster change %s did not complete within %s", changeID, timeout)
 }
