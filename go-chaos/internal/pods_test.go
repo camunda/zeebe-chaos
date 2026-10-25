@@ -15,6 +15,7 @@
 package internal
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -419,4 +420,72 @@ func Test_MustGatewayPortForward_ServiceSelection_NoServicePanics(t *testing.T) 
 	require.Panics(t, func() {
 		k8Client.mustResolveGatewayServiceTarget(26500)
 	}, "expected panic when no gateway service exists")
+}
+
+func Test_StartDebugContainerWithoutTargetContainer(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.CreatePodWithContainers(t, "camunda-0", "orchestration")
+
+	// when
+	name, err := k8Client.startDebugContainer("camunda-0", "", networkDebugImage, []string{"true"})
+
+	// then
+	require.NoError(t, err)
+	pod, err := k8Client.Clientset.CoreV1().Pods(k8Client.GetCurrentNamespace()).Get(context.TODO(), "camunda-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Len(t, pod.Spec.EphemeralContainers, 1)
+	assert.Equal(t, name, pod.Spec.EphemeralContainers[0].Name)
+	assert.Empty(t, pod.Spec.EphemeralContainers[0].TargetContainerName)
+}
+
+func Test_StartDebugContainerTargetsNamedContainer(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.CreatePodWithContainers(t, "camunda-0", "sidecar", "zeebe")
+
+	// when
+	_, err := k8Client.startDebugContainer("camunda-0", "zeebe", networkDebugImage, []string{"true"})
+
+	// then
+	require.NoError(t, err)
+	pod, err := k8Client.Clientset.CoreV1().Pods(k8Client.GetCurrentNamespace()).Get(context.TODO(), "camunda-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "zeebe", pod.Spec.EphemeralContainers[0].TargetContainerName)
+}
+
+func Test_AwaitDebugContainerSucceedsOnZeroExitCode(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.CreatePodWithDebugContainerExit(t, "camunda-0", "debug-abc", 0)
+
+	// when
+	err := k8Client.awaitDebugContainer("camunda-0", "debug-abc", time.Second, time.Millisecond)
+
+	// then
+	require.NoError(t, err)
+}
+
+func Test_AwaitDebugContainerFailsOnNonZeroExitCode(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.CreatePodWithDebugContainerExit(t, "camunda-0", "debug-abc", 127)
+
+	// when
+	err := k8Client.awaitDebugContainer("camunda-0", "debug-abc", time.Second, time.Millisecond)
+
+	// then
+	require.ErrorContains(t, err, "exited with code 127")
+}
+
+func Test_AwaitDebugContainerTimesOutWhileRunning(t *testing.T) {
+	// given
+	k8Client := CreateFakeClient()
+	k8Client.CreatePodWithContainers(t, "camunda-0", "zeebe")
+
+	// when
+	err := k8Client.awaitDebugContainer("camunda-0", "debug-abc", 50*time.Millisecond, time.Millisecond)
+
+	// then
+	require.ErrorContains(t, err, "did not finish")
 }
