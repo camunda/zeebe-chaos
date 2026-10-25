@@ -417,9 +417,22 @@ func (c K8Client) createPortForwardUrlForPod(podName string) *url.URL {
 }
 
 func (c K8Client) ExecuteCommandViaDebugContainer(podName string, containerName string, debugImage string, cmd []string) error {
-	pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
+	_, err := c.startDebugContainer(podName, containerName, debugImage, cmd)
+	return err
+}
+
+func (c K8Client) ExecuteCommandViaDebugContainerAndAwait(podName string, containerName string, debugImage string, cmd []string) error {
+	name, err := c.startDebugContainer(podName, containerName, debugImage, cmd)
 	if err != nil {
 		return err
+	}
+	return c.awaitDebugContainer(podName, name, 2*time.Minute, 1*time.Second)
+}
+
+func (c K8Client) startDebugContainer(podName string, containerName string, debugImage string, cmd []string) (string, error) {
+	pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
 	}
 	name := "debug-" + rand.String(6)
 	debugContainer := v1.EphemeralContainer{
@@ -439,10 +452,37 @@ func (c K8Client) ExecuteCommandViaDebugContainer(podName string, containerName 
 	pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, debugContainer)
 	_, err = c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).UpdateEphemeralContainers(context.TODO(), pod.Name, pod, metav1.UpdateOptions{})
 	if err != nil {
-		return err
+		return "", err
 	}
 	LogVerbose("Debug container %s is running command %v", name, cmd)
-	return nil
+	return name, nil
+}
+
+func (c K8Client) awaitDebugContainer(podName string, name string, timeout time.Duration, tickTime time.Duration) error {
+	timedOut := time.After(timeout)
+	ticker := time.Tick(tickTime)
+
+	for {
+		select {
+		case <-timedOut:
+			return fmt.Errorf("debug container %s on pod %s did not finish within %v", name, podName, timeout)
+		case <-ticker:
+			pod, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Get(context.TODO(), podName, metav1.GetOptions{})
+			if err != nil {
+				LogVerbose("Failed to get pod %s. Will retry. %v", podName, err)
+				continue
+			}
+			for _, status := range pod.Status.EphemeralContainerStatuses {
+				if status.Name != name || status.State.Terminated == nil {
+					continue
+				}
+				if exitCode := status.State.Terminated.ExitCode; exitCode != 0 {
+					return fmt.Errorf("debug container %s on pod %s exited with code %d", name, podName, exitCode)
+				}
+				return nil
+			}
+		}
+	}
 }
 
 func (c K8Client) ExecuteCmdOnPod(cmd []string, pod string) error {
