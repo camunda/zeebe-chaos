@@ -66,18 +66,48 @@ func withRebalanceClient(ctx context.Context, flags *Flags, timeout time.Duratio
 		return err
 	}
 
-	port, closePortForward := k8Client.MustGatewayPortForward(0, 8080)
-	defer closePortForward()
+	forward := &gatewayForward{k8Client: k8Client}
+	baseURL, err := forward.open()
+	if err != nil {
+		return err
+	}
+	defer forward.close()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client, err := newRebalanceClient(ctx, fmt.Sprintf("http://localhost:%d", port), makeClientCredentials(flags))
+	client, err := newRebalanceClient(ctx, baseURL, makeClientCredentials(flags))
 	if err != nil {
 		return err
 	}
+	client.switchGateway = forward.open
 
 	return run(ctx, client)
+}
+
+type gatewayForward struct {
+	k8Client     internal.K8Client
+	closeCurrent func()
+}
+
+func (f *gatewayForward) open() (baseURL string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("could not port-forward to a gateway: %v", r)
+		}
+	}()
+
+	port, closePortForward := f.k8Client.MustGatewayPortForward(0, 8080)
+	f.close()
+	f.closeCurrent = closePortForward
+	return fmt.Sprintf("http://localhost:%d", port), nil
+}
+
+func (f *gatewayForward) close() {
+	if f.closeCurrent != nil {
+		f.closeCurrent()
+		f.closeCurrent = nil
+	}
 }
 
 type rebalanceClient struct {
@@ -86,6 +116,7 @@ type rebalanceClient struct {
 	pollInterval     time.Duration
 	retryInterval    time.Duration
 	unreachableAfter time.Duration
+	switchGateway    func() (string, error)
 }
 
 func newRebalanceClient(ctx context.Context, baseURL string, credentials *internal.ClientCredentials) (*rebalanceClient, error) {
@@ -149,6 +180,9 @@ func (c *rebalanceClient) trigger(ctx context.Context) (int64, error) {
 
 		internal.LogInfo("Cannot start a rebalance (%s), retrying (attempt %d)", reason, attempt)
 		internal.LogVerbose("%s", err)
+		if hasStatus(err, http.StatusServiceUnavailable) {
+			c.useAnotherGateway()
+		}
 		select {
 		case <-ctx.Done():
 			return 0, fmt.Errorf("could not start a rebalance after %d attempts, %s: %w (%w)", attempt, reason, err, ctx.Err())
@@ -169,6 +203,7 @@ func (c *rebalanceClient) awaitRebalance(ctx context.Context, rebalanceID int64)
 				return pollErr
 			}
 			internal.LogInfo("Failed to query cluster balance: %s", err)
+			c.useAnotherGateway()
 		} else {
 			unreachableSince = time.Time{}
 
@@ -208,6 +243,7 @@ func (c *rebalanceClient) awaitBalanced(ctx context.Context) error {
 				return pollErr
 			}
 			internal.LogInfo("Failed to query cluster balance: %s", err)
+			c.useAnotherGateway()
 		} else {
 			unreachableSince = time.Time{}
 
@@ -247,6 +283,18 @@ func (c *rebalanceClient) checkPollError(err error, unreachableSince *time.Time,
 		return fmt.Errorf("%s can no longer be polled, %s: %w", subject, describeUnreachable(c.baseURL, unreachable), err)
 	}
 	return nil
+}
+
+func (c *rebalanceClient) useAnotherGateway() {
+	if c.switchGateway == nil {
+		return
+	}
+	baseURL, err := c.switchGateway()
+	if err != nil {
+		internal.LogInfo("Failed to switch to another gateway: %s", err)
+		return
+	}
+	c.baseURL = strings.TrimSuffix(baseURL, "/")
 }
 
 func (c *rebalanceClient) postRebalance(ctx context.Context) (*clusterBalance, error) {
@@ -338,6 +386,11 @@ func retryableTriggerError(err error) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func hasStatus(err error, statusCode int) bool {
+	var statusErr *rebalanceHTTPError
+	return errors.As(err, &statusErr) && statusErr.StatusCode == statusCode
 }
 
 func ambiguousTriggerError(err error) bool {

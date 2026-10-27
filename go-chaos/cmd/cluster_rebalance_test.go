@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,6 +101,103 @@ func Test_TriggerRetriesUnavailableCoordinatorThenSucceeds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(7), rebalanceID)
 	assert.Equal(t, 3, attempts)
+}
+
+func Test_TriggerSwitchesGatewayWhenCoordinatorIsUnavailable(t *testing.T) {
+	// given
+	isolated := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer isolated.Close()
+	api := &rebalanceAPI{}
+	healthy := httptest.NewServer(api.serve(`{}`))
+	defer healthy.Close()
+	client := newTestClient(isolated)
+	var switches int
+	client.switchGateway = func() (string, error) {
+		switches++
+		return healthy.URL, nil
+	}
+
+	// when
+	rebalanceID, err := client.trigger(context.Background())
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), rebalanceID)
+	assert.Equal(t, 1, switches)
+	assert.Equal(t, 1, api.posts)
+}
+
+func Test_TriggerKeepsGatewayWhileRebalanceIsInProgress(t *testing.T) {
+	// given
+	var attempts int
+	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		attempts++
+		if attempts < 2 {
+			writer.WriteHeader(http.StatusConflict)
+			return
+		}
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`{"runningRebalance":{"rebalanceId":7}}`))
+	}))
+	defer api.Close()
+	client := newTestClient(api)
+	client.switchGateway = func() (string, error) {
+		t.Fatal("switched gateway on a conflict")
+		return "", nil
+	}
+
+	// when
+	_, err := client.trigger(context.Background())
+
+	// then
+	require.NoError(t, err)
+}
+
+func Test_AwaitRebalanceSwitchesGatewayWhenPollingFails(t *testing.T) {
+	// given
+	unreachable := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unreachable.Close()
+	healthy := httptest.NewServer(balanceBody(`{"lastCompletedRebalance":{"rebalanceId":7,"result":"COMPLETED"}}`))
+	defer healthy.Close()
+	client := newTestClient(unreachable)
+	client.httpClient = healthy.Client()
+	client.switchGateway = func() (string, error) {
+		return healthy.URL, nil
+	}
+
+	// when
+	err := awaitWithTimeout(client, 7, time.Minute)
+
+	// then
+	require.NoError(t, err)
+}
+
+func Test_AwaitRebalanceKeepsGatewayWhenSwitchingFails(t *testing.T) {
+	// given
+	var polls int
+	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		polls++
+		if polls < 2 {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"lastCompletedRebalance":{"rebalanceId":7,"result":"COMPLETED"}}`))
+	}))
+	defer api.Close()
+	client := newTestClient(api)
+	client.switchGateway = func() (string, error) {
+		return "", errors.New("no gateway pods")
+	}
+
+	// when
+	err := awaitWithTimeout(client, 7, time.Minute)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 2, polls)
 }
 
 func Test_AwaitRebalanceIgnoresOlderCompletedRebalance(t *testing.T) {
