@@ -79,6 +79,30 @@ func (c K8Client) CreatePodWithLabelsAndName(t *testing.T, selector *metav1.Labe
 	require.NoError(t, err)
 }
 
+func (c K8Client) CreatePodWithContainers(t *testing.T, podName string, containerNames ...string) {
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName}}
+	for _, containerName := range containerNames {
+		pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{Name: containerName})
+	}
+	_, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Create(context.TODO(), pod, metav1.CreateOptions{})
+
+	require.NoError(t, err)
+}
+
+func (c K8Client) CreatePodWithDebugContainerExit(t *testing.T, podName string, debugContainerName string, exitCode int32) {
+	_, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Create(context.TODO(), &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: podName},
+		Status: v1.PodStatus{
+			EphemeralContainerStatuses: []v1.ContainerStatus{{
+				Name:  debugContainerName,
+				State: v1.ContainerState{Terminated: &v1.ContainerStateTerminated{ExitCode: exitCode}},
+			}},
+		},
+	}, metav1.CreateOptions{})
+
+	require.NoError(t, err)
+}
+
 func (c K8Client) CreateBrokerPodsWithStatus(t *testing.T, selector *metav1.LabelSelector, podName string, podPhase v1.PodPhase, readyStatus bool) {
 	_, err := c.Clientset.CoreV1().Pods(c.GetCurrentNamespace()).Create(context.TODO(), &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Labels: selector.MatchLabels, Name: podName},

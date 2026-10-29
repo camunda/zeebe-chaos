@@ -44,15 +44,16 @@ func ConnectBrokers(kubeConfigPath string, namespace string) error {
 		return errors.New(errorMsg)
 	}
 
+	var errs []error
 	for _, pod := range podNames {
 		err = internal.MakeIpReachableForPod(k8Client, pod)
 		if err != nil {
-			internal.LogVerbose("Error on connection Broker: %s. Error: %s", pod, err.Error())
+			errs = append(errs, fmt.Errorf("failed to connect broker %s: %w", pod, err))
 		} else {
 			internal.LogInfo("Connected %s again, removed unreachable routes.", pod)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func ConnectGateway(kubeConfigPath string, namespace string) error {
@@ -64,30 +65,16 @@ func ConnectGateway(kubeConfigPath string, namespace string) error {
 	// No patch is need, since we expect that disconnect was executed before.
 	// If not all fine and the pods are already connected.
 
-	// We run connect on all nodes
-	brokerPods, err := k8Client.GetBrokerPods()
-	if err != nil {
-		return err
-	}
-
-	if len(brokerPods.Items) <= 0 {
-		errorMsg := fmt.Sprintf("Expected to find broker(s) in current namespace %s, but found nothing", k8Client.GetCurrentNamespace())
-		return errors.New(errorMsg)
-	}
-
 	gatewayPod, err := getGatewayPod(k8Client)
 	if err != nil {
 		return err
 	}
 
-	for _, brokerPod := range brokerPods.Items {
-		err = internal.MakeIpReachable(k8Client, gatewayPod.Name, brokerPod.Status.PodIP)
-		if err != nil {
-			internal.LogVerbose("Error on connection gateway: %s. Error: %s", gatewayPod.Name, err.Error())
-		} else {
-			internal.LogInfo("Connected %s again with %s, removed unreachable routes.", gatewayPod.Name, brokerPod.Name)
-		}
+	err = internal.MakeIpReachableForPod(k8Client, gatewayPod.Name)
+	if err != nil {
+		return fmt.Errorf("failed to connect gateway %s: %w", gatewayPod.Name, err)
 	}
+	internal.LogInfo("Connected %s again, removed unreachable routes.", gatewayPod.Name)
 	return nil
 }
 
