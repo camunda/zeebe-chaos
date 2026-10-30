@@ -1,0 +1,168 @@
+{
+    "version": "0.1.0",
+    "title": "Zeebe rebalance coordinator terminate experiment",
+    "description": "Zeebe should recover from losing the rebalance coordinator during a rebalance. The coordinator is cut off from the leader of partition one so the rebalance is still in progress when it is terminated. We expect that after the coordinator is terminated non-gracefully a retried rebalance completes and the cluster becomes balanced.",
+    "contributions": {
+        "reliability": "high",
+        "availability": "high"
+    },
+    "steady-state-hypothesis": {
+        "title": "Zeebe is alive",
+        "probes": [
+            {
+                "name": "All pods should be ready",
+                "type": "probe",
+                "tolerance": 0,
+                "provider": {
+                    "type": "process",
+                    "path": "zbchaos",
+                    "arguments": ["verify", "readiness"],
+                    "timeout": 900
+                }
+            },
+            {
+                "name": "Can deploy process model",
+                "type": "probe",
+                "tolerance": 0,
+                "provider": {
+                    "type": "process",
+                    "path": "zbchaos",
+                    "arguments": ["deploy", "process"],
+                    "timeout": 900
+                }
+            },
+            {
+                "name": "Should be able to create process instances on partition two",
+                "type": "probe",
+                "tolerance": 0,
+                "provider": {
+                    "type": "process",
+                    "path": "zbchaos",
+                    "arguments": ["verify", "instance-creation", "--partitionId", "2"],
+                    "timeout": 900
+                }
+            }
+        ]
+    },
+    "method": [
+        {
+            "type": "action",
+            "name": "Rebalance the cluster, so the leader of partition one is on its preferred broker",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["cluster", "rebalance"],
+                "timeout": 960
+            }
+        },
+        {
+            "type": "action",
+            "name": "Restart the leader of partition one, so leadership moves off its preferred broker",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["restart", "broker", "--role", "LEADER", "--partitionId", "1"]
+            },
+            "pauses": {
+                "after": 45
+            }
+        },
+        {
+            "name": "All pods should be ready",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["verify", "readiness"],
+                "timeout": 900
+            }
+        },
+        {
+            "type": "action",
+            "name": "Disconnect the rebalance coordinator from the leader of partition one, so the transfer is held open",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["disconnect", "brokers", "--broker1NodeId", "0", "--broker2PartitionId", "1", "--broker2Role", "LEADER"]
+            },
+            "pauses": {
+                "after": 10
+            }
+        },
+        {
+            "type": "action",
+            "name": "Request a rebalance without waiting for it to complete",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["cluster", "rebalance", "--no-wait"],
+                "timeout": 960
+            }
+        },
+        {
+            "type": "action",
+            "name": "Terminate the rebalance coordinator non-gracefully",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["terminate", "broker", "--nodeId", "0"]
+            },
+            "pauses": {
+                "after": 15
+            }
+        },
+        {
+            "type": "action",
+            "name": "Reconnect all brokers",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["connect", "brokers"]
+            }
+        },
+        {
+            "name": "All pods should be ready",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["verify", "readiness"],
+                "timeout": 900
+            }
+        },
+        {
+            "type": "action",
+            "name": "Retry the rebalance and wait for it to complete",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["cluster", "rebalance"],
+                "timeout": 960
+            }
+        },
+        {
+            "name": "Partition leadership should be balanced",
+            "type": "probe",
+            "tolerance": 0,
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["verify", "balance", "--timeoutInSec", "300"],
+                "timeout": 900
+            }
+        }
+    ],
+    "rollbacks": [
+        {
+            "type": "action",
+            "name": "Reconnect all brokers",
+            "provider": {
+                "type": "process",
+                "path": "zbchaos",
+                "arguments": ["connect", "brokers"]
+            }
+        }
+    ]
+}
