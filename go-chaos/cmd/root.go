@@ -87,6 +87,7 @@ type Flags struct {
 	regions           int32
 	replicationFactor int32
 	partitionCount    int32
+	noWait            bool
 
 	// dataloss
 	awaitReadiness bool
@@ -96,6 +97,15 @@ type Flags struct {
 	audience     string
 	clientId     string
 	clientSecret string
+}
+
+func (f Flags) String() string {
+	redacted := f
+	if redacted.clientSecret != "" {
+		redacted.clientSecret = "<redacted>"
+	}
+	type flags Flags
+	return fmt.Sprintf("%v", flags(redacted))
 }
 
 var (

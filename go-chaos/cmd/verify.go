@@ -132,11 +132,25 @@ Process instances are created until the required partition is reached.`,
 		},
 	}
 
+	verifyBalanceCmd := &cobra.Command{
+		Use:   "balance",
+		Short: "Verify that partition leadership is balanced",
+		Long: `Polls the cluster-admin rebalance API until the cluster reports its partition leadership as
+BALANCED. On timeout, prints the last observed state, the per-partition balance and the last
+completed rebalance.
+
+Requires client credentials the target cluster accepts as cluster-admin.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return verifyBalance(cmd.Context(), flags)
+		},
+	}
+
 	rootCmd.AddCommand(verifyCmd)
 	verifyCmd.AddCommand(verifyReadinessCmd)
 	verifyCmd.AddCommand(verifyInstanceCreation)
 	verifyCmd.AddCommand(verifyInstanceCount)
 	verifyCmd.AddCommand(verifyJobCompletion)
+	verifyCmd.AddCommand(verifyBalanceCmd)
 
 	verifyInstanceCreation.Flags().IntVar(&flags.partitionId, "partitionId", 1, "Specify the id of the partition")
 	verifyInstanceCreation.Flags().StringVar(&flags.variables, "variables", "", "Specify the variables for the process instance. Expect json string.")
@@ -157,4 +171,6 @@ Process instances are created until the required partition is reached.`,
 	verifyJobCompletion.Flags().IntVar(&flags.jobCount, "jobCount", 1, "Specify the count of jobs which need be completed.")
 	verifyJobCompletion.Flags().StringVar(&flags.jobType, "jobType", "benchmark-task", "Specify the type of the job, which should be completed.")
 	verifyJobCompletion.Flags().IntVar(&flags.timeoutInSec, "timeoutInSec", 30, "Specify the timeout of the verification in seconds")
+
+	verifyBalanceCmd.Flags().IntVar(&flags.timeoutInSec, "timeoutInSec", 60, "Specify the timeout of the verification in seconds")
 }

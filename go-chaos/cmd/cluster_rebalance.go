@@ -1,0 +1,573 @@
+// Copyright 2025 Camunda Services GmbH
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package cmd
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/camunda/zeebe-chaos/go-chaos/internal"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+)
+
+const (
+	rebalancePath = "/cluster/v2/rebalance"
+
+	rebalanceTimeout          = time.Minute * 15
+	rebalanceRequestTimeout   = time.Second * 30
+	rebalancePollInterval     = time.Second
+	rebalanceRetryInterval    = time.Second * 5
+	rebalanceUnreachableAfter = time.Second * 15
+
+	maxErrorBodyBytes = 4096
+
+	rebalanceResultCompleted   = "COMPLETED"
+	rebalanceProgressCompleted = "COMPLETED"
+
+	clusterStateBalanced = "BALANCED"
+)
+
+func rebalanceCluster(ctx context.Context, flags *Flags) error {
+	return withRebalanceClient(ctx, flags, rebalanceTimeout, func(ctx context.Context, client *rebalanceClient) error {
+		return client.rebalance(ctx, flags.noWait)
+	})
+}
+
+func verifyBalance(ctx context.Context, flags *Flags) error {
+	timeout := time.Duration(flags.timeoutInSec) * time.Second
+	return withRebalanceClient(ctx, flags, timeout, func(ctx context.Context, client *rebalanceClient) error {
+		return client.awaitBalanced(ctx)
+	})
+}
+
+func withRebalanceClient(ctx context.Context, flags *Flags, timeout time.Duration, run func(context.Context, *rebalanceClient) error) error {
+	k8Client, err := createK8ClientWithFlags(flags)
+	if err != nil {
+		return err
+	}
+
+	forward := &gatewayForward{k8Client: k8Client}
+	baseURL, err := forward.open()
+	if err != nil {
+		return err
+	}
+	defer forward.close()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	client, err := newRebalanceClient(ctx, baseURL, makeClientCredentials(flags))
+	if err != nil {
+		return err
+	}
+	client.switchGateway = forward.open
+
+	return run(ctx, client)
+}
+
+type gatewayForward struct {
+	k8Client     internal.K8Client
+	closeCurrent func()
+}
+
+func (f *gatewayForward) open() (baseURL string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("could not port-forward to a gateway: %v", r)
+		}
+	}()
+
+	port, closePortForward := f.k8Client.MustGatewayPortForward(0, 8080)
+	f.close()
+	f.closeCurrent = closePortForward
+	return fmt.Sprintf("http://localhost:%d", port), nil
+}
+
+func (f *gatewayForward) close() {
+	if f.closeCurrent != nil {
+		f.closeCurrent()
+		f.closeCurrent = nil
+	}
+}
+
+type rebalanceClient struct {
+	baseURL          string
+	httpClient       *http.Client
+	pollInterval     time.Duration
+	retryInterval    time.Duration
+	unreachableAfter time.Duration
+	switchGateway    func() (string, error)
+}
+
+func newRebalanceClient(ctx context.Context, baseURL string, credentials *internal.ClientCredentials) (*rebalanceClient, error) {
+	if credentials == nil {
+		return nil, errors.New("missing credentials: pass --authServer, --audience, --clientId and --clientSecret")
+	}
+
+	config := clientcredentials.Config{
+		ClientID:       credentials.ClientId,
+		ClientSecret:   credentials.ClientSecret,
+		TokenURL:       credentials.AuthServer,
+		EndpointParams: url.Values{"audience": []string{credentials.Audience}},
+		AuthStyle:      oauth2.AuthStyleInParams,
+	}
+
+	tokenContext := context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: rebalanceRequestTimeout})
+	httpClient := config.Client(tokenContext)
+	httpClient.Timeout = rebalanceRequestTimeout
+
+	return &rebalanceClient{
+		baseURL:          strings.TrimSuffix(baseURL, "/"),
+		httpClient:       httpClient,
+		pollInterval:     rebalancePollInterval,
+		retryInterval:    rebalanceRetryInterval,
+		unreachableAfter: rebalanceUnreachableAfter,
+	}, nil
+}
+
+func (c *rebalanceClient) rebalance(ctx context.Context, noWait bool) error {
+	rebalanceID, err := c.trigger(ctx)
+	if err != nil {
+		return err
+	}
+
+	if noWait {
+		internal.LogInfo("Requested rebalance %d, not waiting for it to complete", rebalanceID)
+		return nil
+	}
+
+	internal.LogInfo("Requested rebalance %d", rebalanceID)
+	return c.awaitRebalance(ctx, rebalanceID)
+}
+
+func (c *rebalanceClient) trigger(ctx context.Context) (int64, error) {
+	for attempt := 1; ; attempt++ {
+		balance, err := c.postRebalance(ctx)
+		if err == nil {
+			if balance.RunningRebalance == nil || balance.RunningRebalance.RebalanceID == 0 {
+				return 0, errors.New("rebalance response did not contain a rebalance id")
+			}
+			return balance.RunningRebalance.RebalanceID, nil
+		}
+
+		reason, retryable := retryableTriggerError(err)
+		if !retryable {
+			if ambiguousTriggerError(err) {
+				return 0, fmt.Errorf("could not confirm whether a rebalance was started, check GET %s: %w", rebalancePath, err)
+			}
+			return 0, err
+		}
+
+		internal.LogInfo("Cannot start a rebalance (%s), retrying (attempt %d)", reason, attempt)
+		internal.LogVerbose("%s", err)
+		if hasStatus(err, http.StatusServiceUnavailable) {
+			c.useAnotherGateway()
+		}
+		select {
+		case <-ctx.Done():
+			return 0, fmt.Errorf("could not start a rebalance after %d attempts, %s: %w (%w)", attempt, reason, err, ctx.Err())
+		case <-time.After(c.retryInterval):
+		}
+	}
+}
+
+func (c *rebalanceClient) awaitRebalance(ctx context.Context, rebalanceID int64) error {
+	started := time.Now()
+	var unreachableSince time.Time
+	lastProgress := ""
+
+	for {
+		balance, err := c.getRebalance(ctx)
+		if err != nil {
+			if pollErr := c.checkPollError(err, &unreachableSince, fmt.Sprintf("rebalance %d", rebalanceID)); pollErr != nil {
+				return pollErr
+			}
+			internal.LogInfo("Failed to query cluster balance: %s", err)
+			c.useAnotherGateway()
+		} else {
+			unreachableSince = time.Time{}
+
+			completed := balance.LastCompletedRebalance
+			running := balance.RunningRebalance
+			switch {
+			case completed != nil && completed.RebalanceID == rebalanceID:
+				return rebalanceOutcome(completed)
+			case running != nil && running.RebalanceID == rebalanceID:
+				if progress := describeRebalanceProgress(running); progress != lastProgress {
+					internal.LogInfo("Rebalance %d is running with %s", rebalanceID, progress)
+					lastProgress = progress
+				}
+			default:
+				return unobservedRebalanceError(rebalanceID, running, completed)
+			}
+		}
+
+		internal.LogVerbose("Waiting %s before checking again", c.pollInterval)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("rebalance %d did not complete within %s: %w", rebalanceID, time.Since(started).Truncate(time.Second), ctx.Err())
+		case <-time.After(c.pollInterval):
+		}
+	}
+}
+
+func (c *rebalanceClient) awaitBalanced(ctx context.Context) error {
+	started := time.Now()
+	var unreachableSince time.Time
+	var lastBalance *clusterBalance
+
+	for {
+		balance, err := c.getRebalance(ctx)
+		if err != nil {
+			if pollErr := c.checkPollError(err, &unreachableSince, "cluster balance"); pollErr != nil {
+				return pollErr
+			}
+			internal.LogInfo("Failed to query cluster balance: %s", err)
+			c.useAnotherGateway()
+		} else {
+			unreachableSince = time.Time{}
+
+			if balance.State == clusterStateBalanced {
+				internal.LogInfo("Cluster is balanced: %s", describeBalancePartitions(balance.Partitions))
+				return nil
+			}
+			if lastBalance == nil || balance.State != lastBalance.State {
+				internal.LogInfo("Cluster is %s, waiting for it to become %s", balance.State, clusterStateBalanced)
+			}
+			lastBalance = balance
+		}
+
+		internal.LogVerbose("Waiting %s before checking again", c.pollInterval)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("cluster did not become %s within %s, %s: %w", clusterStateBalanced, time.Since(started).Truncate(time.Second), describeClusterBalance(lastBalance), ctx.Err())
+		case <-time.After(c.pollInterval):
+		}
+	}
+}
+
+func (c *rebalanceClient) checkPollError(err error, unreachableSince *time.Time, subject string) error {
+	var transportErr *rebalanceTransportError
+	if !errors.As(err, &transportErr) {
+		*unreachableSince = time.Time{}
+		if retryablePollError(err) {
+			return nil
+		}
+		return err
+	}
+
+	if unreachableSince.IsZero() {
+		*unreachableSince = time.Now()
+	}
+	if unreachable := time.Since(*unreachableSince); unreachable >= c.unreachableAfter {
+		return fmt.Errorf("%s can no longer be polled, %s: %w", subject, describeUnreachable(c.baseURL, unreachable), err)
+	}
+	return nil
+}
+
+func (c *rebalanceClient) useAnotherGateway() {
+	if c.switchGateway == nil {
+		return
+	}
+	baseURL, err := c.switchGateway()
+	if err != nil {
+		internal.LogInfo("Failed to switch to another gateway: %s", err)
+		return
+	}
+	c.baseURL = strings.TrimSuffix(baseURL, "/")
+}
+
+func (c *rebalanceClient) postRebalance(ctx context.Context) (*clusterBalance, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+rebalancePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, newRebalanceRequestError(http.MethodPost, err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusAccepted {
+		return nil, newRebalanceHTTPError(http.MethodPost, response)
+	}
+
+	var balance clusterBalance
+	if err := json.NewDecoder(response.Body).Decode(&balance); err != nil {
+		return nil, fmt.Errorf("failed to decode POST %s response: %w", rebalancePath, err)
+	}
+
+	return &balance, nil
+}
+
+func (c *rebalanceClient) getRebalance(ctx context.Context) (*clusterBalance, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+rebalancePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, newRebalanceRequestError(http.MethodGet, err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, newRebalanceHTTPError(http.MethodGet, response)
+	}
+
+	var balance clusterBalance
+	if err := json.NewDecoder(response.Body).Decode(&balance); err != nil {
+		return nil, fmt.Errorf("failed to decode GET %s response: %w", rebalancePath, err)
+	}
+
+	return &balance, nil
+}
+
+func rebalanceOutcome(completed *completedRebalance) error {
+	summary := describeRebalancePartitions(completed.Partitions)
+
+	if completed.Result != rebalanceResultCompleted {
+		return fmt.Errorf("rebalance %d finished as %s: %s", completed.RebalanceID, completed.Result, summary)
+	}
+
+	internal.LogInfo("Rebalance %d completed: %s", completed.RebalanceID, summary)
+	return nil
+}
+
+func describeUnreachable(baseURL string, unreachable time.Duration) string {
+	return fmt.Sprintf("%s unreachable for %s", baseURL, unreachable.Truncate(time.Millisecond))
+}
+
+func unobservedRebalanceError(rebalanceID int64, running *runningRebalance, completed *completedRebalance) error {
+	switch {
+	case completed != nil:
+		return fmt.Errorf("rebalance %d was never observed completing: rebalance %d is now the last completed rebalance", rebalanceID, completed.RebalanceID)
+	case running != nil:
+		return fmt.Errorf("rebalance %d was never observed completing: rebalance %d is now running and none is reported completed", rebalanceID, running.RebalanceID)
+	default:
+		return fmt.Errorf("rebalance %d was never observed completing: the coordinator reports no completed rebalance", rebalanceID)
+	}
+}
+
+func retryableTriggerError(err error) (string, bool) {
+	var statusErr *rebalanceHTTPError
+	if !errors.As(err, &statusErr) {
+		return "", false
+	}
+	switch statusErr.StatusCode {
+	case http.StatusServiceUnavailable:
+		return "no rebalance coordinator is available", true
+	case http.StatusConflict:
+		return "a rebalance or a cluster configuration change is already in progress", true
+	default:
+		return "", false
+	}
+}
+
+func hasStatus(err error, statusCode int) bool {
+	var statusErr *rebalanceHTTPError
+	return errors.As(err, &statusErr) && statusErr.StatusCode == statusCode
+}
+
+func ambiguousTriggerError(err error) bool {
+	var transportErr *rebalanceTransportError
+	if errors.As(err, &transportErr) {
+		return true
+	}
+
+	var statusErr *rebalanceHTTPError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	return statusErr.StatusCode == http.StatusBadGateway || statusErr.StatusCode == http.StatusGatewayTimeout
+}
+
+func retryablePollError(err error) bool {
+	var statusErr *rebalanceHTTPError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	switch statusErr.StatusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func describeRebalanceProgress(running *runningRebalance) string {
+	completed := 0
+	for _, partition := range running.Partitions {
+		if partition.Progress == rebalanceProgressCompleted {
+			completed++
+		}
+	}
+	return fmt.Sprintf("%d/%d partitions complete", completed, len(running.Partitions))
+}
+
+func identifyRebalancePartition(partition rebalancePartitionOperation) string {
+	return fmt.Sprintf("partition %d of %s", partition.PartitionID, partition.PhysicalTenantID)
+}
+
+func describeRebalancePartitions(partitions []rebalancePartitionOperation) string {
+	if len(partitions) == 0 {
+		return "no partitions were part of the rebalance plan"
+	}
+
+	descriptions := make([]string, 0, len(partitions))
+	for _, partition := range partitions {
+		result := partition.Result
+		if result == "" {
+			result = "none"
+		}
+		descriptions = append(descriptions, fmt.Sprintf("%s: progress %s, result %s", identifyRebalancePartition(partition), partition.Progress, result))
+	}
+
+	return strings.Join(descriptions, "; ")
+}
+
+func describeClusterBalance(balance *clusterBalance) string {
+	if balance == nil {
+		return "the cluster balance was never observed"
+	}
+
+	lastCompleted := "none"
+	if completed := balance.LastCompletedRebalance; completed != nil {
+		lastCompleted = fmt.Sprintf("rebalance %d finished as %s (%s)", completed.RebalanceID, completed.Result, describeRebalancePartitions(completed.Partitions))
+	}
+
+	return fmt.Sprintf("last observed state %s, partitions: %s; last completed rebalance: %s", balance.State, describeBalancePartitions(balance.Partitions), lastCompleted)
+}
+
+func describeBalancePartitions(partitions []clusterPartitionBalance) string {
+	if len(partitions) == 0 {
+		return "none reported"
+	}
+
+	descriptions := make([]string, 0, len(partitions))
+	for _, partition := range partitions {
+		currentLeader := "none"
+		if partition.CurrentLeader != nil {
+			currentLeader = *partition.CurrentLeader
+		}
+		descriptions = append(descriptions, fmt.Sprintf("partition %d of %s: state %s, leader %s, desired leader %s", partition.PartitionID, partition.PhysicalTenantID, partition.State, currentLeader, partition.DesiredLeader))
+	}
+
+	return strings.Join(descriptions, "; ")
+}
+
+func newRebalanceRequestError(method string, err error) error {
+	var retrieveErr *oauth2.RetrieveError
+	if errors.As(err, &retrieveErr) {
+		return &rebalanceAuthError{Method: method, Err: err}
+	}
+	return &rebalanceTransportError{Method: method, Err: err}
+}
+
+type rebalanceAuthError struct {
+	Method string
+	Err    error
+}
+
+func (e *rebalanceAuthError) Error() string {
+	return fmt.Sprintf("%s %s: could not obtain a cluster-admin token: %s", e.Method, rebalancePath, e.Err)
+}
+
+func (e *rebalanceAuthError) Unwrap() error {
+	return e.Err
+}
+
+type rebalanceTransportError struct {
+	Method string
+	Err    error
+}
+
+func (e *rebalanceTransportError) Error() string {
+	return fmt.Sprintf("%s %s failed: %s", e.Method, rebalancePath, e.Err)
+}
+
+func (e *rebalanceTransportError) Unwrap() error {
+	return e.Err
+}
+
+type rebalanceHTTPError struct {
+	Method     string
+	StatusCode int
+	Body       string
+}
+
+func newRebalanceHTTPError(method string, response *http.Response) *rebalanceHTTPError {
+	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
+	if len(body) > maxErrorBodyBytes {
+		body = append(body[:maxErrorBodyBytes], "…"...)
+	}
+	return &rebalanceHTTPError{Method: method, StatusCode: response.StatusCode, Body: string(body)}
+}
+
+func (e *rebalanceHTTPError) Error() string {
+	switch e.StatusCode {
+	case http.StatusUnauthorized:
+		return fmt.Sprintf("%s %s: HTTP 401, the token was not accepted: %s", e.Method, rebalancePath, e.Body)
+	case http.StatusForbidden:
+		return fmt.Sprintf("%s %s: HTTP 403, the credentials are not cluster-admin: %s", e.Method, rebalancePath, e.Body)
+	default:
+		return fmt.Sprintf("%s %s: HTTP %d: %s", e.Method, rebalancePath, e.StatusCode, e.Body)
+	}
+}
+
+type clusterBalance struct {
+	State                  string                    `json:"state"`
+	Partitions             []clusterPartitionBalance `json:"partitions"`
+	RunningRebalance       *runningRebalance         `json:"runningRebalance"`
+	LastCompletedRebalance *completedRebalance       `json:"lastCompletedRebalance"`
+}
+
+type clusterPartitionBalance struct {
+	PartitionID      int32   `json:"partitionId"`
+	PhysicalTenantID string  `json:"physicalTenantId"`
+	CurrentLeader    *string `json:"currentLeader"`
+	DesiredLeader    string  `json:"desiredLeader"`
+	State            string  `json:"state"`
+}
+
+type runningRebalance struct {
+	RebalanceID int64                         `json:"rebalanceId"`
+	Partitions  []rebalancePartitionOperation `json:"partitions"`
+}
+
+type completedRebalance struct {
+	RebalanceID int64                         `json:"rebalanceId"`
+	Partitions  []rebalancePartitionOperation `json:"partitions"`
+	Result      string                        `json:"result"`
+}
+
+type rebalancePartitionOperation struct {
+	PartitionID      int32  `json:"partitionId"`
+	PhysicalTenantID string `json:"physicalTenantId"`
+	Progress         string `json:"progress"`
+	Result           string `json:"result"`
+}
