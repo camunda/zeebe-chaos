@@ -18,38 +18,18 @@ import (
 	"strings"
 )
 
+const networkDebugImage = "alpine:3.20"
+
 func MakeIpUnreachableForPod(k8Client K8Client, podIp string, podName string) error {
 	cmd := []string{"ip", "route", "replace", "unreachable", podIp}
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + strings.Join(cmd, " ")}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+	return runIpCommand(k8Client, podName, strings.Join(cmd, " "))
 }
 
 func MakeIpReachableForPod(k8Client K8Client, podName string) error {
-	cmd := "ip route del $(ip route | grep -m 1 unreachable)"
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + cmd}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+	return runIpCommand(k8Client, podName, "ip route flush type unreachable")
 }
 
-func MakeIpReachable(k8Client K8Client, podName string, ip string) error {
-	cmd := "ip route del unreachable " + ip
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + cmd}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+func runIpCommand(k8Client K8Client, podName string, cmd string) error {
+	cmdWithSetup := []string{"sh", "-c", "apk add --no-cache iproute2 >/dev/null && " + cmd}
+	return k8Client.ExecuteCommandViaDebugContainerAndAwait(podName, "", networkDebugImage, cmdWithSetup)
 }
