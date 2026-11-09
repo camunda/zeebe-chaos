@@ -15,10 +15,26 @@
 package internal
 
 import (
+	"os"
 	"strings"
 )
 
-const networkDebugImage = "alpine:3.20"
+const (
+	defaultNetworkDebugImage = "busybox:1.38.0"
+	saasNetworkDebugImage    = "europe-docker.pkg.dev/camunda-saas-registry/vendor/busybox:1.38.0"
+	networkDebugImageEnv     = "ZBCHAOS_NETWORK_DEBUG_IMAGE"
+	deleteUnreachableRoutes  = `set -o pipefail; ip route show | { grep '^unreachable' || true; } | while read -r _ ip _; do ip route del unreachable "$ip" || exit 1; done`
+)
+
+func networkDebugImage(k8Client K8Client) string {
+	if image := os.Getenv(networkDebugImageEnv); image != "" {
+		return image
+	}
+	if k8Client.SaaSEnv {
+		return saasNetworkDebugImage
+	}
+	return defaultNetworkDebugImage
+}
 
 func MakeIpUnreachableForPod(k8Client K8Client, podIp string, podName string) error {
 	cmd := []string{"ip", "route", "replace", "unreachable", podIp}
@@ -26,10 +42,9 @@ func MakeIpUnreachableForPod(k8Client K8Client, podIp string, podName string) er
 }
 
 func MakeIpReachableForPod(k8Client K8Client, podName string) error {
-	return runIpCommand(k8Client, podName, "ip route flush type unreachable")
+	return runIpCommand(k8Client, podName, deleteUnreachableRoutes)
 }
 
 func runIpCommand(k8Client K8Client, podName string, cmd string) error {
-	cmdWithSetup := []string{"sh", "-c", "apk add --no-cache iproute2 >/dev/null && " + cmd}
-	return k8Client.ExecuteCommandViaDebugContainerAndAwait(podName, "", networkDebugImage, cmdWithSetup)
+	return k8Client.ExecuteCommandViaDebugContainerAndAwait(podName, "", networkDebugImage(k8Client), []string{"sh", "-c", cmd})
 }

@@ -428,7 +428,7 @@ func Test_StartDebugContainerWithoutTargetContainer(t *testing.T) {
 	k8Client.CreatePodWithContainers(t, "camunda-0", "orchestration")
 
 	// when
-	name, err := k8Client.startDebugContainer("camunda-0", "", networkDebugImage, []string{"true"})
+	name, err := k8Client.startDebugContainer("camunda-0", "", defaultNetworkDebugImage, []string{"true"})
 
 	// then
 	require.NoError(t, err)
@@ -445,7 +445,7 @@ func Test_StartDebugContainerTargetsNamedContainer(t *testing.T) {
 	k8Client.CreatePodWithContainers(t, "camunda-0", "sidecar", "zeebe")
 
 	// when
-	_, err := k8Client.startDebugContainer("camunda-0", "zeebe", networkDebugImage, []string{"true"})
+	_, err := k8Client.startDebugContainer("camunda-0", "zeebe", defaultNetworkDebugImage, []string{"true"})
 
 	// then
 	require.NoError(t, err)
