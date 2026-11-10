@@ -41,7 +41,7 @@ func MakeIpUnreachableForPod(k8Client K8Client, podIp string, podName string) er
 	return runIpCommand(k8Client, podName, strings.Join(cmd, " "))
 }
 
-func MakeIpReachableForPod(k8Client K8Client, podName string) error {
+func RemoveUnreachableRoutes(k8Client K8Client, podName string) error {
 	return runIpCommand(k8Client, podName, deleteUnreachableRoutes)
 }
 

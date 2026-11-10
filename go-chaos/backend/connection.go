@@ -46,7 +46,7 @@ func ConnectBrokers(kubeConfigPath string, namespace string) error {
 
 	var errs []error
 	for _, pod := range podNames {
-		err = internal.MakeIpReachableForPod(k8Client, pod)
+		err = internal.RemoveUnreachableRoutes(k8Client, pod)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to connect broker %s: %w", pod, err))
 		} else {
@@ -70,7 +70,7 @@ func ConnectGateway(kubeConfigPath string, namespace string) error {
 		return err
 	}
 
-	err = internal.MakeIpReachableForPod(k8Client, gatewayPod.Name)
+	err = internal.RemoveUnreachableRoutes(k8Client, gatewayPod.Name)
 	if err != nil {
 		return fmt.Errorf("failed to connect gateway %s: %w", gatewayPod.Name, err)
 	}
