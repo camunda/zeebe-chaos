@@ -15,41 +15,36 @@
 package internal
 
 import (
+	"os"
 	"strings"
 )
 
+const (
+	defaultNetworkDebugImage = "busybox:1.38.0"
+	saasNetworkDebugImage    = "europe-docker.pkg.dev/camunda-saas-registry/vendor/busybox:1.38.0"
+	networkDebugImageEnv     = "ZBCHAOS_NETWORK_DEBUG_IMAGE"
+	deleteUnreachableRoutes  = `set -o pipefail; ip route show | { grep '^unreachable' || true; } | while read -r _ ip _; do ip route del unreachable "$ip" || exit 1; done`
+)
+
+func networkDebugImage(k8Client K8Client) string {
+	if image := os.Getenv(networkDebugImageEnv); image != "" {
+		return image
+	}
+	if k8Client.SaaSEnv {
+		return saasNetworkDebugImage
+	}
+	return defaultNetworkDebugImage
+}
+
 func MakeIpUnreachableForPod(k8Client K8Client, podIp string, podName string) error {
 	cmd := []string{"ip", "route", "replace", "unreachable", podIp}
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + strings.Join(cmd, " ")}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+	return runIpCommand(k8Client, podName, strings.Join(cmd, " "))
 }
 
-func MakeIpReachableForPod(k8Client K8Client, podName string) error {
-	cmd := "ip route del $(ip route | grep -m 1 unreachable)"
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + cmd}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+func RemoveUnreachableRoutes(k8Client K8Client, podName string) error {
+	return runIpCommand(k8Client, podName, deleteUnreachableRoutes)
 }
 
-func MakeIpReachable(k8Client K8Client, podName string, ip string) error {
-	cmd := "ip route del unreachable " + ip
-	cmdWithSetup := []string{"sh", "-c", "apt update && apt install -y iproute2 && " + cmd}
-	var containerName string
-	if strings.Contains(podName, "gateway") {
-		containerName = "zeebe-gateway"
-	} else {
-		containerName = "zeebe"
-	}
-	return k8Client.ExecuteCommandViaDebugContainer(podName, containerName, "camunda/zeebe", cmdWithSetup)
+func runIpCommand(k8Client K8Client, podName string, cmd string) error {
+	return k8Client.ExecuteCommandViaDebugContainerAndAwait(podName, "", networkDebugImage(k8Client), []string{"sh", "-c", cmd})
 }
