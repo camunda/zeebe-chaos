@@ -296,6 +296,8 @@ golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 h1:1GO4fJiyGakz0Liu2Ve1qPAwQ
 golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0/go.mod h1:J3U+E8RzytcGvwz+uJuAP4zULJ2TkAQBnmPZMexpdXs=
 golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920 h1:qr+tk4P56rtbVVAJDyAr5LAOiaD/XhZCoRTr4SfLxAk=
 golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920/go.mod h1:J3U+E8RzytcGvwz+uJuAP4zULJ2TkAQBnmPZMexpdXs=
+golang.org/x/exp v0.0.0-20261112162710-dab199d8bf38 h1:TEfr+si4lXFLkDs5vA1AHO+H+rAgl2t3o1nymGanQ50=
+golang.org/x/exp v0.0.0-20261112162710-dab199d8bf38/go.mod h1:J3U+E8RzytcGvwz+uJuAP4zULJ2TkAQBnmPZMexpdXs=
 golang.org/x/mod v0.40.0 h1:hUv+3cXcdRHz08UmSiOob7sadHig73uo5bkXxQ/tvUs=
 golang.org/x/mod v0.40.0/go.mod h1:0/weTWkPWGBikyTWAX3dkjVztMmBA5hM0DH6BElSupE=
 golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=
