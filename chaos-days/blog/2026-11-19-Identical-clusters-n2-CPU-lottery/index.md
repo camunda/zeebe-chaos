@@ -13,14 +13,9 @@ authors:
 
 # Chaos Day Summary
 
-Our daily load test had a puzzling pattern: the same test, on the same build, with the same configuration, sometimes ran clean and sometimes got stuck at 40 to 50% rejected requests. This chaos day summarizes the investigation of that pattern (tracked in [camunda/camunda#68316](https://github.com/camunda/camunda/issues/68316)) and what we changed.
+Our daily load test had a puzzling pattern: the same test, on the same build, with the same configuration, sometimes ran clean and sometimes got stuck at 40 to 50% rejected requests (tracked in [camunda/camunda#68316](https://github.com/camunda/camunda/issues/68316)). Several things contributed. This chaos day focuses on one of them, because it can affect other workloads too: **GKE `n2` machines come in a fast and a slow class**.
 
-**TL;DR;** There was not one cause but three, and one of them can affect other workloads running on GKE `n2` machines. The impact is listed last.
-
-- **The host.** GKE `n2` nodes without a minimum CPU platform come in a fast and a slow class. Both report the same CPU model and flags. The slow class reaches roughly 37% of the speed in a `sysbench` CPU benchmark. Google confirmed that the platform assignment is automatic and depends on availability, so which node you get is effectively random.
-- **The test setup.** Brokers throttled at 3 CPU, too few worker threads, and a write rate limit capped the result, so part of what we measured was our own setup.
-- **The test itself.** The regression test ran at the capacity of the system, so one test mixed "did it regress" with "how much can it do", and normal spread looked like a regression.
-- **The cost.** Stuck runs delivered about 25% less goodput on the same CPU. We now pin nodes to Ice Lake, run a more fitting setup, and use a rate below the capacity.
+**TL;DR;** Fresh GKE `n2` nodes without a minimum CPU platform come in a fast and a slow class. Both report the same CPU model, flags, and platform, and no steal time. The slow class reaches roughly 37% of the speed in a `sysbench` CPU benchmark. Google confirmed that the platform assignment is automatic and depends on availability, so which node you get is effectively random. Pinning the pool to Ice Lake with `min_cpu_platform` removed the slow class in every probe we ran.
 
 <!--truncate-->
 
@@ -34,12 +29,6 @@ Identical clusters should deliver identical throughput within a few percent. A c
 
 ### Actual
 
-#### How big was the difference?
-
-Looking at the daily runs of the last 14 days, six were stuck (more than 35% rejected requests), four recovered (less than 15%), and the rest sat in between. The stuck ones delivered about 744 accepted requests per second against 994 for the recovered ones, and about 3718 records per second against 4967, while using the same CPU (8.7 against 8.6 cores). That is about 25% less goodput on the same hardware, so the cost is real and not a measurement artifact.
-
-![Goodput of stuck and recovered daily runs on the same CPU](stuck-vs-recovered.svg)
-
 #### Ruling things out, cheapest first
 
 We worked through the same order every time, and it is worth keeping:
@@ -50,7 +39,7 @@ We worked through the same order every time, and it is worth keeping:
 4. **Per broker.** Partitions led by the slowest broker rejected about 50% of their requests, partitions led by the other brokers about 22%.
 5. **The host.** CPU model, clock, a CPU benchmark, steal time.
 
-The first four steps explained some runs, but not all of them. The outlier broker had no event and a normal configuration, so we looked at the node.
+The first four steps explained some runs, but not all of them. The slow broker had no event and a normal configuration, so we looked at the node.
 
 #### Two classes of the same machine
 
@@ -89,37 +78,20 @@ We pinned all our `n2` node pools to Ice Lake on 2026-11-10. A node benchmark ov
 
 Note that the `cpu MHz` detector is specific to Cascade Lake pools. On an Ice Lake pool, the value is about 2600 and the check does not separate classes.
 
-#### The test itself
-
-Two more things contributed, independent of the hosts:
-
-- **The setup capped the result.** Several limits held the result back:
-  - Brokers were throttled at 3 CPU. With three partitions, an embedded gateway and request retries, that left too little headroom.
-  - The load generator had too few worker threads.
-  - A write rate limit backpressured the setup without secondary storage.
-
-  We now run 4 CPUs as request and limit for each broker on larger `n2-standard-8` nodes, 3 worker replicas with 30 threads each, and the default write flow control without our own limit. We also raised the starter CPU limit as a precaution for higher rates, it was not a measured cap.
-- **The rate sat at the capacity.** We measured a capacity of about 700 process instances per second for this setup. A regression test at that rate cannot tell a regression from noise. We now run the regression test at 650, which is stable and shows a 10% regression, and treat the capacity as a separate measurement. The latest daily run completed 648.5 process instances per second at that rate, with 2.2% backpressure. A faster build is not a finding for this test.
-
-The records per CPU-second metric is useful to compare brokers inside one cluster, but it is only relative. We do not use it as an absolute efficiency number.
-
 #### What we could not explain
 
-One more cluster was about 10% less efficient per CPU-second with 28% CPU throttling, with no event in its window and a normal CPU model, steal and heap. Its nodes were gone when we checked, so we could not run a node benchmark. In another verification cluster, a single broker was slow for hours and recovered on its own. It was a single sample each time and we could not prove a cause. Our best guess is noisy neighbors, which is suspected but not proven. The margin below the capacity absorbs this for now. The evidence is gone unless it is captured during the phase, so if it shows up again, capture a node benchmark, steal, and CPU pressure right then.
+After the pin, one cluster was still about 10% less efficient per CPU-second with 28% CPU throttling, with no event in its window and a normal CPU model, steal and heap. Its nodes were gone when we checked, so we could not run a node benchmark. In another verification cluster, a single broker was slow for hours and recovered on its own. It was a single sample each time and we could not prove a cause. Our best guess is noisy neighbors, which is suspected but not proven. The evidence is gone unless it is captured during the phase, so if it shows up again, capture a node benchmark, steal, and CPU pressure right then.
 
 ## Conclusion
 
-Identical clusters are only identical if the hosts are. A fresh GKE `n2` node can be fast or slow with the same CPU model, flags, and platform reported, and stuck runs delivered about 25% less goodput. The slow hosts explain the spread between brokers, the test setup and the rate explain the rest.
+Identical clusters are only identical if the hosts are. A fresh GKE `n2` node can be fast or slow with the same CPU model, flags, and platform reported. It is one of the causes behind our stuck daily runs: the slow hosts explain the spread between brokers, while other parts of the test setup explain the rest.
 
 - Set `min_cpu_platform` for `n2` pools, or benchmark a sample of fresh nodes before you trust numbers from a new pool, zone, or machine type.
 - Pinning needs a node pool re-create and can reduce the zone capacity, so plan for it.
-- Keep a regression test below the measured capacity, and measure the capacity separately.
 - Check the cheap things first: backpressure, throttling, events, configuration, then the host.
 
-This is not specific to load tests. We only measured `n2-standard-4` and `n2-standard-8` in one region, and the effect depends on the workload, but any CPU-bound workload on `n2` nodes without `min_cpu_platform`, such as a Kubernetes cluster created with default settings, can land on the slow class and see the same unexplained difference between identical deployments.
+We only measured `n2-standard-4` and `n2-standard-8` in one region, and the effect depends on the workload, but any CPU-bound workload on `n2` nodes without `min_cpu_platform`, such as a Kubernetes cluster created with default settings, can land on the slow class and see the same unexplained difference between identical deployments.
 
 ## Found Bugs and Follow-ups
 
 - [camunda/camunda#68316](https://github.com/camunda/camunda/issues/68316): the parent issue of the investigation.
-- [camunda/camunda#69692](https://github.com/camunda/camunda/issues/69692): re-measure the load test capacity on every release and compare it to the regression rate.
-- Sizing guidance on the hardware assumptions is a candidate for the docs, see the sizing page in the best practices.
