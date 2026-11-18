@@ -15,7 +15,7 @@ authors:
 
 Our daily load test had a puzzling pattern: the same test, on the same build, with the same configuration, sometimes ran clean and sometimes got stuck at 40 to 50% rejected requests. This chaos day summarizes the investigation of that pattern (tracked in [camunda/camunda#68316](https://github.com/camunda/camunda/issues/68316)) and what we changed.
 
-**TL;DR;** There was not one cause but three, and one of them is likely relevant to everyone running on GKE `n2` machines. The impact is listed last.
+**TL;DR;** There was not one cause but three, and one of them can affect any workload running on GKE `n2` machines. The impact is listed last.
 
 - **The host.** GKE `n2` nodes without a minimum CPU platform come in a fast and a slow class. Both report the same CPU model and flags. The slow class runs the same code at roughly 37% of the speed in a CPU benchmark. Google confirmed that the platform assignment is automatic and depends on availability, so it is effectively random.
 - **The test setup.** Brokers throttled at 3 CPU, too few worker threads, too little starter CPU, and a write rate limit capped the result, so part of what we measured was our own setup.
@@ -115,7 +115,7 @@ Identical clusters are only identical if the hosts are. A fresh GKE `n2` node ca
 - Keep a regression test below the measured capacity, and measure the capacity separately.
 - Check the cheap things first: backpressure, throttling, events, configuration, then the host.
 
-We told the SaaS team, which does not set `min_cpu_platform` today, and they are following up on whether and where to apply it.
+This is not specific to load tests. Any workload on `n2` nodes without `min_cpu_platform`, such as a Kubernetes cluster created with default settings, can land on the slow class and see the same unexplained difference between identical deployments.
 
 ## Found Bugs and Follow-ups
 
