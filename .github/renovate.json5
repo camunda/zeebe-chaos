@@ -9,4 +9,17 @@
     "enabled": true,
     "automerge": true,
   },
+
+  "packageRules": [
+    {
+      // Exclude old, deprecated versions of k8s.io/client-go
+      // From https://github.com/kubernetes/client-go:
+      // > We recommend using:
+      // > The v0.x.y tags for Kubernetes releases >= v1.17.0
+      // > kubernetes-1.x.y tags for Kubernetes releases < v1.17.0
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/client-go"],
+      "allowedVersions": "!/^v1\\./",
+    },
+  ],
 }
